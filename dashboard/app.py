@@ -186,6 +186,9 @@ def fetch_points(api_base, min_score):
         })
     return rows
 
+@st.cache_data(ttl=60)
+def fetch_province_points(api_base, min_score=35):
+    return api_get(api_base, "agg/province-points/", params={"min_score": min_score})
 
 @st.cache_data(ttl=60)
 def fetch_errors(api_base, min_score=35, limit=200):
@@ -297,6 +300,10 @@ c4.metric("Outlier coords", len(outliers))
 # =========================
 # TABS
 # =========================
+# tab_table, tab_map, tab_map_thematic, tab_line, tab_bar, tab_errors = st.tabs(
+#     ["Table", "Map", "Map Thematic", "Line", "Bar", "Errors"]
+# )
+
 tab_table, tab_map, tab_line, tab_bar, tab_errors = st.tabs(
     ["Table", "Map", "Line", "Bar", "Errors"]
 )
@@ -315,88 +322,23 @@ with tab_table:
         })
     st.dataframe(table_rows, use_container_width=True, height=600)
 
-# with tab_map:
-#     st.subheader("Peta Titik Kejadian")
-
-#     center_lat, center_lon, zoom = -2.5489, 118.0149, 5
-#     if filtered_geo:
-#         lats = [safe_float(r.get("lat")) for r in filtered_geo if safe_float(r.get("lat")) is not None]
-#         lons = [safe_float(r.get("lon")) for r in filtered_geo if safe_float(r.get("lon")) is not None]
-#         if lats and lons:
-#             center_lat = median(lats) or center_lat
-#             center_lon = median(lons) or center_lon
-#             zoom = 5 if len(filtered_geo) > 10 else 6
-
-#     m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
-#     folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
-#     folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
-
-#     cluster = MarkerCluster(name="Clusters").add_to(m)
-
-#     for r in filtered_geo:
-#         lat = safe_float(r.get("lat"))
-#         lon = safe_float(r.get("lon"))
-#         if lat is None or lon is None:
-#             continue
-
-#         tag = r.get("penyakit_tag", "")
-#         skor = r.get("skor_ancaman", "")
-#         loc = r.get("lokasi_mentah", "")
-#         src = r.get("sumber", "")
-#         title = r.get("judul", "")
-#         link = r.get("link", "")
-
-#         popup = folium.Popup(
-#             f"""
-#             <b>{tag}</b> | Skor: <b>{skor}</b><br>
-#             Lokasi: {loc}<br>
-#             Sumber: {src}<br><br>
-#             {title}<br><br>
-#             <a href="{link}" target="_blank">Buka berita</a>
-#             """,
-#             max_width=350
-#         )
-
-#         folium.CircleMarker(
-#             location=[lat, lon],
-#             radius=6,
-#             popup=popup,
-#             tooltip=f"{tag} | {loc} | skor {skor}",
-#             fill=True
-#         ).add_to(cluster)
-
-#     folium.LayerControl(collapsed=False).add_to(m)
-#     st_folium(m, height=700, width=None)
-
-#     if outliers:
-#         st.warning("Ada koordinat outlier (di luar Indonesia).")
-#         st.dataframe(outliers[:50], use_container_width=True, height=240)
-
 with tab_map:
     st.subheader("Peta")
 
     map_mode = st.radio(
         "Mode peta",
-        ["Titik (Cluster)", "Tematik Provinsi (Choropleth)"],
+        ["Titik (Cluster)", "Tematik Provinsi (Marker)"],
         horizontal=True
     )
 
+    # -------------------------
+    # A) TITIK (CLUSTER)
+    # -------------------------
     if map_mode == "Titik (Cluster)":
-        # --- map titik seperti sekarang ---
-        center_lat, center_lon, zoom = -2.5489, 118.0149, 5
-        if filtered_geo:
-            lats = [safe_float(r.get("lat")) for r in filtered_geo if safe_float(r.get("lat")) is not None]
-            lons = [safe_float(r.get("lon")) for r in filtered_geo if safe_float(r.get("lon")) is not None]
-            if lats and lons:
-                center_lat = median(lats) or center_lat
-                center_lon = median(lons) or center_lon
-                zoom = 5 if len(filtered_geo) > 10 else 6
-
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
-        folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
-        folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
-
-        cluster = MarkerCluster(name="Clusters").add_to(m)
+        # filtered_geo diasumsikan sudah berisi titik yg lolos filter (mode CSV atau API)
+        # Agar tidak "kosong tapi tidak ketahuan", kita hitung titik valid
+        valid_points = []
+        outliers = []
 
         for r in filtered_geo:
             lat = safe_float(r.get("lat"))
@@ -404,12 +346,33 @@ with tab_map:
             if lat is None or lon is None:
                 continue
 
+            # filter outlier kasar (Indonesia bbox)
+            if not (-11.5 <= lat <= 6.5 and 94.0 <= lon <= 141.5):
+                outliers.append(r)
+                continue
+
+            valid_points.append((r, lat, lon))
+
+        st.write(f"Total titik valid (cluster): **{len(valid_points)}**")
+
+        # base map
+        m = folium.Map(location=[-2.5489, 118.0149], zoom_start=5, control_scale=True)
+        folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
+        folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
+
+        cluster = MarkerCluster(name="Clusters").add_to(m)
+
+        # plot markers
+        lats = []
+        lons = []
+
+        for r, lat, lon in valid_points:
             tag = r.get("penyakit_tag", "")
             skor = r.get("skor_ancaman", "")
-            loc = r.get("lokasi_mentah", "")
-            src = r.get("sumber", "")
-            title = r.get("judul", "")
-            link = r.get("link", "")
+            loc = r.get("lokasi_mentah", "") or r.get("raw_location_text", "")
+            src = r.get("sumber", "") or r.get("source_name", "")
+            title = r.get("judul", "") or r.get("title", "")
+            link = r.get("link", "") or r.get("url", "")
 
             popup = folium.Popup(
                 f"""
@@ -430,92 +393,126 @@ with tab_map:
                 fill=True
             ).add_to(cluster)
 
+            lats.append(lat)
+            lons.append(lon)
+
+        # auto zoom ke semua titik (ini yang sering bikin "marker ada tapi gak kelihatan" jadi beres)
+        if lats and lons:
+            m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+        else:
+            st.info("Tidak ada titik valid untuk ditampilkan. Turunkan skor minimal atau cek data lat/lon.")
+
         folium.LayerControl(collapsed=False).add_to(m)
         st_folium(m, height=700, width=None)
 
         if outliers:
-            st.warning("Ada koordinat outlier (di luar Indonesia).")
+            st.warning("Ada koordinat outlier (di luar bbox Indonesia).")
             st.dataframe(outliers[:50], use_container_width=True, height=240)
 
+    # -------------------------
+    # B) TEMATIK PROVINSI (MARKER)
+    # -------------------------
     else:
-        # --- Choropleth provinsi dari API agg + GeoJSON ---
         if mode != "API":
-            st.info("Mode tematik provinsi membutuhkan API (agg). Silakan pilih mode API.")
+            st.info("Mode tematik provinsi membutuhkan mode API.")
             st.stop()
 
-        PROV_GEOJSON_PATH = "geo/provinsi.geojson"
-        key_prop = st.text_input("Nama property provinsi di GeoJSON", value="name")
-        metric = st.selectbox("Metric", ["count", "avg_score", "max_score"], index=0)
+        # ambil agregat provinsi dari API
+        prov_rows = fetch_province_points(api_base, min_score=min_score)
 
-        try:
-            gj = load_geojson(PROV_GEOJSON_PATH)
-        except Exception as e:
-            st.error(f"Gagal load GeoJSON: {PROV_GEOJSON_PATH} | {e}")
-            st.stop()
+        # buang yang lat/lon kosong
+        prov_rows = [r for r in prov_rows if safe_float(r.get("lat")) is not None and safe_float(r.get("lon")) is not None]
 
-        try:
-            agg = api_get(api_base, "agg/provinces/", {"min_score": min_score})
-        except Exception as e:
-            st.error(f"Gagal ambil data agg provinsi dari API: {e}")
-            st.stop()
+        st.write(f"Total provinsi terplot: **{len(prov_rows)}**")
 
-        # map: province name -> value
-        val_map = {}
-        for row in agg:
-            prov = norm_name(row.get("province"))
-            val = row.get(metric, 0) or 0
-            try:
-                val = float(val)
-            except Exception:
-                val = 0
-            val_map[prov] = val
+        metric = st.selectbox("Ukuran marker berdasarkan", ["count", "avg_score", "max_score"], index=0)
 
-        # style by value (skala warna manual sederhana)
-        def style_fn(feature):
-            name = norm_name(feature.get("properties", {}).get(key_prop, ""))
-            v = val_map.get(name, 0)
+        # center map (rata-rata provinsi)
+        center_lat, center_lon, zoom = -2.5489, 118.0149, 5
+        if prov_rows:
+            center_lat = sum(float(r["lat"]) for r in prov_rows) / len(prov_rows)
+            center_lon = sum(float(r["lon"]) for r in prov_rows) / len(prov_rows)
 
-            # threshold (bisa kamu ubah)
-            if v >= 20:
-                fill = "#800026"
-            elif v >= 10:
-                fill = "#BD0026"
-            elif v >= 5:
-                fill = "#E31A1C"
-            elif v >= 2:
-                fill = "#FC4E2A"
-            elif v >= 1:
-                fill = "#FD8D3C"
-            else:
-                fill = "#FFEDA0"
-
-            return {"fillColor": fill, "color": "#666", "weight": 1, "fillOpacity": 0.65}
-
-        # tooltip: prov + value
-        def tooltip_text(feature):
-            name_raw = feature.get("properties", {}).get(key_prop, "")
-            v = val_map.get(norm_name(name_raw), 0)
-            return f"{name_raw} | {metric}: {v}"
-
-        m = folium.Map(location=[-2.5489, 118.0149], zoom_start=5, control_scale=True)
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
         folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
+        folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
 
-        folium.GeoJson(
-            gj,
-            name="Provinsi",
-            style_function=style_fn,
-            tooltip=folium.GeoJsonTooltip(
-                fields=[key_prop],
-                aliases=["Provinsi:"],
-                sticky=True
-            ),
-        ).add_to(m)
+        # warna berdasarkan metric
+        def pick_color(v):
+            try:
+                v = float(v)
+            except Exception:
+                v = 0.0
+
+            if metric == "count":
+                if v >= 30: return "#800026"
+                if v >= 15: return "#BD0026"
+                if v >= 8:  return "#E31A1C"
+                if v >= 3:  return "#FC4E2A"
+                if v >= 1:  return "#FD8D3C"
+                return "#FFEDA0"
+            else:
+                if v >= 80: return "#800026"
+                if v >= 60: return "#BD0026"
+                if v >= 40: return "#E31A1C"
+                if v >= 25: return "#FC4E2A"
+                if v >= 10: return "#FD8D3C"
+                return "#FFEDA0"
+
+        # radius scaling
+        vals = []
+        for r in prov_rows:
+            vals.append(float(r.get(metric, 0) or 0))
+        maxv = max(vals) if vals else 1
+
+        lats = []
+        lons = []
+
+        for r in prov_rows:
+            lat = safe_float(r.get("lat"))
+            lon = safe_float(r.get("lon"))
+            if lat is None or lon is None:
+                continue
+
+            province = r.get("province", "")
+            count = r.get("count", 0)
+            avg_score = r.get("avg_score", 0)
+            max_score = r.get("max_score", 0)
+
+            val = float(r.get(metric, 0) or 0)
+            radius = 6 + (16 * (val / maxv)) if maxv else 8
+            color = pick_color(val)
+
+            popup = folium.Popup(
+                f"<b>{province}</b><br>"
+                f"Count: <b>{count}</b><br>"
+                f"Avg score: <b>{avg_score}</b><br>"
+                f"Max score: <b>{max_score}</b><br>",
+                max_width=300
+            )
+
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=radius,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.65,
+                popup=popup,
+                tooltip=f"{province} | count {count} | max {max_score}"
+            ).add_to(m)
+
+            lats.append(lat); lons.append(lon)
+
+        if lats and lons:
+            m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
 
         folium.LayerControl(collapsed=False).add_to(m)
         st_folium(m, height=700, width=None)
 
-        st.caption("Data agregasi (Top 20)")
-        st.dataframe(agg[:20], use_container_width=True)
+        st.divider()
+        st.caption("Tabel agregasi provinsi")
+        st.dataframe(prov_rows, use_container_width=True, height=420)
 
 with tab_line:
     st.subheader("Trend Sinyal per Hari")
