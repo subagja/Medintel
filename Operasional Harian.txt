@@ -1,0 +1,32 @@
+1. Aktifkan env crawler:
+cd ..\crawler
+venv311\Scripts\activate
+python crawler.py
+
+2. Aktifkan env dashboard:
+cd ..\dashboard
+venv314\Scripts\activate
+streamlit run app.py
+
+3. Aktifkan env backend:
+cd ..\backend
+venv\Scripts\activate
+python manage.py runserver
+
+4. import db
+cd C:\Users\Admin\tesis\medintel\backend
+venv\Scripts\activate
+python manage.py import_signals --raw ..\crawler\output\data_intel_raw.csv
+
+Di Django Admin:
+
+Signals sudah masuk
+
+SignalLocation sudah punya location (banyak yang akan ter-link otomatis)
+
+Locations + Aliases sudah terbentuk dari gazetteer
+
+Ini fondasi penting untuk:
+✅ Geocode error center (admin)
+✅ Manual correction lokasi
+✅ Alert rules (next stage)

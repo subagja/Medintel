@@ -132,7 +132,7 @@ def validate_location(loc: str) -> Tuple[bool, str]:
 # =========================
 class MedIntelCrawler:
     def __init__(self):
-        self.keywords = ["DBD", "Demam Berdarah", "Mpox", "Flu Burung", "Antraks", "KLB Penyakit"]
+        self.keywords = ["DBD", "Mpox", "Flu Burung", "Antraks", "KLB Penyakit", "Campak", "Rubela", "Diare", "Kolera", "Demam Tifoid", "Chikungunya", "Superflu", "Avian Influenza", "Nipah", "TBC", "HIV", "AIDS", "IMS", "Infeksi Menular Seksual", "Polio", "Difteri", "Batuk Renjan", "Pertusis", "Rabies", "Leptospirosis", "Antraks"]
         self.rss_url = "https://news.google.com/rss/search?q={query}+when:7d&hl=id&gl=ID&ceid=ID:id"
 
         self.session = requests.Session()

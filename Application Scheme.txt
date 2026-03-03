@@ -1,0 +1,119 @@
+Arsitektur Aplikasi
+1️. Crawler (Python 3.11)
+* Scheduled (cron / task scheduler)
+* Output ke:
+	- Database (PostgreSQL / SQLite)
+	- atau minimal JSON/CSV
+
+2. Django (Python 3.14)
+Berfungsi sebagai:
+* Admin Panel
+* Data Management
+* Validation Layer
+* User & Role Management
+* Gazetteer Manager
+* Approval Workflow
+
+3. Streamlit
+Tetap dipakai untuk:
+* Realtime Dashboard
+* Visualisasi cepat
+* Tactical monitoring
+* Map-based situational awareness
+
+------------------------------------------------------------------------------------------------------
+
+Django Admin
+
+1. Dashboard (Overview Intelligence) (Tujuan: Quick situational awareness untuk analis.)
+Menu utama admin. Isi:
+* Total sinyal 24 jam
+* Total sinyal minggu ini
+* Top 5 lokasi
+* Top 5 penyakit
+* % geocode success rate
+* % high risk (skor > 50)
+
+2. Raw Signals (Data Mentah - Menampilkan semua hasil crawling) -> Sistem OSINT selalu noisy, harus ada human validation layer.
+Fitur:
+* Filter by tanggal
+* Filter by penyakit
+* Filter by geocode_status
+* Search judul
+* Sorting skor
+
+Aksi:
+* Tandai sebagai valid
+* Tandai sebagai noise
+* Edit lokasi manual
+* Edit skor manual
+* Approve untuk mapping
+
+3. Verified Signals (Validated Data) - Hanya data yang sudah disetujui analis
+Fungsi:
+* Data resmi untuk dashboard
+* Sumber pelaporan
+* Bisa export CSV
+
+4. Gazetteer Manager (Penting -> 80% kegagalan geocode berasal dari gazetteer yang kurang kaya)
+Menu untuk:
+* Tambah kota/kabupaten
+* Edit alias
+* Merge entitas
+* Tandai false positive
+
+5. Geocode Error Center - Menu khusus untuk error handling.
+Tampilkan:
+* EMPTY_LOC
+* NOT_FOUND
+* NET_ERR
+* SKIP_NOISE
+* SKIP_TOO_GENERAL
+
+Dengan fitur:
+* Klik → edit manual lokasi
+* Re-run geocode
+* Assign province manual
+* Ini bikin sistem makin matang.
+
+6. Scoring Rules Manager
+Menu untuk mengatur:
+* Danger keywords
+* Bobot skor
+* Threshold minimal mapping
+* Threshold high risk
+
+Karena nanti kamu mungkin ingin:
+* Mode “Outbreak Alert”
+* Mode “Routine Monitoring”
+
+7. Alert Center (Kalau sistem makin maju)
+Trigger alert jika:
+* 5 sinyal dalam 1 kota dalam 48 jam
+* Skor rata-rata > 60
+* Lokasi baru muncul
+
+Bisa kirim (Ini sudah masuk kategori Early Warning System)
+* Email
+* Telegram bot
+* Internal notification
+
+8. User & Role Management
+Role-based access:
+* Admin Sistem
+* Analis Senior
+* Analis
+* Viewer
+
+Dengan:
+* Audit trail
+* Log perubahan
+* Timestamp edit
+
+9. Reports Generator
+Menu generate:
+* Laporan harian
+* Laporan mingguan
+* Rekap per provinsi
+* Rekap per penyakit
+* Export PDF
