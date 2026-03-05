@@ -1,0 +1,165 @@
+1️⃣ Jalankan Backend (Django API)
+
+Masuk ke folder backend:
+
+cd backend
+
+Pastikan environment aktif:
+
+..\ .venv\Scripts\activate
+
+Jalankan migration database:
+
+python manage.py migrate
+
+Buat admin (opsional tapi penting):
+
+python manage.py createsuperuser
+
+Jalankan server:
+
+python manage.py runserver
+
+Kalau berhasil akan muncul:
+
+Starting development server at http://127.0.0.1:8000/
+2️⃣ Cek API Endpoint
+
+Buka browser dan cek:
+
+daftar sinyal
+http://127.0.0.1:8000/api/signals/
+titik lokasi
+http://127.0.0.1:8000/api/points/
+agregasi provinsi
+http://127.0.0.1:8000/api/agg/province-points/
+
+Kalau muncul JSON berarti backend sudah OK.
+
+3️⃣ Import Data dari Crawler (jika database masih kosong)
+
+Kalau database masih kosong, jalankan crawler.
+
+Terminal baru:
+
+cd crawler
+
+Aktifkan env:
+
+..\ .venv\Scripts\activate
+
+Jalankan:
+
+python crawler.py
+
+Crawler akan menghasilkan:
+
+crawler/output/data_intel_raw.csv
+crawler/output/data_intel_geo.csv
+
+Kalau kamu sudah punya script import CSV → database, jalankan itu.
+
+Misalnya:
+
+python manage.py import_signals
+
+Kalau belum ada, nanti kita buat command Django untuk import.
+
+4️⃣ Jalankan Dashboard (Streamlit)
+
+Terminal baru:
+
+cd dashboard
+
+Aktifkan env:
+
+..\ .venv\Scripts\activate
+
+Jalankan:
+
+streamlit run app.py
+
+Browser akan membuka:
+
+http://localhost:8501
+5️⃣ Hubungkan Dashboard ke API
+
+Di sidebar dashboard biasanya ada:
+
+Mode : API
+API Base URL :
+
+Isi dengan:
+
+http://127.0.0.1:8000/api/
+
+Sekarang dashboard akan mengambil data dari Django.
+
+6️⃣ Cek peta dan grafik
+
+Cek apakah berikut sudah muncul:
+
+Tab Map
+
+Titik cluster muncul
+
+Tematik provinsi muncul
+
+Tab Line
+
+Trend sinyal per hari
+
+Tab Bar
+
+Distribusi penyakit
+
+Kalau ini muncul → sistem sudah berjalan end-to-end.
+
+7️⃣ Cek Admin Panel
+
+Masuk ke:
+
+http://127.0.0.1:8000/admin
+
+Login menggunakan superuser.
+
+Pastikan ada tabel:
+
+Signals
+
+SignalLocations
+
+Locations
+
+LocationAlias
+
+Ini penting untuk debugging data.
+
+8️⃣ Simpan dependency project (penting untuk GitHub)
+
+Sekarang buat file dependency supaya project bisa dijalankan di laptop lain.
+
+Di root project jalankan:
+
+pip freeze > requirements.txt
+
+Commit ke GitHub.
+
+9️⃣ Struktur project final yang kita targetkan
+medintel/
+│
+├── .venv
+│
+├── backend
+│   ├── medintel_backend
+│   └── intel
+│
+├── crawler
+│   ├── crawler.py
+│   └── output
+│
+├── dashboard
+│   └── app.py
+│
+├── requirements.txt
+└── README.md

@@ -1,16 +1,13 @@
 1. Aktifkan env crawler:
 cd ..\crawler
-venv311\Scripts\activate
 python crawler.py
 
 2. Aktifkan env dashboard:
 cd ..\dashboard
-venv314\Scripts\activate
 streamlit run app.py
 
 3. Aktifkan env backend:
 cd ..\backend
-venv\Scripts\activate
 python manage.py runserver
 
 4. import db

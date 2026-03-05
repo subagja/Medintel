@@ -1,5 +1,0 @@
-feedparser
-geopy
-requests
-beautifulsoup4
-lxml
