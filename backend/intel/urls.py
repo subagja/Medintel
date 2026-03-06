@@ -15,5 +15,5 @@ urlpatterns = [
     path("agg/province-points/", AggProvincePointsAPI.as_view(), name="agg-province-points"),
     path("agg/trend/", TrendAPI.as_view()),
     path("agg/disease/", DiseaseDistAPI.as_view()),
-    path("alerts/outbreak/", OutbreakAlertAPI.as_view()),
+    path("alerts/outbreak/", OutbreakAlertAPI.as_view(), name="api-alerts-outbreak"),
 ]

@@ -1,7 +1,4 @@
-import csv
 import re
-import json
-from datetime import datetime
 from collections import Counter
 from urllib.parse import urljoin
 
@@ -14,8 +11,6 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="MedIntel-ID | OSINT System", layout="wide")
 st.title("MedIntel-ID | OSINT System")
 
-RAW_PATH = "../crawler/output/data_intel_raw.csv"
-GEO_PATH = "../crawler/output/data_intel_geo.csv"
 DEFAULT_API_BASE = "http://127.0.0.1:8000/api/"
 
 # Indonesia bbox (anti outlier)
@@ -26,24 +21,6 @@ ID_LON_MIN, ID_LON_MAX = 95.0, 141.5
 # =========================
 # HELPERS
 # =========================
-def load_geojson(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def norm_name(s):
-    s = (s or "").lower().strip()
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def load_csv(path):
-    rows = []
-    with open(path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for r in reader:
-            rows.append(r)
-    return rows
-
-
 def parse_int(x, default=0):
     try:
         return int(str(x).strip() or default)
@@ -79,36 +56,6 @@ def clean_for_table(s):
     return s
 
 
-def parse_date_any(s):
-    """
-    Support ISO8601 from DRF: 2026-03-03T10:12:45Z / +07:00
-    Also supports RFC-ish and simple formats.
-    """
-    if not s:
-        return ""
-    s = str(s).strip()
-
-    # Fast path: find YYYY-MM-DD anywhere
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", s)
-    if m:
-        return m.group(1)
-
-    fmts = [
-        "%a, %d %b %Y %H:%M:%S %Z",
-        "%a, %d %b %Y %H:%M:%S %z",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d",
-    ]
-    for fmt in fmts:
-        try:
-            dt = datetime.strptime(s, fmt)
-            return dt.strftime("%Y-%m-%d")
-        except Exception:
-            pass
-
-    return ""
-
-
 def api_get(api_base, path, params=None):
     url = urljoin(api_base, path)
     r = requests.get(url, params=params or {}, timeout=30)
@@ -116,22 +63,11 @@ def api_get(api_base, path, params=None):
     return r.json()
 
 
-def median(vals):
-    vals = sorted(vals)
-    n = len(vals)
-    if n == 0:
-        return None
-    mid = n // 2
-    if n % 2 == 1:
-        return vals[mid]
-    return (vals[mid - 1] + vals[mid]) / 2.0
-
-
 # =========================
 # API FETCHERS
 # =========================
 @st.cache_data(ttl=60)
-def fetch_signals(api_base, min_score):
+def fetch_signals(api_base, min_score=0):
     page = 1
     page_size = 200
     all_rows = []
@@ -142,22 +78,24 @@ def fetch_signals(api_base, min_score):
             "page": page,
             "page_size": page_size
         })
+
         results = data.get("results", [])
         if not results:
             break
 
         for item in results:
             all_rows.append({
+                "id": item.get("id"),
                 "tanggal": item.get("published_at") or item.get("crawled_at") or "",
                 "penyakit_tag": item.get("disease_tag", "") or "",
-                "skor_ancaman": str(item.get("threat_score", 0)),
+                "detected_diseases": item.get("detected_diseases", "") or "",
+                "event_types": item.get("event_types", "") or "",
+                "severity_nlp": item.get("severity_nlp", 0) or 0,
+                "skor_ancaman": item.get("threat_score", 0) or 0,
                 "judul": item.get("title", "") or "",
                 "sumber": item.get("source_name", "") or "",
                 "link": item.get("url") or item.get("final_url") or "",
-                "geocode_status": "",
-                "lokasi_mentah": "",
-                "lat": "",
-                "lon": "",
+                "status": item.get("status", "") or "",
             })
 
         if not data.get("next"):
@@ -168,88 +106,88 @@ def fetch_signals(api_base, min_score):
 
 
 @st.cache_data(ttl=60)
-def fetch_points(api_base, min_score):
+def fetch_points(api_base, min_score=0):
     data = api_get(api_base, "points/", {"min_score": min_score})
     rows = []
+
     for item in data:
         rows.append({
+            "id": item.get("id"),
+            "signal_id": item.get("signal_id"),
             "tanggal": item.get("created_at") or "",
             "penyakit_tag": item.get("disease_tag", "") or "",
-            "skor_ancaman": str(item.get("threat_score", 0)),
+            "detected_diseases": item.get("detected_diseases", "") or "",
+            "event_types": item.get("event_types", "") or "",
+            "severity_nlp": item.get("severity_nlp", 0) or 0,
+            "skor_ancaman": item.get("threat_score", 0) or 0,
             "judul": item.get("title", "") or "",
             "sumber": item.get("source_name", "") or "",
-            "link": item.get("link") or "",
+            "link": item.get("link", "") or "",
             "lokasi_mentah": item.get("raw_location_text", "") or "",
             "geocode_status": item.get("geocode_status", "") or "",
-            "lat": str(item.get("lat") or ""),
-            "lon": str(item.get("lon") or ""),
+            "lat": item.get("lat"),
+            "lon": item.get("lon"),
+            "location_level": item.get("location_level"),
+            "admin_province": item.get("admin_province"),
+            "admin_kabkota": item.get("admin_kabkota"),
         })
+
     return rows
+
 
 @st.cache_data(ttl=60)
 def fetch_province_points(api_base, min_score=35):
     return api_get(api_base, "agg/province-points/", params={"min_score": min_score})
 
+
 @st.cache_data(ttl=60)
-def fetch_errors(api_base, min_score=35, limit=200):
-    return api_get(api_base, "errors/", {
-        "min_score": min_score,
-        "only_primary": 1,
-        "limit": limit
-    })
+def fetch_trend(api_base, min_score=35):
+    return api_get(api_base, "agg/trend/", {"min_score": min_score})
 
 
 @st.cache_data(ttl=60)
-def fetch_gazetteer_missing(api_base, min_score=35, limit=100):
-    return api_get(api_base, "gazetteer/missing/", {
-        "min_score": min_score,
-        "only_primary": 1,
-        "limit": limit
-    })
+def fetch_stats(api_base, min_score=35):
+    return api_get(api_base, "stats/", {"min_score": min_score})
+
+
+@st.cache_data(ttl=60)
+def fetch_alerts(api_base):
+    return api_get(api_base, "alerts/outbreak/")
 
 
 # =========================
 # SIDEBAR
 # =========================
-st.sidebar.header("Data Source")
-mode = st.sidebar.radio("Ambil data dari", ["CSV", "API"], index=0)
-
-api_base = DEFAULT_API_BASE
-if mode == "API":
-    api_base = st.sidebar.text_input("API Base URL", DEFAULT_API_BASE)
+st.sidebar.header("API Configuration")
+api_base = st.sidebar.text_input("API Base URL", DEFAULT_API_BASE)
 
 st.sidebar.divider()
 st.sidebar.header("Filter")
 min_score = st.sidebar.slider("Skor minimal", 0, 100, 35, 5)
 
-
 # =========================
 # LOAD DATA
 # =========================
-if mode == "CSV":
-    raw_rows = load_csv(RAW_PATH)
-    geo_rows = load_csv(GEO_PATH)
-else:
-    try:
-        raw_rows = fetch_signals(api_base, min_score=0)  # load all for tag options
-        geo_rows = fetch_points(api_base, min_score=min_score)
-    except Exception as e:
-        st.error(f"Gagal ambil data dari API: {e}")
-        st.stop()
+try:
+    raw_rows = fetch_signals(api_base, min_score=0)   # ambil semua buat filter tag
+    geo_rows = fetch_points(api_base, min_score=min_score)
+    stats_data = fetch_stats(api_base, min_score=min_score)
+except Exception as e:
+    st.error(f"Gagal ambil data dari API: {e}")
+    st.stop()
 
-# Build tags AFTER load
+# Build tag list
 all_tags = sorted({
     (r.get("penyakit_tag") or "").strip()
     for r in raw_rows
     if (r.get("penyakit_tag") or "").strip()
 })
 
-if all_tags:
-    selected_tags = st.sidebar.multiselect("Penyakit", all_tags, default=all_tags)
-else:
-    st.sidebar.warning("Tidak ada penyakit_tag pada data (cek crawling/DB).")
-    selected_tags = []
-
+selected_tags = st.sidebar.multiselect(
+    "Penyakit",
+    all_tags,
+    default=all_tags
+)
 
 def pass_tag(r):
     if not selected_tags:
@@ -257,24 +195,26 @@ def pass_tag(r):
     return (r.get("penyakit_tag") or "").strip() in selected_tags
 
 
-# Filter raw by tag + min_score
+# =========================
+# FILTERING
+# =========================
 filtered_raw = [
     r for r in raw_rows
     if pass_tag(r) and parse_int(r.get("skor_ancaman", 0)) >= min_score
 ]
 
-# Geo filter + bbox
 filtered_geo = []
 outliers = []
+
 for r in geo_rows:
     if not pass_tag(r):
         continue
-    if not has_latlon(r):
-        continue
+
     lat = safe_float(r.get("lat"))
     lon = safe_float(r.get("lon"))
     if lat is None or lon is None:
         continue
+
     if in_indonesia_bbox(lat, lon):
         filtered_geo.append(r)
     else:
@@ -300,31 +240,216 @@ c4.metric("Outlier coords", len(outliers))
 # =========================
 # TABS
 # =========================
-# tab_table, tab_map, tab_map_thematic, tab_line, tab_bar, tab_errors = st.tabs(
-#     ["Table", "Map", "Map Thematic", "Line", "Bar", "Errors"]
-# )
-
-# tab_table, tab_map, tab_line, tab_bar, tab_errors = st.tabs(
-#     ["Table", "Map", "Line", "Bar", "Errors"]
-# )
-
 tab_table, tab_map, tab_line, tab_bar, tab_alert = st.tabs(
     ["Table", "Map", "Line", "Bar", "Alerts"]
 )
 
+# =========================
+# TABLE
+# =========================
 with tab_table:
     st.subheader("Daftar Sinyal")
+
     table_rows = []
     for r in filtered_raw:
         table_rows.append({
             "tanggal": clean_for_table(r.get("tanggal")),
             "penyakit_tag": clean_for_table(r.get("penyakit_tag")),
-            "skor_ancaman": clean_for_table(r.get("skor_ancaman")),
+            "detected_diseases": clean_for_table(r.get("detected_diseases")),
+            "event_types": clean_for_table(r.get("event_types")),
+            "severity_nlp": r.get("severity_nlp", 0),
+            "skor_ancaman": r.get("skor_ancaman", 0),
+            "status": clean_for_table(r.get("status")),
             "judul": clean_for_table(r.get("judul")),
             "sumber": clean_for_table(r.get("sumber")),
             "link": clean_for_table(r.get("link")),
         })
+
     st.dataframe(table_rows, use_container_width=True, height=600)
+
+# =========================
+# MAP
+# =========================
+# with tab_map:
+#     st.subheader("Peta")
+
+#     map_mode = st.radio(
+#         "Mode peta",
+#         ["Titik (Cluster)", "Tematik Provinsi (Marker)"],
+#         horizontal=True
+#     )
+
+#     if map_mode == "Titik (Cluster)":
+#         valid_points = []
+#         local_outliers = []
+
+#         for r in filtered_geo:
+#             lat = safe_float(r.get("lat"))
+#             lon = safe_float(r.get("lon"))
+#             if lat is None or lon is None:
+#                 continue
+
+#             if not in_indonesia_bbox(lat, lon):
+#                 local_outliers.append(r)
+#                 continue
+
+#             valid_points.append((r, lat, lon))
+
+#         st.write(f"Total titik valid (cluster): **{len(valid_points)}**")
+
+#         m = folium.Map(location=[-2.5489, 118.0149], zoom_start=5, control_scale=True)
+#         folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
+#         folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
+
+#         cluster = MarkerCluster(name="Clusters").add_to(m)
+
+#         lats = []
+#         lons = []
+
+#         for r, lat, lon in valid_points:
+#             tag = r.get("penyakit_tag", "")
+#             skor = r.get("skor_ancaman", "")
+#             loc = r.get("lokasi_mentah", "")
+#             src = r.get("sumber", "")
+#             title = r.get("judul", "")
+#             link = r.get("link", "")
+#             province = r.get("admin_province", "")
+#             kabkota = r.get("admin_kabkota", "")
+
+#             popup = folium.Popup(
+#                 f"""
+#                 <b>{tag}</b> | Skor: <b>{skor}</b><br>
+#                 Lokasi: {loc}<br>
+#                 Provinsi: {province}<br>
+#                 Kab/Kota: {kabkota}<br>
+#                 Sumber: {src}<br><br>
+#                 {title}<br><br>
+#                 <a href="{link}" target="_blank">Buka berita</a>
+#                 """,
+#                 max_width=350
+#             )
+
+#             folium.CircleMarker(
+#                 location=[lat, lon],
+#                 radius=6,
+#                 popup=popup,
+#                 tooltip=f"{tag} | {loc} | skor {skor}",
+#                 fill=True
+#             ).add_to(cluster)
+
+#             lats.append(lat)
+#             lons.append(lon)
+
+#         if lats and lons:
+#             m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+#         else:
+#             st.info("Tidak ada titik valid untuk ditampilkan.")
+
+#         folium.LayerControl(collapsed=False).add_to(m)
+#         st_folium(m, height=700, width=None)
+
+#         if local_outliers:
+#             st.warning("Ada koordinat outlier (di luar bbox Indonesia).")
+#             st.dataframe(local_outliers[:50], use_container_width=True, height=240)
+
+#     else:
+#         prov_rows = fetch_province_points(api_base, min_score=min_score)
+
+#         if selected_tags:
+#             # endpoint agg belum difilter by tag, jadi sementara thematic tetap global
+#             st.caption("Catatan: mode tematik provinsi saat ini masih agregasi global berdasarkan min_score.")
+
+#         prov_rows = [
+#             r for r in prov_rows
+#             if safe_float(r.get("lat")) is not None and safe_float(r.get("lon")) is not None
+#         ]
+
+#         st.write(f"Total provinsi terplot: **{len(prov_rows)}**")
+
+#         metric = st.selectbox("Ukuran marker berdasarkan", ["count", "avg_score", "max_score"], index=0)
+
+#         center_lat, center_lon, zoom = -2.5489, 118.0149, 5
+#         if prov_rows:
+#             center_lat = sum(float(r["lat"]) for r in prov_rows) / len(prov_rows)
+#             center_lon = sum(float(r["lon"]) for r in prov_rows) / len(prov_rows)
+
+#         m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
+#         folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
+#         folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
+
+#         def pick_color(v):
+#             try:
+#                 v = float(v)
+#             except Exception:
+#                 v = 0.0
+
+#             if metric == "count":
+#                 if v >= 30: return "#800026"
+#                 if v >= 15: return "#BD0026"
+#                 if v >= 8:  return "#E31A1C"
+#                 if v >= 3:  return "#FC4E2A"
+#                 if v >= 1:  return "#FD8D3C"
+#                 return "#FFEDA0"
+#             else:
+#                 if v >= 80: return "#800026"
+#                 if v >= 60: return "#BD0026"
+#                 if v >= 40: return "#E31A1C"
+#                 if v >= 25: return "#FC4E2A"
+#                 if v >= 10: return "#FD8D3C"
+#                 return "#FFEDA0"
+
+#         vals = [float(r.get(metric, 0) or 0) for r in prov_rows] if prov_rows else []
+#         maxv = max(vals) if vals else 1
+
+#         lats = []
+#         lons = []
+
+#         for r in prov_rows:
+#             lat = safe_float(r.get("lat"))
+#             lon = safe_float(r.get("lon"))
+#             if lat is None or lon is None:
+#                 continue
+
+#             province = r.get("province", "")
+#             count = r.get("count", 0)
+#             avg_score = r.get("avg_score", 0)
+#             max_score = r.get("max_score", 0)
+
+#             val = float(r.get(metric, 0) or 0)
+#             radius = 6 + (16 * (val / maxv)) if maxv else 8
+#             color = pick_color(val)
+
+#             popup = folium.Popup(
+#                 f"<b>{province}</b><br>"
+#                 f"Count: <b>{count}</b><br>"
+#                 f"Avg score: <b>{avg_score}</b><br>"
+#                 f"Max score: <b>{max_score}</b><br>",
+#                 max_width=300
+#             )
+
+#             folium.CircleMarker(
+#                 location=[lat, lon],
+#                 radius=radius,
+#                 color=color,
+#                 fill=True,
+#                 fill_color=color,
+#                 fill_opacity=0.65,
+#                 popup=popup,
+#                 tooltip=f"{province} | count {count} | max {max_score}"
+#             ).add_to(m)
+
+#             lats.append(lat)
+#             lons.append(lon)
+
+#         if lats and lons:
+#             m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
+
+#         folium.LayerControl(collapsed=False).add_to(m)
+#         st_folium(m, height=700, width=None)
+
+#         st.divider()
+#         st.caption("Tabel agregasi provinsi")
+#         st.dataframe(prov_rows, use_container_width=True, height=420)
 
 with tab_map:
     st.subheader("Peta")
@@ -335,14 +460,52 @@ with tab_map:
         horizontal=True
     )
 
+    # ambil alert payload untuk integrasi map
+    try:
+        alert_payload = api_get(api_base, "alerts/outbreak/", {
+            "min_score": min_score,
+            "recent_days": 7,
+            "baseline_days": 30,
+        })
+        map_alerts = alert_payload.get("results", [])
+    except Exception:
+        map_alerts = []
+
+    if selected_tags:
+        map_alerts = [a for a in map_alerts if a.get("disease") in selected_tags]
+
+    # mapping alert by province
+    province_alert_map = {}
+    for a in map_alerts:
+        prov = (a.get("province") or "").strip()
+        if not prov:
+            continue
+
+        # simpan alert tertinggi per provinsi
+        if prov not in province_alert_map:
+            province_alert_map[prov] = a
+        else:
+            prev = province_alert_map[prov]
+            prev_score = prev.get("risk_score", 0) or 0
+            curr_score = a.get("risk_score", 0) or 0
+            if curr_score > prev_score:
+                province_alert_map[prov] = a
+
+    def alert_color(level):
+        if level == "CRITICAL":
+            return "#8B0000"
+        elif level == "HIGH":
+            return "#FF8C00"
+        elif level == "MEDIUM":
+            return "#1E90FF"
+        return "#2E8B57"
+
     # -------------------------
     # A) TITIK (CLUSTER)
     # -------------------------
     if map_mode == "Titik (Cluster)":
-        # filtered_geo diasumsikan sudah berisi titik yg lolos filter (mode CSV atau API)
-        # Agar tidak "kosong tapi tidak ketahuan", kita hitung titik valid
         valid_points = []
-        outliers = []
+        local_outliers = []
 
         for r in filtered_geo:
             lat = safe_float(r.get("lat"))
@@ -350,39 +513,49 @@ with tab_map:
             if lat is None or lon is None:
                 continue
 
-            # filter outlier kasar (Indonesia bbox)
-            if not (-11.5 <= lat <= 6.5 and 94.0 <= lon <= 141.5):
-                outliers.append(r)
+            if not in_indonesia_bbox(lat, lon):
+                local_outliers.append(r)
                 continue
 
             valid_points.append((r, lat, lon))
 
         st.write(f"Total titik valid (cluster): **{len(valid_points)}**")
 
-        # base map
         m = folium.Map(location=[-2.5489, 118.0149], zoom_start=5, control_scale=True)
         folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
         folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
 
         cluster = MarkerCluster(name="Clusters").add_to(m)
 
-        # plot markers
         lats = []
         lons = []
 
         for r, lat, lon in valid_points:
             tag = r.get("penyakit_tag", "")
             skor = r.get("skor_ancaman", "")
-            loc = r.get("lokasi_mentah", "") or r.get("raw_location_text", "")
-            src = r.get("sumber", "") or r.get("source_name", "")
-            title = r.get("judul", "") or r.get("title", "")
-            link = r.get("link", "") or r.get("url", "")
+            loc = r.get("lokasi_mentah", "")
+            src = r.get("sumber", "")
+            title = r.get("judul", "")
+            link = r.get("link", "")
+            province = r.get("admin_province", "")
+            kabkota = r.get("admin_kabkota", "")
+
+            alert_info = province_alert_map.get(province)
+            alert_note = ""
+            if alert_info:
+                alert_note = (
+                    f"<br><b>ALERT PROVINSI</b>: {alert_info.get('risk_level')} | "
+                    f"{alert_info.get('disease')} | score={alert_info.get('risk_score')}"
+                )
 
             popup = folium.Popup(
                 f"""
                 <b>{tag}</b> | Skor: <b>{skor}</b><br>
                 Lokasi: {loc}<br>
-                Sumber: {src}<br><br>
+                Provinsi: {province}<br>
+                Kab/Kota: {kabkota}<br>
+                Sumber: {src}<br>
+                {alert_note}<br><br>
                 {title}<br><br>
                 <a href="{link}" target="_blank">Buka berita</a>
                 """,
@@ -400,38 +573,41 @@ with tab_map:
             lats.append(lat)
             lons.append(lon)
 
-        # auto zoom ke semua titik (ini yang sering bikin "marker ada tapi gak kelihatan" jadi beres)
         if lats and lons:
             m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
         else:
-            st.info("Tidak ada titik valid untuk ditampilkan. Turunkan skor minimal atau cek data lat/lon.")
+            st.info("Tidak ada titik valid untuk ditampilkan.")
 
         folium.LayerControl(collapsed=False).add_to(m)
         st_folium(m, height=700, width=None)
 
-        if outliers:
+        if local_outliers:
             st.warning("Ada koordinat outlier (di luar bbox Indonesia).")
-            st.dataframe(outliers[:50], use_container_width=True, height=240)
+            st.dataframe(local_outliers[:50], use_container_width=True, height=220)
 
     # -------------------------
     # B) TEMATIK PROVINSI (MARKER)
     # -------------------------
     else:
-        if mode != "API":
-            st.info("Mode tematik provinsi membutuhkan mode API.")
-            st.stop()
-
-        # ambil agregat provinsi dari API
         prov_rows = fetch_province_points(api_base, min_score=min_score)
 
-        # buang yang lat/lon kosong
-        prov_rows = [r for r in prov_rows if safe_float(r.get("lat")) is not None and safe_float(r.get("lon")) is not None]
+        if selected_tags:
+            st.caption("Catatan: agregasi provinsi saat ini masih global berdasarkan min_score.")
+
+        prov_rows = [
+            r for r in prov_rows
+            if safe_float(r.get("lat")) is not None and safe_float(r.get("lon")) is not None
+        ]
 
         st.write(f"Total provinsi terplot: **{len(prov_rows)}**")
 
-        metric = st.selectbox("Ukuran marker berdasarkan", ["count", "avg_score", "max_score"], index=0)
+        metric = st.selectbox(
+            "Ukuran marker berdasarkan",
+            ["count", "avg_score", "max_score"],
+            index=0,
+            key="map_prov_metric"
+        )
 
-        # center map (rata-rata provinsi)
         center_lat, center_lon, zoom = -2.5489, 118.0149, 5
         if prov_rows:
             center_lat = sum(float(r["lat"]) for r in prov_rows) / len(prov_rows)
@@ -441,32 +617,7 @@ with tab_map:
         folium.TileLayer("CartoDB positron", name="Positron").add_to(m)
         folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
 
-        # warna berdasarkan metric
-        def pick_color(v):
-            try:
-                v = float(v)
-            except Exception:
-                v = 0.0
-
-            if metric == "count":
-                if v >= 30: return "#800026"
-                if v >= 15: return "#BD0026"
-                if v >= 8:  return "#E31A1C"
-                if v >= 3:  return "#FC4E2A"
-                if v >= 1:  return "#FD8D3C"
-                return "#FFEDA0"
-            else:
-                if v >= 80: return "#800026"
-                if v >= 60: return "#BD0026"
-                if v >= 40: return "#E31A1C"
-                if v >= 25: return "#FC4E2A"
-                if v >= 10: return "#FD8D3C"
-                return "#FFEDA0"
-
-        # radius scaling
-        vals = []
-        for r in prov_rows:
-            vals.append(float(r.get(metric, 0) or 0))
+        vals = [float(r.get(metric, 0) or 0) for r in prov_rows] if prov_rows else []
         maxv = max(vals) if vals else 1
 
         lats = []
@@ -485,14 +636,44 @@ with tab_map:
 
             val = float(r.get(metric, 0) or 0)
             radius = 6 + (16 * (val / maxv)) if maxv else 8
-            color = pick_color(val)
+
+            # kalau provinsi ini punya alert, warna ikut risk level
+            alert_info = province_alert_map.get(province)
+            if alert_info:
+                color = alert_color(alert_info.get("risk_level"))
+                alert_block = (
+                    f"<br><b>ALERT</b>: {alert_info.get('risk_level')}<br>"
+                    f"Disease: {alert_info.get('disease')}<br>"
+                    f"Risk score: {alert_info.get('risk_score')}<br>"
+                    f"Increase ratio: {alert_info.get('increase_ratio')}<br>"
+                    f"Recent/Baseline: {alert_info.get('recent')} / {alert_info.get('baseline')}<br>"
+                    f"Top event: {alert_info.get('top_event_type')}<br>"
+                )
+            else:
+                # warna normal kalau belum ada alert
+                if metric == "count":
+                    if val >= 30: color = "#800026"
+                    elif val >= 15: color = "#BD0026"
+                    elif val >= 8: color = "#E31A1C"
+                    elif val >= 3: color = "#FC4E2A"
+                    elif val >= 1: color = "#FD8D3C"
+                    else: color = "#FFEDA0"
+                else:
+                    if val >= 80: color = "#800026"
+                    elif val >= 60: color = "#BD0026"
+                    elif val >= 40: color = "#E31A1C"
+                    elif val >= 25: color = "#FC4E2A"
+                    elif val >= 10: color = "#FD8D3C"
+                    else: color = "#FFEDA0"
+                alert_block = "<br><i>Tidak ada alert aktif</i><br>"
 
             popup = folium.Popup(
                 f"<b>{province}</b><br>"
                 f"Count: <b>{count}</b><br>"
                 f"Avg score: <b>{avg_score}</b><br>"
-                f"Max score: <b>{max_score}</b><br>",
-                max_width=300
+                f"Max score: <b>{max_score}</b><br>"
+                f"{alert_block}",
+                max_width=320
             )
 
             folium.CircleMarker(
@@ -501,12 +682,13 @@ with tab_map:
                 color=color,
                 fill=True,
                 fill_color=color,
-                fill_opacity=0.65,
+                fill_opacity=0.7,
                 popup=popup,
-                tooltip=f"{province} | count {count} | max {max_score}"
+                tooltip=f"{province} | count={count} | max={max_score}"
             ).add_to(m)
 
-            lats.append(lat); lons.append(lon)
+            lats.append(lat)
+            lons.append(lon)
 
         if lats and lons:
             m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])
@@ -514,96 +696,270 @@ with tab_map:
         folium.LayerControl(collapsed=False).add_to(m)
         st_folium(m, height=700, width=None)
 
+        st.markdown("### Alert Provinsi Aktif")
+        active_alert_rows = []
+        for prov, a in province_alert_map.items():
+            active_alert_rows.append({
+                "province": prov,
+                "risk_level": a.get("risk_level"),
+                "risk_score": a.get("risk_score"),
+                "disease": a.get("disease"),
+                "increase_ratio": a.get("increase_ratio"),
+                "recent": a.get("recent"),
+                "baseline": a.get("baseline"),
+                "top_event_type": a.get("top_event_type"),
+            })
+
+        active_alert_rows = sorted(
+            active_alert_rows,
+            key=lambda x: x.get("risk_score", 0),
+            reverse=True
+        )
+
+        if active_alert_rows:
+            st.dataframe(active_alert_rows, use_container_width=True, height=300)
+        else:
+            st.info("Belum ada alert provinsi aktif.")
+
         st.divider()
         st.caption("Tabel agregasi provinsi")
-        st.dataframe(prov_rows, use_container_width=True, height=420)
-
-# with tab_line:
-#     st.subheader("Trend Sinyal per Hari")
-
-#     daily = Counter()
-#     for r in filtered_raw:
-#         d = parse_date_any(r.get("tanggal"))
-#         if d:
-#             daily[d] += 1
-
-#     if daily:
-#         dates = sorted(daily.keys())
-#         chart = {"date": dates, "count": [daily[d] for d in dates]}
-#         st.line_chart(chart, x="date", y="count")
-#     else:
-#         st.warning("Tidak ada data tanggal valid.")
-
+        st.dataframe(prov_rows, use_container_width=True, height=320)
+# =========================
+# LINE
+# =========================
 with tab_line:
-
     st.subheader("Trend Sinyal")
 
-    data = api_get(api_base, "agg/trend/", {"min_score": min_score})
+    try:
+        trend_data = fetch_trend(api_base, min_score=min_score)
+    except Exception as e:
+        st.error(f"Gagal ambil trend: {e}")
+        trend_data = []
 
-    if not data:
+    if not trend_data:
         st.warning("Tidak ada data")
     else:
-
         chart_data = {
-            "date": [r["date"] for r in data],
-            "count": [r["count"] for r in data]
+            "date": [r["date"] for r in trend_data],
+            "count": [r["count"] for r in trend_data]
         }
-
         st.line_chart(chart_data, x="date", y="count")
+        st.dataframe(trend_data, use_container_width=True)
 
-        st.dataframe(data)
-
+# =========================
+# BAR
+# =========================
 with tab_bar:
     st.subheader("Distribusi Sinyal")
 
     by_tag = Counter((r.get("penyakit_tag") or "Unknown") for r in filtered_raw)
-    series = [{"penyakit_tag": k, "count": v} for k, v in by_tag.most_common()]
+    disease_rows = [{"penyakit_tag": k, "count": v} for k, v in by_tag.most_common()]
 
+    st.markdown("**Distribusi per penyakit**")
     st.bar_chart(
-        {"penyakit_tag": [x["penyakit_tag"] for x in series], "count": [x["count"] for x in series]},
-        x="penyakit_tag", y="count"
+        {
+            "penyakit_tag": [x["penyakit_tag"] for x in disease_rows],
+            "count": [x["count"] for x in disease_rows]
+        },
+        x="penyakit_tag",
+        y="count"
     )
-    st.dataframe(series, use_container_width=True, height=350)
+    st.dataframe(disease_rows, use_container_width=True, height=260)
 
-# with tab_errors:
-#     if mode != "API":
-#         st.info("Tab Errors hanya aktif pada mode API.")
-#     else:
-#         st.subheader("Geocode Error Center")
+    event_counter = Counter()
+    for r in filtered_raw:
+        evs = (r.get("event_types") or "").strip()
+        if not evs:
+            continue
+        for ev in evs.split("|"):
+            ev = ev.strip()
+            if ev:
+                event_counter[ev] += 1
 
-#         errors_data = fetch_errors(api_base, min_score=min_score)
-#         missing_data = fetch_gazetteer_missing(api_base, min_score=min_score)
+    if event_counter:
+        st.markdown("**Distribusi per event type**")
+        event_rows = [{"event_type": k, "count": v} for k, v in event_counter.most_common()]
+        st.bar_chart(
+            {
+                "event_type": [x["event_type"] for x in event_rows],
+                "count": [x["count"] for x in event_rows]
+            },
+            x="event_type",
+            y="count"
+        )
+        st.dataframe(event_rows, use_container_width=True, height=220)
 
-#         st.markdown("### Ringkasan Error (by geocode_status)")
-#         st.dataframe(errors_data.get("summary", []), use_container_width=True)
-
-#         st.markdown("### Detail Error (Top)")
-#         st.dataframe(errors_data.get("rows", []), use_container_width=True, height=420)
-
-#         st.markdown("### Prioritas Update Gazetteer (Missing Aliases)")
-#         st.dataframe(missing_data.get("results", []), use_container_width=True, height=420)
-
+# =========================
+# ALERTS
+# =========================
 with tab_alert:
-
     st.subheader("Outbreak Alerts")
 
-    alerts = api_get(api_base, "alerts/outbreak/")
+    recent_days = st.slider("Recent window (hari)", 1, 14, 7, key="alert_recent_days")
+    baseline_days = st.slider("Baseline window (hari)", 7, 60, 30, key="alert_baseline_days")
 
+    try:
+        alert_payload = api_get(api_base, "alerts/outbreak/", {
+            "min_score": min_score,
+            "recent_days": recent_days,
+            "baseline_days": baseline_days,
+        })
+        summary = alert_payload.get("summary", {})
+        alerts = alert_payload.get("results", [])
+    except Exception as e:
+        st.error(f"Gagal ambil alerts: {e}")
+        summary = {}
+        alerts = []
+
+    # ---------------------------------
+    # Extra filters
+    # ---------------------------------
+    all_provinces = sorted({
+        (a.get("province") or "").strip()
+        for a in alerts
+        if (a.get("province") or "").strip()
+    })
+
+    selected_provinces = st.multiselect(
+        "Filter provinsi",
+        all_provinces,
+        default=all_provinces,
+        key="alert_selected_provinces"
+    )
+
+    sort_by = st.selectbox(
+        "Urutkan berdasarkan",
+        ["risk_score", "increase_ratio", "recent"],
+        index=0,
+        key="alert_sort_by"
+    )
+
+    if selected_tags:
+        alerts = [a for a in alerts if a.get("disease") in selected_tags]
+
+    if selected_provinces:
+        alerts = [a for a in alerts if a.get("province") in selected_provinces]
+
+    alerts = sorted(
+        alerts,
+        key=lambda x: x.get(sort_by, 0),
+        reverse=True
+    )
+
+    # ---------------------------------
+    # Summary panel
+    # ---------------------------------
+    if summary:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Recent records", summary.get("total_recent_records", 0))
+        c2.metric("Baseline records", summary.get("total_baseline_records", 0))
+        c3.metric("Recent groups", summary.get("recent_group_count", 0))
+        c4.metric("Alert count", len(alerts))
+
+        st.caption(
+            f"Window recent={summary.get('recent_days', recent_days)} hari | "
+            f"baseline={summary.get('baseline_days', baseline_days)} hari | "
+            f"min_score={summary.get('min_score', min_score)}"
+        )
+
+    # ---------------------------------
+    # No alerts message
+    # ---------------------------------
     if not alerts:
-        st.success("Tidak ada sinyal outbreak.")
-    else:
-
-        for a in alerts:
-
-            level = a["level"]
-
-            if level == "ALERT":
-                st.error(a)
-
-            elif level == "WARNING":
-                st.warning(a)
-
+        if summary:
+            if summary.get("total_recent_records", 0) == 0:
+                st.warning(
+                    "Tidak ada record pada recent window. "
+                    "Coba perbesar recent window atau turunkan skor minimal."
+                )
+            elif summary.get("alert_count", 0) == 0:
+                st.success(
+                    "Ada data, tetapi belum ada kombinasi disease + province "
+                    "yang memenuhi threshold outbreak."
+                )
             else:
-                st.info(a)
+                st.success("Tidak ada sinyal outbreak setelah filter diterapkan.")
+        else:
+            st.success("Tidak ada sinyal outbreak.")
+    else:
+        st.write(f"Total alert terfilter: **{len(alerts)}**")
 
-        st.dataframe(alerts)
+        # ---------------------------------
+        # Risk cards
+        # ---------------------------------
+        for a in alerts:
+            txt = (
+                f"{a['risk_level']} | {a['disease']} | {a['province']} | "
+                f"score={a['risk_score']} | ratio={a['increase_ratio']} | "
+                f"recent={a['recent']} | baseline={a['baseline']} | "
+                f"avg_score={a['avg_score_recent']} | severity={a['severity_avg']} | "
+                f"top_event={a.get('top_event_type')}"
+            )
+
+            if a["risk_level"] == "CRITICAL":
+                st.error(txt)
+            elif a["risk_level"] == "HIGH":
+                st.warning(txt)
+            elif a["risk_level"] == "MEDIUM":
+                st.info(txt)
+            else:
+                st.success(txt)
+
+        # ---------------------------------
+        # Clean dataframe
+        # ---------------------------------
+        alert_rows = []
+        for a in alerts:
+            alert_rows.append({
+                "risk_level": a.get("risk_level"),
+                "risk_score": a.get("risk_score"),
+                "level": a.get("level"),
+                "disease": a.get("disease"),
+                "province": a.get("province"),
+                "recent": a.get("recent"),
+                "baseline": a.get("baseline"),
+                "increase_ratio": a.get("increase_ratio"),
+                "avg_score_recent": a.get("avg_score_recent"),
+                "severity_avg": a.get("severity_avg"),
+                "top_event_type": a.get("top_event_type"),
+            })
+
+        st.dataframe(alert_rows, use_container_width=True, height=420)
+
+        # ---------------------------------
+        # Risk distribution
+        # ---------------------------------
+        from collections import Counter
+
+        risk_counter = Counter(a["risk_level"] for a in alerts)
+        risk_rows = [{"risk_level": k, "count": v} for k, v in risk_counter.items()]
+
+        st.subheader("Risk Level Distribution")
+        st.bar_chart(
+            {
+                "risk_level": [x["risk_level"] for x in risk_rows],
+                "count": [x["count"] for x in risk_rows],
+            },
+            x="risk_level",
+            y="count"
+        )
+
+        st.dataframe(risk_rows, use_container_width=True, height=200)
+
+        # ---------------------------------
+        # Province distribution
+        # ---------------------------------
+        province_counter = Counter(a["province"] for a in alerts if a.get("province"))
+        province_rows = [{"province": k, "count": v} for k, v in province_counter.most_common()]
+
+        if province_rows:
+            st.subheader("Distribusi Alert per Provinsi")
+            st.bar_chart(
+                {
+                    "province": [x["province"] for x in province_rows],
+                    "count": [x["count"] for x in province_rows],
+                },
+                x="province",
+                y="count"
+            )
+            st.dataframe(province_rows, use_container_width=True, height=220)
