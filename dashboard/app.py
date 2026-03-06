@@ -304,8 +304,12 @@ c4.metric("Outlier coords", len(outliers))
 #     ["Table", "Map", "Map Thematic", "Line", "Bar", "Errors"]
 # )
 
-tab_table, tab_map, tab_line, tab_bar, tab_errors = st.tabs(
-    ["Table", "Map", "Line", "Bar", "Errors"]
+# tab_table, tab_map, tab_line, tab_bar, tab_errors = st.tabs(
+#     ["Table", "Map", "Line", "Bar", "Errors"]
+# )
+
+tab_table, tab_map, tab_line, tab_bar, tab_alert = st.tabs(
+    ["Table", "Map", "Line", "Bar", "Alerts"]
 )
 
 with tab_table:
@@ -514,21 +518,40 @@ with tab_map:
         st.caption("Tabel agregasi provinsi")
         st.dataframe(prov_rows, use_container_width=True, height=420)
 
+# with tab_line:
+#     st.subheader("Trend Sinyal per Hari")
+
+#     daily = Counter()
+#     for r in filtered_raw:
+#         d = parse_date_any(r.get("tanggal"))
+#         if d:
+#             daily[d] += 1
+
+#     if daily:
+#         dates = sorted(daily.keys())
+#         chart = {"date": dates, "count": [daily[d] for d in dates]}
+#         st.line_chart(chart, x="date", y="count")
+#     else:
+#         st.warning("Tidak ada data tanggal valid.")
+
 with tab_line:
-    st.subheader("Trend Sinyal per Hari")
 
-    daily = Counter()
-    for r in filtered_raw:
-        d = parse_date_any(r.get("tanggal"))
-        if d:
-            daily[d] += 1
+    st.subheader("Trend Sinyal")
 
-    if daily:
-        dates = sorted(daily.keys())
-        chart = {"date": dates, "count": [daily[d] for d in dates]}
-        st.line_chart(chart, x="date", y="count")
+    data = api_get(api_base, "agg/trend/", {"min_score": min_score})
+
+    if not data:
+        st.warning("Tidak ada data")
     else:
-        st.warning("Tidak ada data tanggal valid.")
+
+        chart_data = {
+            "date": [r["date"] for r in data],
+            "count": [r["count"] for r in data]
+        }
+
+        st.line_chart(chart_data, x="date", y="count")
+
+        st.dataframe(data)
 
 with tab_bar:
     st.subheader("Distribusi Sinyal")
@@ -542,20 +565,45 @@ with tab_bar:
     )
     st.dataframe(series, use_container_width=True, height=350)
 
-with tab_errors:
-    if mode != "API":
-        st.info("Tab Errors hanya aktif pada mode API.")
+# with tab_errors:
+#     if mode != "API":
+#         st.info("Tab Errors hanya aktif pada mode API.")
+#     else:
+#         st.subheader("Geocode Error Center")
+
+#         errors_data = fetch_errors(api_base, min_score=min_score)
+#         missing_data = fetch_gazetteer_missing(api_base, min_score=min_score)
+
+#         st.markdown("### Ringkasan Error (by geocode_status)")
+#         st.dataframe(errors_data.get("summary", []), use_container_width=True)
+
+#         st.markdown("### Detail Error (Top)")
+#         st.dataframe(errors_data.get("rows", []), use_container_width=True, height=420)
+
+#         st.markdown("### Prioritas Update Gazetteer (Missing Aliases)")
+#         st.dataframe(missing_data.get("results", []), use_container_width=True, height=420)
+
+with tab_alert:
+
+    st.subheader("Outbreak Alerts")
+
+    alerts = api_get(api_base, "alerts/outbreak/")
+
+    if not alerts:
+        st.success("Tidak ada sinyal outbreak.")
     else:
-        st.subheader("Geocode Error Center")
 
-        errors_data = fetch_errors(api_base, min_score=min_score)
-        missing_data = fetch_gazetteer_missing(api_base, min_score=min_score)
+        for a in alerts:
 
-        st.markdown("### Ringkasan Error (by geocode_status)")
-        st.dataframe(errors_data.get("summary", []), use_container_width=True)
+            level = a["level"]
 
-        st.markdown("### Detail Error (Top)")
-        st.dataframe(errors_data.get("rows", []), use_container_width=True, height=420)
+            if level == "ALERT":
+                st.error(a)
 
-        st.markdown("### Prioritas Update Gazetteer (Missing Aliases)")
-        st.dataframe(missing_data.get("results", []), use_container_width=True, height=420)
+            elif level == "WARNING":
+                st.warning(a)
+
+            else:
+                st.info(a)
+
+        st.dataframe(alerts)

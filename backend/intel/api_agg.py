@@ -3,6 +3,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from collections import defaultdict
 from .models import SignalLocation
+from .models import Signal
+
+from collections import Counter
+from datetime import date
 
 class AggProvinceAPI(APIView):
     def get(self, request):
@@ -122,4 +126,57 @@ class AggProvincePointsAPI(APIView):
             })
 
         out.sort(key=lambda x: x["count"], reverse=True)
+        return Response(out)
+
+class TrendAPI(APIView):
+
+    def get(self, request):
+
+        min_score = request.query_params.get("min_score", 0)
+
+        try:
+            min_score = int(min_score)
+        except:
+            min_score = 0
+
+        qs = Signal.objects.filter(
+            threat_score__gte=min_score
+        )
+
+        counter = Counter()
+
+        for s in qs.only("published_at"):
+            if s.published_at:
+                d = s.published_at.date()
+                counter[d] += 1
+
+        out = []
+
+        for d in sorted(counter):
+            out.append({
+                "date": d,
+                "count": counter[d]
+            })
+
+        return Response(out)
+
+class DiseaseDistAPI(APIView):
+
+    def get(self, request):
+
+        qs = Signal.objects.all()
+
+        counter = Counter()
+
+        for s in qs.only("disease_tag"):
+            counter[s.disease_tag] += 1
+
+        out = []
+
+        for k,v in counter.most_common():
+            out.append({
+                "disease":k,
+                "count":v
+            })
+
         return Response(out)
