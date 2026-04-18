@@ -1,0 +1,168 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Reports Generator</h1>
+    <p class="small">Generate rekap operasional berdasarkan signal yang sudah tervalidasi atau approved.</p>
+
+    <form method="get" class="filters">
+        <select name="report_type">
+            <option value="daily" {% if report_type == "daily" %}selected{% endif %}>Laporan Harian</option>
+            <option value="weekly" {% if report_type == "weekly" %}selected{% endif %}>Laporan Mingguan</option>
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <button type="submit">Generate</button>
+        <a href="{% url 'intel:export_signals_csv' %}?report_type={{ report_type }}&date_from={{ date_from }}&date_to={{ date_to }}">Export CSV</a>
+    </form>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="metric-title">Total signal</div>
+        <div class="metric-value">{{ total_signals }}</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">High-risk count</div>
+        <div class="metric-value">{{ high_risk_count }}</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">Geocode OK count</div>
+        <div class="metric-value">{{ geocode_ok_count }}</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">High-risk rate</div>
+        <div class="metric-value">{{ high_risk_rate }}%</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">Geocode success rate</div>
+        <div class="metric-value">{{ geocode_success_rate }}%</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">Average score</div>
+        <div class="metric-value">{{ avg_score }}</div>
+    </div>
+</div>
+
+<div class="two-col">
+    <div class="card">
+        <h2>Rekap per penyakit</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Penyakit</th>
+                    <th>Total</th>
+                    <th>Avg Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in disease_recap %}
+                <tr>
+                    <td>{{ item.disease_tag }}</td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.avg_score|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">Belum ada data.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Rekap per provinsi</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Provinsi Code</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in province_recap %}
+                <tr>
+                    <td>{{ item.location__province_code|default:"-" }}</td>
+                    <td>{{ item.total }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="2">Belum ada data.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Top lokasi</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Lokasi</th>
+                <th>Level</th>
+                <th>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in location_recap %}
+            <tr>
+                <td>{{ item.location__display_name }}</td>
+                <td>{{ item.location__level }}</td>
+                <td>{{ item.total }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">Belum ada data.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Recent verified signals</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Judul</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Status</th>
+                <th>Geocode</th>
+                <th>Tanggal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in recent_signals %}
+            <tr>
+                <td>
+                    <strong>{{ signal.title }}</strong><br>
+                    <span class="small">
+                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                    </span>
+                </td>
+                <td>{{ signal.disease_tag|default:"-" }}</td>
+                <td>{{ signal.threat_score }}</td>
+                <td>{{ signal.status }}</td>
+                <td>{{ signal.geocode_status }}</td>
+                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Belum ada signal terverifikasi.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

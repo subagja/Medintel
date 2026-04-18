@@ -1,0 +1,125 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Scoring Rules Manager</h1>
+    <p class="small">Kelola bobot scoring dan parameter threshold sistem untuk mode monitoring dan alert.</p>
+
+    <p>
+        <a href="{% url 'intel:scoring_rule_create' %}">+ Tambah Rule</a>
+        |
+        <a href="{% url 'intel:system_setting_create' %}">+ Tambah System Setting</a>
+    </p>
+
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search nama / keyword / notes" value="{{ q }}">
+
+        <select name="rule_type">
+            <option value="">Semua rule type</option>
+            {% for key, label in rule_type_choices %}
+                <option value="{{ key }}" {% if rule_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="is_active">
+            <option value="">Status aktif: semua</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Scoring Rules</h2>
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> rule</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama</th>
+                <th>Jenis</th>
+                <th>Keyword</th>
+                <th>Weight</th>
+                <th>Aktif</th>
+                <th>Catatan</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in page_obj %}
+            <tr>
+                <td>{{ rule.id }}</td>
+                <td><strong>{{ rule.name }}</strong></td>
+                <td>{{ rule.rule_type }}</td>
+                <td>{{ rule.keyword|default:"-" }}</td>
+                <td>{{ rule.weight }}</td>
+                <td>{{ rule.is_active|yesno:"Ya,Tidak" }}</td>
+                <td>{{ rule.notes|default:"-" }}</td>
+                <td class="actions">
+                    <a href="{% url 'intel:scoring_rule_edit' rule.id %}">Edit</a>
+                    <form method="post" action="{% url 'intel:scoring_rule_toggle_active' rule.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Toggle Aktif</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8">Belum ada scoring rule.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>System Settings</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Deskripsi</th>
+                <th>Aktif</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in settings_qs %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td><strong>{{ item.key }}</strong></td>
+                <td>{{ item.value }}</td>
+                <td>{{ item.description|default:"-" }}</td>
+                <td>{{ item.is_active|yesno:"Ya,Tidak" }}</td>
+                <td>
+                    <a href="{% url 'intel:system_setting_edit' item.id %}">Edit</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Belum ada system setting.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&rule_type={{ rule_type }}&is_active={{ is_active }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&rule_type={{ rule_type }}&is_active={{ is_active }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&rule_type={{ rule_type }}&is_active={{ is_active }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&rule_type={{ rule_type }}&is_active={{ is_active }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

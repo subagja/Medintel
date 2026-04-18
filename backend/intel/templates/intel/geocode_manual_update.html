@@ -1,0 +1,47 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Manual Geocode Update</h1>
+    <p><strong>Signal:</strong> {{ signal.title }}</p>
+    <p><strong>Current geocode status:</strong> {{ signal.geocode_status }}</p>
+    <p><strong>Current raw location:</strong> {{ signal.raw_location_text|default:"-" }}</p>
+    {% if signal_location and signal_location.location %}
+        <p><strong>Current assigned location:</strong> {{ signal_location.location.display_name }}</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="form-row">
+            <label for="{{ form.raw_location_text.id_for_label }}">Raw location text</label>
+            {{ form.raw_location_text }}
+        </div>
+
+        <div class="form-row">
+            <label for="{{ form.geocode_status.id_for_label }}">Geocode status</label>
+            {{ form.geocode_status }}
+        </div>
+
+        <div class="form-row">
+            <label for="{{ form.location.id_for_label }}">Assign location</label>
+            {{ form.location }}
+        </div>
+
+        <div class="form-row">
+            <label for="{{ form.confidence.id_for_label }}">Confidence</label>
+            {{ form.confidence }}
+        </div>
+
+        <div class="form-row">
+            <label for="{{ form.notes.id_for_label }}">Notes</label>
+            {{ form.notes }}
+        </div>
+
+        <button type="submit">Simpan perubahan</button>
+        <a href="{% url 'intel:geocode_error_center' %}">Kembali</a>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Raw Signals</h1>
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search judul / URL / lokasi" value="{{ q }}">
+        
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="geocode_status">
+            <option value="">Semua geocode status</option>
+            {% for item in geocode_choices %}
+                <option value="{{ item }}" {% if geocode_status == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <select name="sort">
+            <option value="-published_at" {% if sort == "-published_at" %}selected{% endif %}>Tanggal terbaru</option>
+            <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
+            <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
+            <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+            <option value="title" {% if sort == "title" %}selected{% endif %}>Judul A-Z</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Judul</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Geocode</th>
+                <th>Lokasi Mentah</th>
+                <th>Sumber</th>
+                <th>Tanggal</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in page_obj %}
+            <tr>
+                <td>{{ signal.id }}</td>
+                <td>
+                    <strong>{{ signal.title }}</strong><br>
+                    <span class="small">
+                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                    </span>
+                </td>
+                <td>{{ signal.disease_tag|default:"-" }}</td>
+                <td>
+                    {{ signal.threat_score }}
+                    <form method="post" action="{% url 'intel:signal_quick_score' signal.id %}" class="score-box">
+                        {% csrf_token %}
+                        <input type="number" name="threat_score" value="{{ signal.threat_score }}">
+                        <button type="submit">Ubah</button>
+                    </form>
+                </td>
+                <td>{{ signal.geocode_status }}</td>
+                <td>{{ signal.raw_location_text|default:"-" }}</td>
+                <td>{{ signal.source.name|default:"-" }}</td>
+                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+                <td class="actions">
+                    <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Valid</button>
+                    </form>
+                    <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Noise</button>
+                    </form>
+                    <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Approve</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9">Belum ada data raw signal.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

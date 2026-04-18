@@ -1,0 +1,116 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Map Intelligence</h1>
+    <p class="small">Visualisasi spasial signal terverifikasi/approved berbasis koordinat lokasi.</p>
+
+    <form method="get" class="map-toolbar">
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="number" name="min_score" value="{{ min_score }}" placeholder="Min score">
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <select name="status">
+            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved only</option>
+            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated only</option>
+            <option value="all" {% if status_filter == "all" %}selected{% endif %}>Validated + Approved</option>
+        </select>
+
+        <button type="submit">Apply</button>
+    </form>
+
+    <div id="map"></div>
+
+    <div class="legend-box">
+        <strong>Legenda skor:</strong><br>
+        ≥ 70 = sangat tinggi<br>
+        50–69 = tinggi<br>
+        35–49 = sedang<br>
+        &lt; 35 = rendah
+    </div>
+</div>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+(function() {
+    const map = L.map('map').setView([-2.5, 118.0], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    function markerColor(score) {
+        if (score >= 70) return 'red';
+        if (score >= 50) return 'orange';
+        if (score >= 35) return 'blue';
+        return 'gray';
+    }
+
+    function createCircleMarker(item) {
+        return L.circleMarker([item.lat, item.lon], {
+            radius: 7,
+            color: markerColor(item.threat_score),
+            fillColor: markerColor(item.threat_score),
+            fillOpacity: 0.75,
+            weight: 1
+        });
+    }
+
+    const params = new URLSearchParams({
+        disease: '{{ disease|escapejs }}',
+        min_score: '{{ min_score }}',
+        date_from: '{{ date_from|escapejs }}',
+        date_to: '{{ date_to|escapejs }}',
+        status: '{{ status_filter|escapejs }}'
+    });
+
+    fetch("{% url 'intel:map_points_api' %}?" + params.toString())
+        .then(resp => resp.json())
+        .then(data => {
+            const bounds = [];
+            data.results.forEach(item => {
+                const marker = createCircleMarker(item);
+
+                const popupHtml = `
+                    <div style="min-width:280px">
+                        <strong>${item.title}</strong><br><br>
+                        <strong>Penyakit:</strong> ${item.disease_tag || '-'}<br>
+                        <strong>Skor:</strong> ${item.threat_score}<br>
+                        <strong>Status:</strong> ${item.status}<br>
+                        <strong>Geocode:</strong> ${item.geocode_status}<br>
+                        <strong>Lokasi:</strong> ${item.location_name} (${item.location_level})<br>
+                        <strong>Lokasi mentah:</strong> ${item.raw_location_text || '-'}<br>
+                        <strong>Sumber:</strong> ${item.source_name || '-'}<br>
+                        <strong>Tanggal:</strong> ${item.published_at || '-'}<br><br>
+                        <a href="${item.source_url}" target="_blank">Buka sumber</a>
+                    </div>
+                `;
+
+                marker.bindPopup(popupHtml);
+                marker.addTo(map);
+                bounds.push([item.lat, item.lon]);
+            });
+
+            if (bounds.length > 0) {
+                map.fitBounds(bounds, { padding: [30, 30] });
+            }
+        })
+        .catch(err => {
+            console.error("Failed to load map data", err);
+        });
+})();
+</script>
+{% endblock %}

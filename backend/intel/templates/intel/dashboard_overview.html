@@ -1,0 +1,122 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Dashboard Overview Intelligence</h1>
+    <p class="small">Ringkasan situasi cepat untuk analis berdasarkan data signal yang sudah masuk ke sistem.</p>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card">
+        <div class="metric-title">Total sinyal 24 jam</div>
+        <div class="metric-value">{{ total_24h }}</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">Total sinyal minggu ini</div>
+        <div class="metric-value">{{ total_week }}</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">% geocode success rate</div>
+        <div class="metric-value">{{ geocode_success_rate }}%</div>
+    </div>
+
+    <div class="metric-card">
+        <div class="metric-title">% high risk (skor > 50)</div>
+        <div class="metric-value">{{ high_risk_rate }}%</div>
+    </div>
+</div>
+
+<div class="two-col">
+    <div class="card">
+        <h2>Top 5 penyakit (7 hari)</h2>
+        <ul class="clean-list">
+            {% for item in top_diseases %}
+                <li><strong>{{ item.disease_tag }}</strong> — {{ item.total }} signal</li>
+            {% empty %}
+                <li>Belum ada data.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Top 5 lokasi (7 hari)</h2>
+        <ul class="clean-list">
+            {% for item in top_locations %}
+                <li><strong>{{ item.location__display_name }}</strong> — {{ item.total }} signal</li>
+            {% empty %}
+                <li>Belum ada data.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="two-col">
+    <div class="card">
+        <h2>Recent high-risk signals</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Judul</th>
+                    <th>Penyakit</th>
+                    <th>Skor</th>
+                    <th>Tanggal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for signal in recent_high_risk %}
+                <tr>
+                    <td>
+                        <strong>{{ signal.title }}</strong><br>
+                        <span class="small">
+                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                        </span>
+                    </td>
+                    <td>{{ signal.disease_tag|default:"-" }}</td>
+                    <td>{{ signal.threat_score }}</td>
+                    <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">Belum ada signal high-risk.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Recent geocode errors</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Judul</th>
+                    <th>Lokasi Mentah</th>
+                    <th>Status</th>
+                    <th>Tanggal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for signal in recent_errors %}
+                <tr>
+                    <td>
+                        <strong>{{ signal.title }}</strong><br>
+                        <span class="small">
+                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                        </span>
+                    </td>
+                    <td>{{ signal.raw_location_text|default:"-" }}</td>
+                    <td>{{ signal.geocode_status }}</td>
+                    <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">Belum ada error geocode.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Update Alert</h1>
+    <p><strong>{{ alert_obj.title }}</strong></p>
+    <p>{{ alert_obj.description }}</p>
+    <p class="small">Jenis: {{ alert_obj.alert_type }} | Lokasi: {{ alert_obj.location.display_name|default:"-" }}</p>
+</div>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+
+        {% for field in form %}
+        <div class="form-row">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}
+                <div class="error">{{ field.errors }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <button type="submit">Simpan</button>
+        <a href="{% url 'intel:alert_center' %}">Kembali</a>
+    </form>
+</div>
+{% endblock %}

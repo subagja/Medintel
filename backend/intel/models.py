@@ -1,3 +1,304 @@
+from django.conf import settings
 from django.db import models
 
-# Create your models here.
+
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class Source(TimeStampedModel):
+    name = models.CharField(max_length=200, unique=True)
+    base_url = models.URLField(blank=True, default="")
+    rss_url = models.URLField(blank=True, default="")
+    country_code = models.CharField(max_length=10, default="ID", db_index=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Location(TimeStampedModel):
+    LEVEL_CHOICES = [
+        ("country", "Country"),
+        ("province", "Province"),
+        ("regency", "Regency"),
+        ("city", "City"),
+        ("district", "District"),
+        ("village", "Village"),
+        ("other", "Other"),
+    ]
+
+    name = models.CharField(max_length=255, db_index=True)
+    display_name = models.CharField(max_length=255, blank=True, default="")
+    normalized_name = models.CharField(max_length=255, db_index=True, blank=True, default="")
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default="other", db_index=True)
+
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children"
+    )
+
+    country_code = models.CharField(max_length=10, default="ID", db_index=True)
+    province_code = models.CharField(max_length=20, blank=True, default="", db_index=True)
+    city_regency_code = models.CharField(max_length=20, blank=True, default="", db_index=True)
+
+    lat = models.FloatField(null=True, blank=True)
+    lon = models.FloatField(null=True, blank=True)
+
+    is_active = models.BooleanField(default=True)
+    is_false_positive = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["level", "display_name", "name"]
+        indexes = [
+            models.Index(fields=["normalized_name"]),
+            models.Index(fields=["level"]),
+            models.Index(fields=["province_code"]),
+            models.Index(fields=["city_regency_code"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.display_name:
+            self.display_name = (self.name or "").strip()
+        if not self.normalized_name:
+            self.normalized_name = (self.name or "").strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.display_name or self.name
+
+
+class LocationAlias(TimeStampedModel):
+    location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="aliases")
+    alias = models.CharField(max_length=255, db_index=True)
+    normalized_alias = models.CharField(max_length=255, db_index=True, blank=True, default="")
+    is_primary = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["alias"]
+        unique_together = ("location", "alias")
+        indexes = [
+            models.Index(fields=["normalized_alias"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.normalized_alias:
+            self.normalized_alias = (self.alias or "").strip().lower()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.alias} -> {self.location}"
+
+
+class Signal(TimeStampedModel):
+    STATUS_CHOICES = [
+        ("raw", "Raw"),
+        ("validated", "Validated"),
+        ("noise", "Noise"),
+        ("approved", "Approved"),
+    ]
+
+    GEOCODE_STATUS_CHOICES = [
+        ("OK", "OK"),
+        ("EMPTY_LOC", "EMPTY_LOC"),
+        ("NOT_FOUND", "NOT_FOUND"),
+        ("NET_ERR", "NET_ERR"),
+        ("SKIP_NOISE", "SKIP_NOISE"),
+        ("SKIP_TOO_GENERAL", "SKIP_TOO_GENERAL"),
+        ("SKIP_LOW_CONF", "SKIP_LOW_CONF"),
+        ("MANUAL", "MANUAL"),
+        ("PENDING", "PENDING"),
+    ]
+
+    title = models.CharField(max_length=500, db_index=True)
+    content = models.TextField(blank=True, default="")
+    source = models.ForeignKey(Source, null=True, blank=True, on_delete=models.SET_NULL, related_name="signals")
+
+    source_url = models.URLField(unique=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    crawled_at = models.DateTimeField(null=True, blank=True)
+
+    disease_tag = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    threat_score = models.IntegerField(default=0, db_index=True)
+
+    raw_location_text = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    geocode_status = models.CharField(
+        max_length=30,
+        choices=GEOCODE_STATUS_CHOICES,
+        default="PENDING",
+        db_index=True,
+    )
+
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="raw", db_index=True)
+    validation_notes = models.TextField(blank=True, default="")
+    is_high_risk = models.BooleanField(default=False, db_index=True)
+    approved_for_mapping = models.BooleanField(default=False, db_index=True)
+
+    validated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="validated_signals"
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-published_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["disease_tag"]),
+            models.Index(fields=["geocode_status"]),
+            models.Index(fields=["threat_score"]),
+            models.Index(fields=["approved_for_mapping"]),
+            models.Index(fields=["is_high_risk"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.is_high_risk = self.threat_score > 50
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title[:100]
+
+
+class SignalLocation(TimeStampedModel):
+    METHOD_CHOICES = [
+        ("auto", "Auto"),
+        ("manual", "Manual"),
+        ("gazetteer", "Gazetteer"),
+        ("alias", "Alias"),
+    ]
+
+    signal = models.ForeignKey(Signal, on_delete=models.CASCADE, related_name="signal_locations")
+    location = models.ForeignKey(Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="signal_links")
+
+    raw_location_text = models.CharField(max_length=255, blank=True, default="")
+    confidence = models.FloatField(null=True, blank=True)
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES, default="auto")
+    is_primary = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-is_primary", "-created_at"]
+
+    def __str__(self):
+        loc_name = self.location.display_name if self.location else "No Location"
+        return f"{self.signal_id} -> {loc_name}"
+
+
+class ScoringRule(TimeStampedModel):
+    RULE_TYPE_CHOICES = [
+        ("keyword", "Keyword"),
+        ("disease", "Disease"),
+        ("location", "Location"),
+        ("custom", "Custom"),
+    ]
+
+    name = models.CharField(max_length=200)
+    rule_type = models.CharField(max_length=30, choices=RULE_TYPE_CHOICES, default="keyword")
+    keyword = models.CharField(max_length=255, blank=True, default="")
+    weight = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.weight})"
+
+class SystemSetting(TimeStampedModel):
+    key = models.CharField(max_length=100, unique=True, db_index=True)
+    value = models.CharField(max_length=255, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["key"]
+
+    def __str__(self):
+        return f"{self.key} = {self.value}"
+
+class Alert(TimeStampedModel):
+    STATUS_CHOICES = [
+        ("open", "Open"),
+        ("reviewed", "Reviewed"),
+        ("closed", "Closed"),
+    ]
+
+    ALERT_TYPE_CHOICES = [
+        ("cluster_city_48h", "Cluster in City 48h"),
+        ("high_avg_score", "High Average Score"),
+        ("new_location", "New Location"),
+    ]
+
+    alert_type = models.CharField(max_length=50, choices=ALERT_TYPE_CHOICES, db_index=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    location = models.ForeignKey(
+        Location,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="alerts"
+    )
+
+    signal_count = models.IntegerField(default=0)
+    avg_score = models.FloatField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open", db_index=True)
+
+    first_signal_at = models.DateTimeField(null=True, blank=True)
+    last_signal_at = models.DateTimeField(null=True, blank=True)
+
+    rule_key = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    dedup_key = models.CharField(max_length=255, unique=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+        
+class AuditLog(TimeStampedModel):
+    ACTION_CHOICES = [
+        ("create", "Create"),
+        ("update", "Update"),
+        ("delete", "Delete"),
+        ("validate", "Validate"),
+        ("approve", "Approve"),
+        ("mark_noise", "Mark Noise"),
+        ("manual_edit", "Manual Edit"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="audit_logs"
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES, db_index=True)
+    model_name = models.CharField(max_length=100, db_index=True)
+    object_id = models.CharField(max_length=50, db_index=True)
+    notes = models.TextField(blank=True, default="")
+    before_data = models.JSONField(null=True, blank=True)
+    after_data = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.action} - {self.model_name} - {self.object_id}"

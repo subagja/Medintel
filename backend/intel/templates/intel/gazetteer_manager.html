@@ -1,0 +1,127 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Gazetteer Manager</h1>
+    <p class="small">Kelola entitas lokasi utama untuk kebutuhan geocoding, pemetaan, dan validasi analis.</p>
+
+    <p>
+        <a href="{% url 'intel:gazetteer_location_create' %}">+ Tambah Location</a>
+        |
+        <a href="{% url 'intel:gazetteer_alias_manager' %}">Kelola Alias</a>
+    </p>
+
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search nama / alias" value="{{ q }}">
+
+        <select name="level">
+            <option value="">Semua level</option>
+            {% for key, label in level_choices %}
+                <option value="{{ key }}" {% if level == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="province">
+            <option value="">Semua provinsi</option>
+            {% for code, name in province_choices %}
+                <option value="{{ code }}" {% if province == code %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="false_positive">
+            <option value="">False positive: semua</option>
+            <option value="no" {% if false_positive == "no" %}selected{% endif %}>Normal</option>
+            <option value="yes" {% if false_positive == "yes" %}selected{% endif %}>False positive</option>
+        </select>
+
+        <select name="is_active">
+            <option value="">Status aktif: semua</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> location</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nama</th>
+                <th>Level</th>
+                <th>Parent</th>
+                <th>Provinsi</th>
+                <th>Koordinat</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for loc in page_obj %}
+            <tr>
+                <td>{{ loc.id }}</td>
+                <td>
+                    <strong>{{ loc.display_name|default:loc.name }}</strong><br>
+                    <span class="small">{{ loc.normalized_name }}</span>
+                </td>
+                <td>{{ loc.level }}</td>
+                <td>
+            	    {% if loc.parent %}
+				        {{ loc.parent.display_name|default:loc.parent.name }}
+				    {% else %}
+				        -
+				    {% endif %}
+                </td>
+                <td>{{ loc.province_code|default:"-" }}</td>
+                <td>
+                    {% if loc.lat and loc.lon %}
+                        {{ loc.lat }}, {{ loc.lon }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>
+                    Aktif: {{ loc.is_active|yesno:"Ya,Tidak" }}<br>
+                    False positive: {{ loc.is_false_positive|yesno:"Ya,Tidak" }}
+                </td>
+                <td class="actions">
+                    <a href="{% url 'intel:gazetteer_location_edit' loc.id %}">Edit</a>
+                    <form method="post" action="{% url 'intel:gazetteer_toggle_false_positive' loc.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Toggle FP</button>
+                    </form>
+                    <form method="post" action="{% url 'intel:gazetteer_toggle_active' loc.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Toggle Aktif</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8">Belum ada data location.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&level={{ level }}&province={{ province }}&false_positive={{ false_positive }}&is_active={{ is_active }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&level={{ level }}&province={{ province }}&false_positive={{ false_positive }}&is_active={{ is_active }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&level={{ level }}&province={{ province }}&false_positive={{ false_positive }}&is_active={{ is_active }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&level={{ level }}&province={{ province }}&false_positive={{ false_positive }}&is_active={{ is_active }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

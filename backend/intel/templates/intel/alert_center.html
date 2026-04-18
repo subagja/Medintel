@@ -1,0 +1,92 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Alert Center</h1>
+    <p class="small">Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi.</p>
+
+    <p>
+        <a href="{% url 'intel:generate_alerts' %}">Generate Alerts</a>
+    </p>
+
+    <form method="get" class="filters">
+        <select name="alert_type">
+            <option value="">Semua jenis alert</option>
+            {% for key, label in alert_type_choices %}
+                <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="status">
+            <option value="">Semua status</option>
+            {% for key, label in status_choices %}
+                <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alert</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Jenis</th>
+                <th>Judul</th>
+                <th>Lokasi</th>
+                <th>Signal Count</th>
+                <th>Avg Score</th>
+                <th>Status</th>
+                <th>Window</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alert in page_obj %}
+            <tr>
+                <td>{{ alert.id }}</td>
+                <td>{{ alert.alert_type }}</td>
+                <td>
+                    <strong>{{ alert.title }}</strong><br>
+                    <span class="small">{{ alert.description }}</span>
+                </td>
+                <td>{{ alert.location.display_name|default:"-" }}</td>
+                <td>{{ alert.signal_count }}</td>
+                <td>{{ alert.avg_score|floatformat:2 }}</td>
+                <td>{{ alert.status }}</td>
+                <td>
+                    {{ alert.first_signal_at|date:"Y-m-d H:i" }}<br>
+                    s.d.<br>
+                    {{ alert.last_signal_at|date:"Y-m-d H:i" }}
+                </td>
+                <td>
+                    <a href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9">Belum ada alert.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&status={{ status_filter }}&alert_type={{ alert_type }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&status={{ status_filter }}&alert_type={{ alert_type }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&status={{ status_filter }}&alert_type={{ alert_type }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&status={{ status_filter }}&alert_type={{ alert_type }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

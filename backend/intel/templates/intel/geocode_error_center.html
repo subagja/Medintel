@@ -1,0 +1,99 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Geocode Error Center</h1>
+    <p class="small">Pusat penanganan signal yang gagal atau bermasalah pada proses geocode.</p>
+
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search judul / lokasi / URL" value="{{ q }}">
+
+        <select name="geocode_status">
+            <option value="">Semua error status</option>
+            {% for item in geocode_choices %}
+                <option value="{{ item }}" {% if geocode_status == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="sort">
+            <option value="-published_at" {% if sort == "-published_at" %}selected{% endif %}>Tanggal terbaru</option>
+            <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
+            <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
+            <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal bermasalah</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Judul</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Lokasi Mentah</th>
+                <th>Status Error</th>
+                <th>Tanggal</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in page_obj %}
+            <tr>
+                <td>{{ signal.id }}</td>
+                <td>
+                    <strong>{{ signal.title }}</strong><br>
+                    <span class="small">
+                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                    </span>
+                </td>
+                <td>{{ signal.disease_tag|default:"-" }}</td>
+                <td>{{ signal.threat_score }}</td>
+                <td>{{ signal.raw_location_text|default:"-" }}</td>
+                <td>{{ signal.geocode_status }}</td>
+                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+                <td class="actions">
+                    <a href="{% url 'intel:geocode_manual_update' signal.id %}">Edit manual</a>
+                    <form method="post" action="{% url 'intel:geocode_mark_manual_ok' signal.id %}">
+                        {% csrf_token %}
+                        <button type="submit">Mark manual</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8">Belum ada data geocode error.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&geocode_status={{ geocode_status }}&disease={{ disease }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&geocode_status={{ geocode_status }}&disease={{ disease }}&sort={{ sort }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&geocode_status={{ geocode_status }}&disease={{ disease }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&geocode_status={{ geocode_status }}&disease={{ disease }}&sort={{ sort }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Verified Signals</h1>
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search judul / URL / lokasi" value="{{ q }}">
+        
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="status">
+            <option value="">Semua status</option>
+            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated</option>
+            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved</option>
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <select name="sort">
+            <option value="-published_at" {% if sort == "-published_at" %}selected{% endif %}>Tanggal terbaru</option>
+            <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
+            <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
+            <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Judul</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Status</th>
+                <th>Approved Mapping</th>
+                <th>Lokasi Mentah</th>
+                <th>Validator</th>
+                <th>Tanggal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in page_obj %}
+            <tr>
+                <td>{{ signal.id }}</td>
+                <td>
+                    <strong>{{ signal.title }}</strong><br>
+                    <span class="small">
+                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                    </span>
+                </td>
+                <td>{{ signal.disease_tag|default:"-" }}</td>
+                <td>{{ signal.threat_score }}</td>
+                <td>{{ signal.status }}</td>
+                <td>{{ signal.approved_for_mapping|yesno:"Ya,Tidak" }}</td>
+                <td>{{ signal.raw_location_text|default:"-" }}</td>
+                <td>{{ signal.validated_by|default:"-" }}</td>
+                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9">Belum ada data verified signal.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

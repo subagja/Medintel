@@ -1,0 +1,61 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>User & Role Management</h1>
+    <p class="small">Kelola role akses user untuk sistem intelijen medik.</p>
+
+    <p>
+        <a href="{% url 'intel:user_role_update' %}">Update User Role</a>
+    </p>
+</div>
+
+<div class="card">
+    <h2>Daftar User</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Staff</th>
+                <th>Superuser</th>
+                <th>Groups</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td><strong>{{ user.username }}</strong></td>
+                <td>{{ user.email|default:"-" }}</td>
+                <td>{{ user.is_staff|yesno:"Ya,Tidak" }}</td>
+                <td>{{ user.is_superuser|yesno:"Ya,Tidak" }}</td>
+                <td>
+                    {% for group in user.groups.all %}
+                        {{ group.name }}{% if not forloop.last %}, {% endif %}
+                    {% empty %}
+                        -
+                    {% endfor %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Belum ada user.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Daftar Role</h2>
+    <ul class="clean-list">
+        {% for group in groups %}
+            <li>{{ group.name }}</li>
+        {% empty %}
+            <li>Belum ada role.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

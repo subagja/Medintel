@@ -1,0 +1,81 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Location Alias Manager</h1>
+    <p class="small">Kelola alias lokasi untuk memperkaya pencocokan gazetteer dan memperbaiki geocoding.</p>
+
+    <p>
+        <a href="{% url 'intel:gazetteer_alias_create' %}">+ Tambah Alias</a>
+        |
+        <a href="{% url 'intel:gazetteer_manager' %}">Kembali ke Gazetteer</a>
+    </p>
+
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Search alias / location" value="{{ q }}">
+
+        <select name="is_primary">
+            <option value="">Primary: semua</option>
+            <option value="yes" {% if is_primary == "yes" %}selected{% endif %}>Primary</option>
+            <option value="no" {% if is_primary == "no" %}selected{% endif %}>Non-primary</option>
+        </select>
+
+        <select name="is_active">
+            <option value="">Aktif: semua</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alias</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Alias</th>
+                <th>Normalized</th>
+                <th>Location</th>
+                <th>Primary</th>
+                <th>Aktif</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in page_obj %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.alias }}</td>
+                <td>{{ item.normalized_alias }}</td>
+                <td>{{ item.location.display_name|default:item.location.name }}</td>
+                <td>{{ item.is_primary|yesno:"Ya,Tidak" }}</td>
+                <td>{{ item.is_active|yesno:"Ya,Tidak" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6">Belum ada alias.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&is_active={{ is_active }}&is_primary={{ is_primary }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&is_active={{ is_active }}&is_primary={{ is_primary }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&is_active={{ is_active }}&is_primary={{ is_primary }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&is_active={{ is_active }}&is_primary={{ is_primary }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

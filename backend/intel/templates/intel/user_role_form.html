@@ -1,0 +1,24 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Update User Role</h1>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="form-row">
+            <label for="{{ form.user.id_for_label }}">User</label>
+            {{ form.user }}
+        </div>
+
+        <div class="form-row">
+            <label>Groups / Roles</label>
+            {{ form.groups }}
+        </div>
+
+        <button type="submit">Simpan</button>
+        <a href="{% url 'intel:user_role_management' %}">Kembali</a>
+    </form>
+</div>
+{% endblock %}
