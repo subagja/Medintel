@@ -1,10 +1,10 @@
 import math
-from pathlib import Path
-
+import re
+import unicodedata
 import pandas as pd
+from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.utils.dateparse import parse_datetime
-
 from intel.models import Source, Location, Signal, SignalLocation
 
 
@@ -173,7 +173,7 @@ class Command(BaseCommand):
                         "name": admin_province,
                         "display_name": admin_province,
                         "country_code": "ID",
-                        "province_code": admin_province.strip().lower().replace(" ", "_"),
+                        "province_code": normalize_region_code(admin_province),
                         "lat": lat if level_lokasi == "province" else None,
                         "lon": lon if level_lokasi == "province" else None,
                         "is_active": True,
@@ -198,7 +198,7 @@ class Command(BaseCommand):
                         "display_name": admin_kabkota,
                         "country_code": "ID",
                         "province_code": province_obj.province_code if province_obj else "",
-                        "city_regency_code": admin_kabkota.strip().lower().replace(" ", "_"),
+                        "city_regency_code": normalize_region_code(admin_kabkota),
                         "lat": lat if level_lokasi in ["city", "regency"] else None,
                         "lon": lon if level_lokasi in ["city", "regency"] else None,
                         "is_active": True,
@@ -239,3 +239,15 @@ class Command(BaseCommand):
         self.stdout.write(f"Created signals: {created_signals}")
         self.stdout.write(f"Created signal links: {created_links}")
         self.stdout.write(f"Skipped rows: {skipped}")
+        
+def normalize_region_code(value):
+    value = clean_str(value)
+    if not value:
+        return ""
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    value = value.lower()
+    value = value.replace("/", " ")
+    value = re.sub(r"[^a-z0-9\s_-]", "", value)
+    value = re.sub(r"[\s\-]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value

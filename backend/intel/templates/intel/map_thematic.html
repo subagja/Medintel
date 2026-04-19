@@ -1,0 +1,234 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Thematic Map</h1>
+    <p class="small">Visualisasi tematik per provinsi atau kabupaten/kota berdasarkan signal terverifikasi.</p>
+
+    <form method="get" class="map-toolbar">
+        <select name="level">
+            <option value="province" {% if level == "province" %}selected{% endif %}>Province</option>
+            <option value="kabkota" {% if level == "kabkota" %}selected{% endif %}>Kabupaten/Kota</option>
+        </select>
+
+        <select name="metric">
+            <option value="signal_count" {% if metric == "signal_count" %}selected{% endif %}>Signal Count</option>
+            <option value="avg_score" {% if metric == "avg_score" %}selected{% endif %}>Average Score</option>
+            <option value="high_risk_count" {% if metric == "high_risk_count" %}selected{% endif %}>High Risk Count</option>
+        </select>
+
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <select name="status">
+            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved only</option>
+            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated only</option>
+            <option value="all" {% if status_filter == "all" %}selected{% endif %}>Validated + Approved</option>
+        </select>
+
+        <button type="submit">Apply</button>
+    </form>
+
+    <div id="map"></div>
+    <div class="legend-box" id="thematic-summary">
+        <strong>Info:</strong> Peta tematik akan menampilkan warna wilayah berdasarkan metric yang dipilih.
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+(function() {
+    const map = L.map('map').setView([-2.5, 118.0], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const metric = '{{ metric|escapejs }}';
+    const level = '{{ level|escapejs }}';
+
+    const params = new URLSearchParams({
+        metric: '{{ metric|escapejs }}',
+        disease: '{{ disease|escapejs }}',
+        date_from: '{{ date_from|escapejs }}',
+        date_to: '{{ date_to|escapejs }}',
+        status: '{{ status_filter|escapejs }}',
+        level: '{{ level|escapejs }}'
+    });
+
+    const geojsonUrl = level === 'kabkota'
+        ? '/static/geo/indonesia_kabkota.geojson'
+        : '/static/geo/indonesia_provinces.geojson';
+
+    function normalizeKey(value) {
+        return (value || '').toString().trim().toLowerCase();
+    }
+
+    function getRegionKey(feature) {
+        const props = feature.properties || {};
+        if (level === 'kabkota') {
+            return normalizeKey(props.city_regency_code || props.region_key);
+        }
+        return normalizeKey(props.province_code || props.region_key);
+    }
+
+    function getMetricLabel(metricName) {
+        if (metricName === 'avg_score') return 'Average Score';
+        if (metricName === 'high_risk_count') return 'High Risk Count';
+        return 'Signal Count';
+    }
+
+    function buildBreaks(values) {
+        const clean = values.filter(v => v > 0).sort((a, b) => a - b);
+        if (clean.length === 0) return [1, 5, 10, 20, 50];
+
+        const maxVal = clean[clean.length - 1];
+        if (metric === 'avg_score') {
+            return [10, 20, 40, 60, 80];
+        }
+
+        if (maxVal <= 5) return [1, 2, 3, 4, 5];
+        if (maxVal <= 10) return [1, 3, 5, 7, 10];
+        if (maxVal <= 20) return [2, 5, 10, 15, 20];
+        if (maxVal <= 50) return [5, 10, 20, 35, 50];
+        return [10, 20, 40, 60, maxVal];
+    }
+
+    function getColor(value, breaks) {
+        if (value >= breaks[4]) return '#800026';
+        if (value >= breaks[3]) return '#BD0026';
+        if (value >= breaks[2]) return '#E31A1C';
+        if (value >= breaks[1]) return '#FC4E2A';
+        if (value >= breaks[0]) return '#FD8D3C';
+        return '#FFEDA0';
+    }
+
+    Promise.all([
+        fetch(geojsonUrl).then(r => {
+            if (!r.ok) throw new Error('GeoJSON gagal dimuat: ' + r.status);
+            return r.json();
+        }),
+        fetch("{% url 'intel:map_thematic_data_api' %}?" + params.toString()).then(r => {
+            if (!r.ok) throw new Error('API thematic gagal dimuat: ' + r.status);
+            return r.json();
+        })
+    ]).then(([geojsonData, thematicData]) => {
+        console.log("GeoJSON loaded:", geojsonData);
+        console.log("Thematic data loaded:", thematicData);
+
+        const valueMap = {};
+        const metricValues = [];
+
+        (thematicData.results || []).forEach(item => {
+            const key = normalizeKey(item.region_key);
+            valueMap[key] = item;
+            metricValues.push(Number(item[metric] || 0));
+        });
+
+        const breaks = buildBreaks(metricValues);
+
+        function getValue(feature) {
+            const regionKey = getRegionKey(feature);
+            const item = valueMap[regionKey];
+            if (!item) return 0;
+            return Number(item[metric] || 0);
+        }
+
+        function style(feature) {
+            const value = getValue(feature);
+            return {
+                fillColor: getColor(value, breaks),
+                weight: 1.5,
+                opacity: 1,
+                color: '#ffffff',
+                dashArray: '2',
+                fillOpacity: 0.75
+            };
+        }
+
+        function onEachFeature(feature, layer) {
+            const props = feature.properties || {};
+            const regionKey = getRegionKey(feature);
+            const item = valueMap[regionKey];
+
+            const regionName = props.name || props.display_name || regionKey || 'Unknown';
+            const signalCount = item ? item.signal_count : 0;
+            const avgScore = item ? item.avg_score : 0;
+            const highRiskCount = item ? item.high_risk_count : 0;
+            const mainValue = item ? item[metric] : 0;
+
+            layer.bindPopup(`
+                <div style="min-width:240px">
+                    <strong>${regionName}</strong><br><br>
+                    <strong>${getMetricLabel(metric)}:</strong> ${mainValue}<br>
+                    <strong>Signal count:</strong> ${signalCount}<br>
+                    <strong>Average score:</strong> ${avgScore}<br>
+                    <strong>High-risk count:</strong> ${highRiskCount}<br>
+                    <strong>Region key:</strong> ${regionKey}
+                </div>
+            `);
+
+            layer.on({
+                mouseover: function(e) {
+                    const layer = e.target;
+                    layer.setStyle({
+                        weight: 3,
+                        color: '#666',
+                        dashArray: '',
+                        fillOpacity: 0.9
+                    });
+                    layer.bringToFront();
+                },
+                mouseout: function(e) {
+                    thematicLayer.resetStyle(e.target);
+                }
+            });
+        }
+
+        const thematicLayer = L.geoJSON(geojsonData, {
+            style: style,
+            onEachFeature: onEachFeature
+        }).addTo(map);
+
+        const bounds = thematicLayer.getBounds();
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [20, 20] });
+        }
+
+        // Legend
+        const legend = L.control({ position: 'bottomright' });
+        legend.onAdd = function() {
+            const div = L.DomUtil.create('div', 'info legend');
+            div.style.background = 'white';
+            div.style.padding = '10px';
+            div.style.border = '1px solid #ddd';
+            div.style.borderRadius = '8px';
+            div.style.lineHeight = '18px';
+
+            div.innerHTML += `<strong>${getMetricLabel(metric)}</strong><br>`;
+            div.innerHTML += `<i style="background:${getColor(breaks[4], breaks)}; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> ≥ ${breaks[4]}<br>`;
+            div.innerHTML += `<i style="background:${getColor(breaks[3], breaks)}; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> ${breaks[3]} – ${breaks[4] - 0.01}<br>`;
+            div.innerHTML += `<i style="background:${getColor(breaks[2], breaks)}; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> ${breaks[2]} – ${breaks[3] - 0.01}<br>`;
+            div.innerHTML += `<i style="background:${getColor(breaks[1], breaks)}; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> ${breaks[1]} – ${breaks[2] - 0.01}<br>`;
+            div.innerHTML += `<i style="background:${getColor(breaks[0], breaks)}; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> ${breaks[0]} – ${breaks[1] - 0.01}<br>`;
+            div.innerHTML += `<i style="background:#FFEDA0; width:14px; height:14px; display:inline-block; margin-right:6px;"></i> No / low data`;
+            return div;
+        };
+        legend.addTo(map);
+
+    }).catch(err => {
+        console.error("Failed to load thematic map", err);
+        alert("Thematic map gagal dimuat. Cek console browser untuk detail.");
+    });
+})();
+</script>
+{% endblock %}

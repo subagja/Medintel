@@ -144,6 +144,10 @@
             border-radius: 8px;
             margin-top: 12px;
         }
+        .info.legend {
+            font-size: 12px;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +162,7 @@
         <a href="{% url 'intel:reports_generator' %}">Reports</a>
         <a href="{% url 'intel:alert_center' %}">Alerts</a>
         <a href="{% url 'intel:map_intelligence' %}">Map</a>
+        <a href="{% url 'intel:map_thematic' %}">Thematic Map</a>
         <a href="/admin/">Admin</a>
         {% if request.user.is_superuser %}
             <a href="{% url 'intel:user_role_management' %}">User & Roles</a>

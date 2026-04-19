@@ -1,5 +1,19 @@
+import re
+import unicodedata
 from django.conf import settings
 from django.db import models
+
+def normalize_region_code(value: str) -> str:
+    if not value:
+        return ""
+
+    value = str(value).strip().lower()
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    value = value.replace("/", " ")
+    value = re.sub(r"[^a-z0-9\s_-]", "", value)
+    value = re.sub(r"[\s\-]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value
 
 
 class TimeStampedModel(models.Model):
@@ -68,11 +82,31 @@ class Location(TimeStampedModel):
             models.Index(fields=["is_active"]),
         ]
 
+    # def save(self, *args, **kwargs):
+    #     if not self.display_name:
+    #         self.display_name = (self.name or "").strip()
+    #     if not self.normalized_name:
+    #         self.normalized_name = (self.name or "").strip().lower()
+    #     super().save(*args, **kwargs)
+
     def save(self, *args, **kwargs):
         if not self.display_name:
             self.display_name = (self.name or "").strip()
+
         if not self.normalized_name:
-            self.normalized_name = (self.name or "").strip().lower()
+            self.normalized_name = normalize_region_code(self.name)
+
+        if self.level == "province":
+            if not self.province_code:
+                self.province_code = normalize_region_code(self.display_name or self.name)
+
+        if self.level in ["city", "regency"]:
+            if not self.city_regency_code:
+                self.city_regency_code = normalize_region_code(self.display_name or self.name)
+
+            if not self.province_code and self.parent and self.parent.level == "province":
+                self.province_code = self.parent.province_code or normalize_region_code(self.parent.display_name or self.parent.name)
+
         super().save(*args, **kwargs)
 
     def __str__(self):

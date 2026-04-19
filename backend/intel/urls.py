@@ -48,4 +48,7 @@ urlpatterns = [
 
     path("map/", views.map_intelligence, name="map_intelligence"),
     path("api/map-points/", views.map_points_api, name="map_points_api"),
+
+    path("map-thematic/", views.map_thematic, name="map_thematic"),
+    path("api/map-thematic-data/", views.map_thematic_data_api, name="map_thematic_data_api"),
 ]

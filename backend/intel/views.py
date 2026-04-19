@@ -1462,3 +1462,108 @@ def map_points_api(request):
         "count": len(data),
         "results": data,
     })
+
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def map_thematic(request):
+    metric = request.GET.get("metric", "signal_count").strip()
+    disease = request.GET.get("disease", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+    status_filter = request.GET.get("status", "approved").strip()
+    level = request.GET.get("level", "province").strip()
+
+    disease_choices = (
+        Signal.objects.exclude(disease_tag="")
+        .values_list("disease_tag", flat=True)
+        .distinct()
+        .order_by("disease_tag")
+    )
+
+    return render(request, "intel/map_thematic.html", {
+        "page_title": "Thematic Map",
+        "metric": metric,
+        "disease": disease,
+        "date_from": date_from,
+        "date_to": date_to,
+        "status_filter": status_filter,
+        "level": level,
+        "disease_choices": disease_choices,
+    })
+
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def map_thematic_data_api(request):
+    metric = request.GET.get("metric", "signal_count").strip()
+    disease = request.GET.get("disease", "").strip()
+    date_from = request.GET.get("date_from", "").strip()
+    date_to = request.GET.get("date_to", "").strip()
+    status_filter = request.GET.get("status", "approved").strip()
+    level = request.GET.get("level", "province").strip()
+
+    valid_statuses = ["approved"]
+    if status_filter == "validated":
+        valid_statuses = ["validated"]
+    elif status_filter == "all":
+        valid_statuses = ["validated", "approved"]
+
+    qs = SignalLocation.objects.filter(
+        is_primary=True,
+        location__isnull=False,
+        signal__status__in=valid_statuses,
+    ).select_related("signal", "location")
+
+    if disease:
+        qs = qs.filter(signal__disease_tag__iexact=disease)
+
+    if date_from:
+        qs = qs.filter(signal__published_at__date__gte=date_from)
+
+    if date_to:
+        qs = qs.filter(signal__published_at__date__lte=date_to)
+
+    if level == "province":
+        rows = (
+            qs.exclude(location__province_code="")
+            .values("location__province_code")
+            .annotate(
+                signal_count=Count("id"),
+                avg_score=Avg("signal__threat_score"),
+                high_risk_count=Count("id", filter=Q(signal__threat_score__gt=50)),
+            )
+            .order_by("-signal_count")
+        )
+
+        results = []
+        for row in rows:
+            results.append({
+                "region_key": row["location__province_code"],
+                "signal_count": row["signal_count"] or 0,
+                "avg_score": round(row["avg_score"] or 0, 2),
+                "high_risk_count": row["high_risk_count"] or 0,
+            })
+
+        return JsonResponse({"results": results})
+
+    elif level == "kabkota":
+        rows = (
+            qs.exclude(location__city_regency_code="")
+            .values("location__city_regency_code")
+            .annotate(
+                signal_count=Count("id"),
+                avg_score=Avg("signal__threat_score"),
+                high_risk_count=Count("id", filter=Q(signal__threat_score__gt=50)),
+            )
+            .order_by("-signal_count")
+        )
+
+        results = []
+        for row in rows:
+            results.append({
+                "region_key": row["location__city_regency_code"],
+                "signal_count": row["signal_count"] or 0,
+                "avg_score": round(row["avg_score"] or 0, 2),
+                "high_risk_count": row["high_risk_count"] or 0,
+            })
+
+        return JsonResponse({"results": results})
+
+    return JsonResponse({"results": []})
