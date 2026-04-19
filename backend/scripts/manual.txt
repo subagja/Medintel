@@ -1,1 +1,3 @@
-manual
+pastikan source json sudah ada
+province : python manage.py convert_province_geojson
+kabktoa : 

@@ -1,0 +1,3 @@
+python manage.py import_signals --file ..\data\raw\data_intel_raw.csv
+
+python manage.py import_signals --file ..\data\raw\data_intel_geo.csv

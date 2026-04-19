@@ -30,6 +30,32 @@ from .models import (
     Alert,
 )
 
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
+def kabkota_by_province_api(request):
+    province_code = request.GET.get("province_code", "").strip()
+
+    qs = Location.objects.filter(
+        level__in=["city", "regency"],
+        is_active=True,
+        is_false_positive=False,
+    ).order_by("display_name", "name")
+
+    if province_code:
+        qs = qs.filter(province_code=province_code)
+
+    results = [
+        {
+            "id": loc.id,
+            "name": loc.display_name or loc.name,
+            "city_regency_code": loc.city_regency_code,
+            "level": loc.level,
+            "province_code": loc.province_code,
+        }
+        for loc in qs
+    ]
+
+    return JsonResponse({"results": results})
+    
 @role_required(ROLE_ADMIN)
 def user_role_management(request):
     users = User.objects.all().prefetch_related("groups").order_by("username")
@@ -224,20 +250,22 @@ def export_signals_csv(request):
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def raw_signals_list(request):
-    qs = Signal.objects.filter(status="raw").select_related("source", "validated_by")
+    qs = Signal.objects.select_related("source").filter(
+        status__in=["raw", "validated"]
+    )
 
-    q = request.GET.get("q", "").strip()
+    search = request.GET.get("search", "").strip()
     disease = request.GET.get("disease", "").strip()
     geocode_status = request.GET.get("geocode_status", "").strip()
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
     sort = request.GET.get("sort", "-published_at").strip()
 
-    if q:
+    if search:
         qs = qs.filter(
-            Q(title__icontains=q) |
-            Q(source_url__icontains=q) |
-            Q(raw_location_text__icontains=q)
+            Q(title__icontains=search) |
+            Q(raw_location_text__icontains=search) |
+            Q(source_url__icontains=search)
         )
 
     if disease:
@@ -252,15 +280,17 @@ def raw_signals_list(request):
     if date_to:
         qs = qs.filter(published_at__date__lte=date_to)
 
-    allowed_sort = {
+    allowed_sort_fields = {
         "published_at": "published_at",
         "-published_at": "-published_at",
         "threat_score": "threat_score",
         "-threat_score": "-threat_score",
+        "created_at": "created_at",
+        "-created_at": "-created_at",
         "title": "title",
         "-title": "-title",
     }
-    qs = qs.order_by(allowed_sort.get(sort, "-published_at"), "-created_at")
+    qs = qs.order_by(allowed_sort_fields.get(sort, "-published_at"), "-created_at")
 
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
@@ -274,50 +304,47 @@ def raw_signals_list(request):
     )
 
     geocode_choices = (
-        Signal.objects.values_list("geocode_status", flat=True)
+        Signal.objects.exclude(geocode_status="")
+        .values_list("geocode_status", flat=True)
         .distinct()
         .order_by("geocode_status")
     )
 
-    context = {
+    return render(request, "intel/raw_signals_list.html", {
+        "page_title": "Raw Signals",
         "page_obj": page_obj,
-        "q": q,
-        "disease": disease,
-        "geocode_status": geocode_status,
+        "search": search,
         "date_from": date_from,
         "date_to": date_to,
+        "disease": disease,
+        "geocode_status": geocode_status,
         "sort": sort,
         "disease_choices": disease_choices,
         "geocode_choices": geocode_choices,
-        "page_title": "Raw Signals",
-    }
-    return render(request, "intel/raw_signals_list.html", context)
-
-
+    })
+    
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def verified_signals_list(request):
-    qs = Signal.objects.filter(status__in=["validated", "approved"]).select_related("source", "validated_by")
+    qs = Signal.objects.select_related("source").filter(
+        status="approved"
+    )
 
-    q = request.GET.get("q", "").strip()
+    search = request.GET.get("search", "").strip()
     disease = request.GET.get("disease", "").strip()
-    status_filter = request.GET.get("status", "").strip()
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
     sort = request.GET.get("sort", "-published_at").strip()
 
-    if q:
+    if search:
         qs = qs.filter(
-            Q(title__icontains=q) |
-            Q(source_url__icontains=q) |
-            Q(raw_location_text__icontains=q)
+            Q(title__icontains=search) |
+            Q(raw_location_text__icontains=search) |
+            Q(source_url__icontains=search)
         )
 
     if disease:
         qs = qs.filter(disease_tag__iexact=disease)
-
-    if status_filter:
-        qs = qs.filter(status=status_filter)
 
     if date_from:
         qs = qs.filter(published_at__date__gte=date_from)
@@ -325,15 +352,17 @@ def verified_signals_list(request):
     if date_to:
         qs = qs.filter(published_at__date__lte=date_to)
 
-    allowed_sort = {
+    allowed_sort_fields = {
         "published_at": "published_at",
         "-published_at": "-published_at",
         "threat_score": "threat_score",
         "-threat_score": "-threat_score",
+        "created_at": "created_at",
+        "-created_at": "-created_at",
         "title": "title",
         "-title": "-title",
     }
-    qs = qs.order_by(allowed_sort.get(sort, "-published_at"), "-created_at")
+    qs = qs.order_by(allowed_sort_fields.get(sort, "-published_at"), "-created_at")
 
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
@@ -346,55 +375,107 @@ def verified_signals_list(request):
         .order_by("disease_tag")
     )
 
-    context = {
+    return render(request, "intel/verified_signals_list.html", {
+        "page_title": "Verified Signals",
         "page_obj": page_obj,
-        "q": q,
-        "disease": disease,
-        "status_filter": status_filter,
+        "search": search,
         "date_from": date_from,
         "date_to": date_to,
+        "disease": disease,
         "sort": sort,
         "disease_choices": disease_choices,
-        "page_title": "Verified Signals",
-    }
-    return render(request, "intel/verified_signals_list.html", context)
+    })
 
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def signal_mark_validated(request, pk):
     signal = get_object_or_404(Signal, pk=pk)
-    signal.status = "validated"
-    signal.validated_by = request.user
-    signal.validated_at = timezone.now()
-    signal.save()
-    messages.success(request, f'Signal "{signal.title[:60]}" ditandai sebagai validated.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
+    signal.status = "validated"
+    signal.save(update_fields=["status", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="mark_validated",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes="Signal marked as validated",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+        },
+    )
+
+    messages.success(request, f'Signal "{signal.title}" ditandai sebagai validated.')
+    return redirect("intel:raw_signals")
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def signal_mark_noise(request, pk):
     signal = get_object_or_404(Signal, pk=pk)
+
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
     signal.status = "noise"
-    signal.validated_by = request.user
-    signal.validated_at = timezone.now()
-    signal.save()
-    messages.warning(request, f'Signal "{signal.title[:60]}" ditandai sebagai noise.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+    signal.approved_for_mapping = False
+    signal.save(update_fields=["status", "approved_for_mapping", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="mark_noise",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes="Signal marked as noise",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+        },
+    )
+
+    messages.success(request, f'Signal "{signal.title}" ditandai sebagai noise.')
+    return redirect("intel:raw_signals")
 
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def signal_approve_mapping(request, pk):
     signal = get_object_or_404(Signal, pk=pk)
+
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
     signal.status = "approved"
     signal.approved_for_mapping = True
-    signal.validated_by = request.user
-    signal.validated_at = timezone.now()
-    signal.save()
-    messages.success(request, f'Signal "{signal.title[:60]}" di-approve untuk mapping.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:verified_signals"))
+    signal.save(update_fields=["status", "approved_for_mapping", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="approve_mapping",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes="Signal approved for mapping",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+        },
+    )
+
+    messages.success(request, f'Signal "{signal.title}" berhasil di-approve untuk mapping.')
+    return redirect("intel:raw_signals")
 
 
 @login_required
@@ -559,19 +640,46 @@ def geocode_manual_update(request, pk):
         .first()
     )
 
+    current_location = signal_location.location if signal_location and signal_location.location else None
+
+    initial_province = None
+    initial_kabkota = None
+
+    if current_location:
+        if current_location.level == "province":
+            initial_province = current_location
+        elif current_location.level in ["city", "regency"]:
+            initial_kabkota = current_location
+            if current_location.province_code:
+                initial_province = Location.objects.filter(
+                    level="province",
+                    province_code=current_location.province_code
+                ).first()
+            elif current_location.parent and current_location.parent.level == "province":
+                initial_province = current_location.parent
+
     initial_data = {
         "raw_location_text": signal.raw_location_text,
         "geocode_status": signal.geocode_status,
-        "location": signal_location.location if signal_location and signal_location.location else None,
+        "province": initial_province,
+        "kabkota": initial_kabkota,
         "confidence": signal_location.confidence if signal_location else None,
         "notes": signal.validation_notes,
     }
 
     if request.method == "POST":
-        form = GeocodeManualUpdateForm(request.POST)
+        province_obj = None
+        province_id = request.POST.get("province")
+        if province_id:
+            province_obj = Location.objects.filter(id=province_id, level="province").first()
+
+        province_code = province_obj.province_code if province_obj else None
+        form = GeocodeManualUpdateForm(request.POST, province_code=province_code)
+
         if form.is_valid():
             old_status = signal.geocode_status
             old_raw_location = signal.raw_location_text
+            old_location_id = signal_location.location_id if signal_location else None
 
             signal.raw_location_text = form.cleaned_data["raw_location_text"]
             signal.geocode_status = form.cleaned_data["geocode_status"]
@@ -580,11 +688,14 @@ def geocode_manual_update(request, pk):
             signal.validated_at = timezone.now()
             signal.save()
 
-            location = form.cleaned_data["location"]
+            province = form.cleaned_data["province"]
+            kabkota = form.cleaned_data["kabkota"]
             confidence = form.cleaned_data["confidence"]
 
+            final_location = kabkota or province
+
             if signal_location:
-                signal_location.location = location
+                signal_location.location = final_location
                 signal_location.raw_location_text = signal.raw_location_text
                 signal_location.confidence = confidence
                 signal_location.method = "manual"
@@ -593,7 +704,7 @@ def geocode_manual_update(request, pk):
             else:
                 SignalLocation.objects.create(
                     signal=signal,
-                    location=location,
+                    location=final_location,
                     raw_location_text=signal.raw_location_text,
                     confidence=confidence,
                     method="manual",
@@ -609,11 +720,14 @@ def geocode_manual_update(request, pk):
                 before_data={
                     "geocode_status": old_status,
                     "raw_location_text": old_raw_location,
+                    "location_id": old_location_id,
                 },
                 after_data={
                     "geocode_status": signal.geocode_status,
                     "raw_location_text": signal.raw_location_text,
-                    "location_id": location.id if location else None,
+                    "province_id": province.id if province else None,
+                    "kabkota_id": kabkota.id if kabkota else None,
+                    "location_id": final_location.id if final_location else None,
                     "confidence": confidence,
                 },
             )
@@ -621,7 +735,8 @@ def geocode_manual_update(request, pk):
             messages.success(request, f'Geocode signal "{signal.title[:60]}" berhasil diperbarui secara manual.')
             return redirect("intel:geocode_error_center")
     else:
-        form = GeocodeManualUpdateForm(initial=initial_data)
+        province_code = initial_province.province_code if initial_province else None
+        form = GeocodeManualUpdateForm(initial=initial_data, province_code=province_code)
 
     context = {
         "page_title": "Manual Geocode Update",

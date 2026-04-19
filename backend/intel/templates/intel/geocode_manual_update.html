@@ -26,8 +26,13 @@
         </div>
 
         <div class="form-row">
-            <label for="{{ form.location.id_for_label }}">Assign location</label>
-            {{ form.location }}
+            <label for="{{ form.province.id_for_label }}">Province</label>
+            {{ form.province }}
+        </div>
+
+        <div class="form-row">
+            <label for="{{ form.kabkota.id_for_label }}">Kabupaten/Kota</label>
+            {{ form.kabkota }}
         </div>
 
         <div class="form-row">
@@ -44,4 +49,76 @@
         <a href="{% url 'intel:geocode_error_center' %}">Kembali</a>
     </form>
 </div>
+
+<script>
+(function() {
+    const provinceSelect = document.getElementById("id_province");
+    const kabkotaSelect = document.getElementById("id_kabkota");
+
+    if (!provinceSelect || !kabkotaSelect) return;
+
+    const initialKabkota = kabkotaSelect.value;
+
+    function loadKabkota(provinceCode, selectedId = "") {
+        kabkotaSelect.innerHTML = '<option value="">---------</option>';
+
+        if (!provinceCode) return;
+
+        fetch(`/intel/api/kabkota-by-province/?province_code=${encodeURIComponent(provinceCode)}`)
+            .then(resp => resp.json())
+            .then(data => {
+                (data.results || []).forEach(item => {
+                    const opt = document.createElement("option");
+                    opt.value = item.id;
+                    opt.textContent = item.name;
+                    if (String(item.id) === String(selectedId)) {
+                        opt.selected = true;
+                    }
+                    kabkotaSelect.appendChild(opt);
+                });
+            })
+            .catch(err => {
+                console.error("Failed to load kab/kota", err);
+            });
+    }
+
+    const selectedProvinceOption = provinceSelect.options[provinceSelect.selectedIndex];
+    const initialProvinceCode = selectedProvinceOption ? selectedProvinceOption.text : "";
+
+    // safer: derive province_code from selected option by calling backend attribute if available
+    function getProvinceCodeFromSelectedOption() {
+        const provinceId = provinceSelect.value;
+        if (!provinceId) return "";
+
+        // we use data-province-code if available
+        const option = provinceSelect.options[provinceSelect.selectedIndex];
+        return option ? option.getAttribute("data-province-code") || "" : "";
+    }
+
+    // inject province codes onto options if not already available
+    Array.from(provinceSelect.options).forEach(opt => {
+        // no-op if not injected from backend; graceful fallback
+    });
+
+    // fallback approach: request filtered list only after province changes based on option text is not reliable,
+    // so we use a mapping embedded below.
+    const provinceMap = {
+        {% for p in form.fields.province.queryset %}
+        "{{ p.id }}": "{{ p.province_code }}",
+        {% endfor %}
+    };
+
+    function currentProvinceCode() {
+        return provinceMap[provinceSelect.value] || "";
+    }
+
+    provinceSelect.addEventListener("change", function() {
+        loadKabkota(currentProvinceCode(), "");
+    });
+
+    if (provinceSelect.value) {
+        loadKabkota(currentProvinceCode(), initialKabkota);
+    }
+})();
+</script>
 {% endblock %}

@@ -4,19 +4,13 @@
 <div class="card">
     <h1>Verified Signals</h1>
     <form method="get" class="filters">
-        <input type="text" name="q" placeholder="Search judul / URL / lokasi" value="{{ q }}">
+        <input type="text" name="search" placeholder="Search judul / URL / lokasi" value="{{ search }}">
         
         <select name="disease">
             <option value="">Semua penyakit</option>
             {% for item in disease_choices %}
                 <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
             {% endfor %}
-        </select>
-
-        <select name="status">
-            <option value="">Semua status</option>
-            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated</option>
-            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved</option>
         </select>
 
         <input type="date" name="date_from" value="{{ date_from }}">
@@ -27,6 +21,8 @@
             <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
             <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
             <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+            <option value="title" {% if sort == "title" %}selected{% endif %}>Judul A-Z</option>
+            <option value="-title" {% if sort == "-title" %}selected{% endif %}>Judul Z-A</option>
         </select>
 
         <button type="submit">Filter</button>
@@ -81,15 +77,15 @@
 
 <div class="pagination">
     {% if page_obj.has_previous %}
-        <a href="?page=1&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
-        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
     {% endif %}
 
     <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
 
     {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&disease={{ disease }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
     {% endif %}
 </div>
 {% endblock %}

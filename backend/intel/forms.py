@@ -23,10 +23,23 @@ class GeocodeManualUpdateForm(forms.Form):
         choices=Signal.GEOCODE_STATUS_CHOICES,
         widget=forms.Select(attrs={"class": "form-control"})
     )
-    location = forms.ModelChoiceField(
-        queryset=Location.objects.filter(is_active=True, is_false_positive=False).order_by("display_name"),
+    province = forms.ModelChoiceField(
+        queryset=Location.objects.filter(
+            level="province",
+            is_active=True,
+            is_false_positive=False
+        ).order_by("display_name", "name"),
         required=False,
-        widget=forms.Select(attrs={"class": "form-control"})
+        widget=forms.Select(attrs={"class": "form-control", "id": "id_province"})
+    )
+    kabkota = forms.ModelChoiceField(
+        queryset=Location.objects.filter(
+            level__in=["city", "regency"],
+            is_active=True,
+            is_false_positive=False
+        ).order_by("display_name", "name"),
+        required=False,
+        widget=forms.Select(attrs={"class": "form-control", "id": "id_kabkota"})
     )
     confidence = forms.FloatField(
         required=False,
@@ -36,6 +49,21 @@ class GeocodeManualUpdateForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={"rows": 3, "class": "form-control"})
     )
+
+    def __init__(self, *args, **kwargs):
+        province_code = kwargs.pop("province_code", None)
+        super().__init__(*args, **kwargs)
+
+        self.fields["kabkota"].queryset = Location.objects.filter(
+            level__in=["city", "regency"],
+            is_active=True,
+            is_false_positive=False
+        ).order_by("display_name", "name")
+
+        if province_code:
+            self.fields["kabkota"].queryset = self.fields["kabkota"].queryset.filter(
+                province_code=province_code
+            )
 
 class LocationForm(forms.ModelForm):
     class Meta:
