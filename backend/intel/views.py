@@ -1,11 +1,15 @@
 import csv
+import json
+from pathlib import Path
+
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from .permissions import role_required, user_has_role, ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER
 from django.core.paginator import Paginator
-from django.db.models import Prefetch, Q
+from django.db.models import Avg, Prefetch, Q
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from datetime import timedelta
@@ -29,6 +33,183 @@ from .models import (
     SystemSetting,
     Alert,
 )
+
+def province_map_view(request):
+    disease = (request.GET.get("disease") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    qs = SignalLocation.objects.filter(
+        is_primary=True,
+        location__isnull=False,
+        signal__status__in=["raw", "validated", "approved"],
+    )
+
+    if disease:
+        qs = qs.filter(signal__disease_tag__iexact=disease)
+
+    if date_from:
+        qs = qs.filter(signal__published_at__date__gte=date_from)
+
+    if date_to:
+        qs = qs.filter(signal__published_at__date__lte=date_to)
+
+    province_rows = []
+
+    # Ambil semua signal yang match langsung ke province
+    province_direct = (
+        qs.filter(location__level="province")
+        .values("location__display_name", "location__name")
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+        )
+    )
+
+    # Ambil semua signal city/regency lalu agregasikan ke parent province
+    province_from_children = (
+        qs.filter(location__level__in=["city", "regency"], location__parent__isnull=False)
+        .values("location__parent__display_name", "location__parent__name")
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+        )
+    )
+
+    merged = {}
+
+    for row in province_direct:
+        name = row["location__display_name"] or row["location__name"]
+        merged.setdefault(name, {
+            "province_name": name,
+            "total_signals": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "high_risk_count": 0,
+        })
+        merged[name]["total_signals"] += row["total_signals"]
+        merged[name]["high_risk_count"] += row["high_risk_count"]
+        if row["avg_score"] is not None:
+            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[name]["score_count"] += row["total_signals"]
+
+    for row in province_from_children:
+        name = row["location__parent__display_name"] or row["location__parent__name"]
+        merged.setdefault(name, {
+            "province_name": name,
+            "total_signals": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "high_risk_count": 0,
+        })
+        merged[name]["total_signals"] += row["total_signals"]
+        merged[name]["high_risk_count"] += row["high_risk_count"]
+        if row["avg_score"] is not None:
+            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[name]["score_count"] += row["total_signals"]
+
+    for item in merged.values():
+        province_rows.append({
+            "province_name": item["province_name"],
+            "total_signals": item["total_signals"],
+            "avg_score": round(item["score_sum"] / item["score_count"], 2) if item["score_count"] else 0,
+            "high_risk_count": item["high_risk_count"],
+        })
+
+    province_rows.sort(key=lambda x: (-x["total_signals"], x["province_name"]))
+
+    return render(request, "intel/province_map.html", {
+        "province_rows": province_rows,
+        "disease": disease,
+        "date_from": date_from,
+        "date_to": date_to,
+    })
+
+def province_map_data(request):
+    disease = (request.GET.get("disease") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    qs = SignalLocation.objects.filter(
+        is_primary=True,
+        location__isnull=False,
+        signal__status__in=["raw", "validated", "approved"],
+    )
+
+    if disease:
+        qs = qs.filter(signal__disease_tag__iexact=disease)
+
+    if date_from:
+        qs = qs.filter(signal__published_at__date__gte=date_from)
+
+    if date_to:
+        qs = qs.filter(signal__published_at__date__lte=date_to)
+
+    province_direct = (
+        qs.filter(location__level="province")
+        .values("location__display_name", "location__name")
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+        )
+    )
+
+    province_from_children = (
+        qs.filter(location__level__in=["city", "regency"], location__parent__isnull=False)
+        .values("location__parent__display_name", "location__parent__name")
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+        )
+    )
+
+    merged = {}
+
+    for row in province_direct:
+        name = row["location__display_name"] or row["location__name"]
+        merged.setdefault(name, {
+            "province_name": name,
+            "total_signals": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "high_risk_count": 0,
+        })
+        merged[name]["total_signals"] += row["total_signals"]
+        merged[name]["high_risk_count"] += row["high_risk_count"]
+        if row["avg_score"] is not None:
+            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[name]["score_count"] += row["total_signals"]
+
+    for row in province_from_children:
+        name = row["location__parent__display_name"] or row["location__parent__name"]
+        merged.setdefault(name, {
+            "province_name": name,
+            "total_signals": 0,
+            "score_sum": 0.0,
+            "score_count": 0,
+            "high_risk_count": 0,
+        })
+        merged[name]["total_signals"] += row["total_signals"]
+        merged[name]["high_risk_count"] += row["high_risk_count"]
+        if row["avg_score"] is not None:
+            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[name]["score_count"] += row["total_signals"]
+
+    rows = []
+    for item in merged.values():
+        rows.append({
+            "province_name": item["province_name"],
+            "total_signals": item["total_signals"],
+            "avg_score": round(item["score_sum"] / item["score_count"], 2) if item["score_count"] else 0,
+            "high_risk_count": item["high_risk_count"],
+        })
+
+    rows.sort(key=lambda x: (-x["total_signals"], x["province_name"]))
+    return JsonResponse({"rows": rows})
 
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def kabkota_by_province_api(request):
@@ -385,31 +566,71 @@ def raw_signals_list(request):
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def verified_signals_list(request):
-    qs = Signal.objects.select_related("source").filter(
-        status="approved"
-    )
-
     search = request.GET.get("search", "").strip()
     disease = request.GET.get("disease", "").strip()
+    geocode_status = request.GET.get("geocode_status", "").strip()
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
     sort = request.GET.get("sort", "-published_at").strip()
+    province_id = request.GET.get("province", "").strip()
+    city_id = request.GET.get("city", "").strip()
+
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location", "location__parent"
+    )
+
+    qs = (
+        Signal.objects.select_related("source")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        )
+        .filter(status="approved")
+    )
 
     if search:
         qs = qs.filter(
-            Q(title__icontains=search) |
-            Q(raw_location_text__icontains=search) |
-            Q(source_url__icontains=search)
+            Q(title__icontains=search)
+            | Q(raw_location_text__icontains=search)
+            | Q(source_url__icontains=search)
+            | Q(content__icontains=search)
+            | Q(source__name__icontains=search)
+            | Q(locations__raw_location_text__icontains=search)
+            | Q(locations__location__display_name__icontains=search)
+            | Q(locations__location__name__icontains=search)
+            | Q(locations__location__parent__display_name__icontains=search)
         )
 
     if disease:
         qs = qs.filter(disease_tag__iexact=disease)
+
+    if geocode_status:
+        qs = qs.filter(geocode_status__iexact=geocode_status)
 
     if date_from:
         qs = qs.filter(published_at__date__gte=date_from)
 
     if date_to:
         qs = qs.filter(published_at__date__lte=date_to)
+
+    if province_id:
+        qs = qs.filter(
+            Q(locations__is_primary=True, locations__location__parent_id=province_id)
+            | Q(
+                locations__is_primary=True,
+                locations__location_id=province_id,
+                locations__location__level="province",
+            )
+        )
+
+    if city_id:
+        qs = qs.filter(
+            locations__is_primary=True,
+            locations__location_id=city_id,
+        )
 
     allowed_sort_fields = {
         "published_at": "published_at",
@@ -421,7 +642,15 @@ def verified_signals_list(request):
         "title": "title",
         "-title": "-title",
     }
-    qs = qs.order_by(allowed_sort_fields.get(sort, "-published_at"), "-created_at")
+
+    sort_field = allowed_sort_fields.get(sort, "-published_at")
+    qs = qs.distinct().order_by(sort_field, "-created_at", "-id")
+
+    stats = {
+        "total_signals": qs.count(),
+        "mapped_signals": qs.filter(locations__is_primary=True).distinct().count(),
+        "high_risk_signals": qs.filter(is_high_risk=True).count(),
+    }
 
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
@@ -429,10 +658,34 @@ def verified_signals_list(request):
 
     disease_choices = (
         Signal.objects.exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
         .values_list("disease_tag", flat=True)
         .distinct()
         .order_by("disease_tag")
     )
+
+    geocode_choices = (
+        Signal.objects.exclude(geocode_status="")
+        .exclude(geocode_status__isnull=True)
+        .values_list("geocode_status", flat=True)
+        .distinct()
+        .order_by("geocode_status")
+    )
+
+    provinces = Location.objects.filter(
+        level="province",
+        is_active=True,
+        is_false_positive=False,
+    ).order_by("display_name", "name")
+
+    cities = Location.objects.filter(
+        level__in=["city", "regency"],
+        is_active=True,
+        is_false_positive=False,
+    ).select_related("parent").order_by("display_name", "name")
+
+    if province_id:
+        cities = cities.filter(parent_id=province_id)
 
     return render(request, "intel/verified_signals_list.html", {
         "page_title": "Verified Signals",
@@ -441,7 +694,148 @@ def verified_signals_list(request):
         "date_from": date_from,
         "date_to": date_to,
         "disease": disease,
+        "geocode_status": geocode_status,
         "sort": sort,
+        "province_id": province_id,
+        "city_id": city_id,
+        "disease_choices": disease_choices,
+        "geocode_choices": geocode_choices,
+        "provinces": provinces,
+        "cities": cities,
+        "stats": stats,
+    })
+
+
+def signal_region_summary(request):
+    disease = (request.GET.get("disease") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+    level = (request.GET.get("level") or "province").strip()
+
+    qs = SignalLocation.objects.filter(
+        is_primary=True,
+        location__isnull=False,
+        signal__status__in=["raw", "validated", "approved"],
+    ).select_related("location", "location__parent", "signal")
+
+    if disease:
+        qs = qs.filter(signal__disease_tag__iexact=disease)
+
+    if date_from:
+        qs = qs.filter(signal__published_at__date__gte=date_from)
+
+    if date_to:
+        qs = qs.filter(signal__published_at__date__lte=date_to)
+
+    if level == "province":
+        summary = (
+            qs.values(
+                "location__parent_id",
+                "location__parent__display_name",
+                "location__parent__name",
+                "location_id",
+                "location__display_name",
+                "location__name",
+                "location__level",
+            )
+            .annotate(
+                total_signals=Count("signal_id", distinct=True),
+                avg_score=Avg("signal__threat_score"),
+                high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+            )
+            .order_by("-total_signals")
+        )
+
+        normalized_rows = []
+        for row in summary:
+            if row["location__level"] == "province":
+                region_name = row["location__display_name"] or row["location__name"]
+            else:
+                region_name = row["location__parent__display_name"] or row["location__parent__name"]
+
+            normalized_rows.append({
+                "region_name": region_name,
+                "total_signals": row["total_signals"],
+                "avg_score": row["avg_score"] or 0,
+                "high_risk_count": row["high_risk_count"],
+            })
+
+        # gabungkan kalau ada beberapa rows untuk province yang sama
+        merged = {}
+        for row in normalized_rows:
+            key = row["region_name"]
+            if key not in merged:
+                merged[key] = {
+                    "region_name": key,
+                    "total_signals": 0,
+                    "score_sum": 0.0,
+                    "score_count": 0,
+                    "high_risk_count": 0,
+                }
+
+            merged[key]["total_signals"] += row["total_signals"]
+            merged[key]["high_risk_count"] += row["high_risk_count"]
+            if row["avg_score"] is not None:
+                merged[key]["score_sum"] += row["avg_score"] * row["total_signals"]
+                merged[key]["score_count"] += row["total_signals"]
+
+        rows = []
+        for item in merged.values():
+            avg_score = item["score_sum"] / item["score_count"] if item["score_count"] else 0
+            rows.append({
+                "region_name": item["region_name"],
+                "total_signals": item["total_signals"],
+                "avg_score": round(avg_score, 2),
+                "high_risk_count": item["high_risk_count"],
+            })
+
+        rows.sort(key=lambda x: (-x["total_signals"], x["region_name"]))
+
+    else:
+        summary = (
+            qs.filter(location__level__in=["city", "regency"])
+            .values(
+                "location_id",
+                "location__display_name",
+                "location__name",
+                "location__parent__display_name",
+                "location__parent__name",
+                "location__level",
+            )
+            .annotate(
+                total_signals=Count("signal_id", distinct=True),
+                avg_score=Avg("signal__threat_score"),
+                high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
+            )
+            .order_by("-total_signals")
+        )
+
+        rows = [
+            {
+                "region_name": row["location__display_name"] or row["location__name"],
+                "province_name": row["location__parent__display_name"] or row["location__parent__name"] or "-",
+                "level": row["location__level"],
+                "total_signals": row["total_signals"],
+                "avg_score": round(row["avg_score"] or 0, 2),
+                "high_risk_count": row["high_risk_count"],
+            }
+            for row in summary
+        ]
+
+    disease_choices = (
+        SignalLocation.objects.exclude(signal__disease_tag="")
+        .exclude(signal__disease_tag__isnull=True)
+        .values_list("signal__disease_tag", flat=True)
+        .distinct()
+        .order_by("signal__disease_tag")
+    )
+
+    return render(request, "intel/signal_region_summary.html", {
+        "rows": rows,
+        "level": level,
+        "disease": disease,
+        "date_from": date_from,
+        "date_to": date_to,
         "disease_choices": disease_choices,
     })
 
@@ -1536,7 +1930,7 @@ def alert_update_status(request, pk):
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def map_intelligence(request):
     disease = request.GET.get("disease", "").strip()
-    min_score = request.GET.get("min_score", "35").strip()
+    min_score = request.GET.get("min_score", "20").strip()
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
     status_filter = request.GET.get("status", "approved").strip()

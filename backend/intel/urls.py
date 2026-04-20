@@ -52,4 +52,8 @@ urlpatterns = [
     path("map-thematic/", views.map_thematic, name="map_thematic"),
     path("api/map-thematic-data/", views.map_thematic_data_api, name="map_thematic_data_api"),
     path("api/kabkota-by-province/", views.kabkota_by_province_api, name="kabkota_by_province_api"),
+
+    path("region-summary/", views.signal_region_summary, name="signal_region_summary"),
+    path("province-map/", views.province_map_view, name="province_map_view"),
+    path("province-map/data/", views.province_map_data, name="province_map_data"),
 ]

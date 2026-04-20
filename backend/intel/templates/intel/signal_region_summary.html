@@ -1,0 +1,61 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Ringkasan Wilayah Sinyal</h1>
+
+    <form method="get" class="filters">
+        <select name="level">
+            <option value="province" {% if level == "province" %}selected{% endif %}>Provinsi</option>
+            <option value="city" {% if level == "city" %}selected{% endif %}>Kab/Kota</option>
+        </select>
+
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Wilayah</th>
+                {% if level != "province" %}
+                    <th>Provinsi</th>
+                    <th>Level</th>
+                {% endif %}
+                <th>Total Signal</th>
+                <th>Rata-rata Skor</th>
+                <th>High Risk</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.region_name }}</td>
+                {% if level != "province" %}
+                    <td>{{ row.province_name }}</td>
+                    <td>{{ row.level }}</td>
+                {% endif %}
+                <td>{{ row.total_signals }}</td>
+                <td>{{ row.avg_score }}</td>
+                <td>{{ row.high_risk_count }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{% if level == 'province' %}4{% else %}6{% endif %}">Belum ada data.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

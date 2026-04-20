@@ -25,12 +25,37 @@
             <option value="-title" {% if sort == "-title" %}selected{% endif %}>Judul Z-A</option>
         </select>
 
+        <select name="province">
+            <option value="">Semua provinsi</option>
+            {% for item in provinces %}
+                <option value="{{ item.id }}" {% if province_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="city">
+            <option value="">Semua kab/kota</option>
+            {% for item in cities %}
+                <option value="{{ item.id }}" {% if city_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                    {% if item.parent %} - {{ item.parent.display_name|default:item.parent.name }}{% endif %}
+                </option>
+            {% endfor %}
+        </select>
+
         <button type="submit">Filter</button>
     </form>
 </div>
 
 <div class="card">
     <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+</div>
+
+<div class="card stats-row">
+    <div><strong>Total:</strong> {{ stats.total_signals }}</div>
+    <div><strong>Mapped:</strong> {{ stats.mapped_signals }}</div>
+    <div><strong>High Risk:</strong> {{ stats.high_risk_signals }}</div>
 </div>
 
 <div class="card">
@@ -44,6 +69,7 @@
                 <th>Status</th>
                 <th>Approved Mapping</th>
                 <th>Lokasi Mentah</th>
+                <th>Lokasi Match</th>
                 <th>Validator</th>
                 <th>Tanggal</th>
             </tr>
@@ -63,6 +89,19 @@
                 <td>{{ signal.status }}</td>
                 <td>{{ signal.approved_for_mapping|yesno:"Ya,Tidak" }}</td>
                 <td>{{ signal.raw_location_text|default:"-" }}</td>
+                <td>
+                    {% if signal.primary_locations %}
+                        {% with pl=signal.primary_locations.0 %}
+                            {{ pl.location.display_name }}
+                            {% if pl.location.parent %}
+                                <br><span class="small">{{ pl.location.parent.display_name }}</span>
+                            {% endif %}
+                            <br><span class="small">{{ pl.method }} | {{ pl.confidence }}</span>
+                        {% endwith %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
                 <td>{{ signal.validated_by|default:"-" }}</td>
                 <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
             </tr>

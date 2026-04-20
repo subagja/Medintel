@@ -1,0 +1,229 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="card">
+    <h1>Thematic Map Provinsi</h1>
+
+    <form method="get" class="filters">
+        <input type="text" name="disease" placeholder="Filter penyakit" value="{{ disease }}">
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total provinsi dengan signal: <strong>{{ province_rows|length }}</strong></p>
+</div>
+
+<div class="card">
+    <div id="province-map" style="height: 520px;"></div>
+</div>
+
+<div class="card">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+        <span><strong>Legend:</strong></span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#FFEDA0; border:1px solid #999;"></span> 0
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#FD8D3C; border:1px solid #999;"></span> 1-4
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#FC4E2A; border:1px solid #999;"></span> 5-9
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#E31A1C; border:1px solid #999;"></span> 10-24
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#BD0026; border:1px solid #999;"></span> 25-49
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+            <span style="width:16px; height:16px; display:inline-block; background:#800026; border:1px solid #999;"></span> 50+
+        </span>
+    </div>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Provinsi</th>
+                <th>Total Signal</th>
+                <th>Rata-rata Skor</th>
+                <th>High Risk</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in province_rows %}
+            <tr>
+                <td>{{ row.province_name }}</td>
+                <td>{{ row.total_signals }}</td>
+                <td>{{ row.avg_score }}</td>
+                <td>{{ row.high_risk_count }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4">Belum ada data.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const provinceStats = {
+    {% for row in province_rows %}
+    "{{ row.province_name|escapejs }}": {
+        total_signals: {{ row.total_signals }},
+        avg_score: {{ row.avg_score }},
+        high_risk_count: {{ row.high_risk_count }}
+    },
+    {% endfor %}
+};
+
+console.log("provinceStats keys =", Object.keys(provinceStats));
+
+const map = L.map('province-map').setView([-2.5, 118], 5);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+function normalizeName(value) {
+    return (value || "")
+        .toLowerCase()
+        .replace(/^provinsi\s+/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getColor(value) {
+    if (value >= 100) return '#4a0016';
+    if (value >= 50) return '#800026';
+    if (value >= 25) return '#BD0026';
+    if (value >= 10) return '#E31A1C';
+    if (value >= 5) return '#FC4E2A';
+    if (value >= 1) return '#FD8D3C';
+    return '#FFEDA0';
+}
+
+function getProvinceName(feature) {
+    const props = feature.properties || {};
+    return (
+        props.name ||
+        props.NAME_1 ||
+        props.PROVINSI ||
+        props.Propinsi ||
+        props.province ||
+        props.PROV_NAME ||
+        props.WADMPR ||
+        props.state ||
+        ""
+    );
+}
+
+function findProvinceStats(featureName) {
+    const target = normalizeName(featureName);
+
+    for (const key in provinceStats) {
+        if (normalizeName(key) === target) {
+            return {
+                matchedKey: key,
+                stats: provinceStats[key]
+            };
+        }
+    }
+    return null;
+}
+
+function styleFeature(feature) {
+    const featureName = getProvinceName(feature);
+    const matched = findProvinceStats(featureName);
+    const total = matched ? matched.stats.total_signals : 0;
+
+    return {
+        fillColor: getColor(total),
+        weight: 2,
+        opacity: 1,
+        color: '#333',
+        fillOpacity: total > 0 ? 0.85 : 0.35
+    };
+}
+
+function highlightFeature(e) {
+    const layer = e.target;
+    layer.setStyle({
+        weight: 3,
+        color: '#111',
+        fillOpacity: 0.95
+    });
+
+    if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+        layer.bringToFront();
+    }
+}
+
+let geojsonLayer = null;
+
+function resetHighlight(e) {
+    if (geojsonLayer) {
+        geojsonLayer.resetStyle(e.target);
+    }
+}
+
+function onEachFeature(feature, layer) {
+    const featureName = getProvinceName(feature) || "-";
+    const matched = findProvinceStats(featureName);
+
+    let popup = `<strong>${featureName}</strong><br>Total Signal: 0<br>Avg Score: 0<br>High Risk: 0`;
+
+    if (matched) {
+        popup = `
+            <strong>${featureName}</strong><br>
+            Total Signal: ${matched.stats.total_signals}<br>
+            Avg Score: ${matched.stats.avg_score}<br>
+            High Risk: ${matched.stats.high_risk_count}
+        `;
+    }
+
+    layer.bindPopup(popup);
+
+    layer.on({
+        mouseover: highlightFeature,
+        mouseout: resetHighlight
+    });
+}
+
+fetch("{% static 'geo/indonesia_provinces.geojson' %}")
+    .then(response => {
+        console.log("geojson fetch status =", response.status);
+        if (!response.ok) {
+            throw new Error("GeoJSON gagal dimuat. Status: " + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log("geojson loaded =", data);
+        console.log("first feature props =", data.features?.[0]?.properties);
+
+        geojsonLayer = L.geoJSON(data, {
+            style: styleFeature,
+            onEachFeature: onEachFeature
+        }).addTo(map);
+
+        map.fitBounds(geojsonLayer.getBounds());
+    })
+    .catch(error => {
+        console.error("geojson load error =", error);
+    });
+</script>
+{% endblock %}

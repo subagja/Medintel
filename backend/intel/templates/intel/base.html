@@ -163,6 +163,9 @@
         <a href="{% url 'intel:alert_center' %}">Alerts</a>
         <a href="{% url 'intel:map_intelligence' %}">Map</a>
         <a href="{% url 'intel:map_thematic' %}">Thematic Map</a>
+        <!-- <a href="{% url 'intel:signal_region_summary' %}">Region Summary</a> -->
+        <a href="{% url 'intel:province_map_view' %}">Map Province</a>
+        <!-- <a href="{% url 'intel:province_map_data' %}">Province Data</a> -->
         <a href="/admin/">Admin</a>
         {% if request.user.is_superuser %}
             <a href="{% url 'intel:user_role_management' %}">User & Roles</a>
