@@ -3,14 +3,11 @@ import time
 import html
 import csv
 import socket
-from typing import Dict, List, Tuple
-
-from intel.services.nlp_extractor import extract_entities
-
 import feedparser
 import requests
+from typing import Dict, List, Tuple
+from intel.services.nlp_extractor import extract_entities
 from bs4 import BeautifulSoup
-
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import (
@@ -19,6 +16,8 @@ from geopy.exc import (
     GeocoderServiceError,
     GeocoderQuotaExceeded,
 )
+
+from intel.models import Location, LocationAlias
 
 
 # =========================
@@ -79,43 +78,72 @@ def contains_phrase(text_norm: str, phrase_norm: str) -> bool:
 # =========================
 # GAZETTEER
 # =========================
-def load_gazetteer(path: str = "gazetteer_id.csv") -> List[Dict]:
+def load_gazetteer() -> List[Dict]:
     entries: List[Dict] = []
 
-    with open(path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for r in reader:
-            name = clean_text(r.get("name", ""))
-            level = clean_text(r.get("level", "")).lower().strip()
-            prov = clean_text(r.get("province", ""))
+    locations = Location.objects.filter(
+        is_active=True,
+        is_false_positive=False,
+    ).select_related("parent")
 
-            aliases_raw = clean_text(r.get("aliases", ""))
-            aliases = [a.strip() for a in aliases_raw.split("|") if a.strip()]
+    alias_map: Dict[int, List[str]] = {}
+    for a in LocationAlias.objects.filter(
+        is_active=True,
+        location__is_active=True,
+        location__is_false_positive=False,
+    ).select_related("location"):
+        alias_map.setdefault(a.location_id, []).append(clean_text(a.alias))
 
-            forms = [name] + aliases
-            forms_norm = sorted(
-                {norm(x) for x in forms if norm(x)},
-                key=len,
-                reverse=True
-            )
+    for loc in locations:
+        name = clean_text(loc.display_name or loc.name or "")
+        level = clean_text(loc.level or "").lower().strip()
 
-            admin_kabkota = ""
-            admin_province = ""
+        province = ""
+        if level in ["city", "regency", "kota", "kabupaten"] and loc.parent:
+            province = clean_text(loc.parent.display_name or loc.parent.name or "")
+        elif level in ["province", "provinsi"]:
+            province = clean_text(loc.display_name or loc.name or "")
 
-            if level in ["kota", "kabupaten", "city", "regency"]:
-                admin_kabkota = name
-                admin_province = prov
-            elif level in ["province", "provinsi"]:
-                admin_province = name
+        aliases = alias_map.get(loc.id, [])
 
-            entries.append({
-                "name": name,
-                "level": level,
-                "province": prov,
-                "forms_norm": forms_norm,
-                "admin_province": admin_province,
-                "admin_kabkota": admin_kabkota,
-            })
+        forms = [name] + aliases
+
+        # tambahkan variasi tanpa prefix supaya match lebih fleksibel
+        if level in ["city", "kota"] and name.lower().startswith("kota "):
+            forms.append(name[5:].strip())
+
+        if level in ["regency", "kabupaten"]:
+            lowered = name.lower()
+            if lowered.startswith("kabupaten "):
+                forms.append(name[10:].strip())
+            elif lowered.startswith("kab "):
+                forms.append(name[4:].strip())
+            elif lowered.startswith("kab. "):
+                forms.append(name[5:].strip())
+
+        forms_norm = sorted(
+            {norm(x) for x in forms if norm(x)},
+            key=len,
+            reverse=True
+        )
+
+        admin_kabkota = ""
+        admin_province = ""
+
+        if level in ["kota", "kabupaten", "city", "regency"]:
+            admin_kabkota = name
+            admin_province = province
+        elif level in ["province", "provinsi"]:
+            admin_province = name
+
+        entries.append({
+            "name": name,
+            "level": level,
+            "province": province,
+            "forms_norm": forms_norm,
+            "admin_province": admin_province,
+            "admin_kabkota": admin_kabkota,
+        })
 
     prio = {
         "kota": 4,
@@ -134,7 +162,6 @@ def load_gazetteer(path: str = "gazetteer_id.csv") -> List[Dict]:
         reverse=True
     )
     return entries
-
 
 # =========================
 # LOCATION VALIDATION
@@ -208,7 +235,8 @@ class MedIntelCrawler:
         BASE_DIR = Path(__file__).resolve().parent
         GAZETTEER_PATH = BASE_DIR.parent / "services" / "gazetteer_id.csv"
 
-        self.gazetteer = load_gazetteer(str(GAZETTEER_PATH))
+        # self.gazetteer = load_gazetteer(str(GAZETTEER_PATH))
+        self.gazetteer = load_gazetteer()
 
         self.danger_keywords = ["meningkat", "wabah", "meninggal", "klb", "darurat", "waspada"]
 
@@ -576,6 +604,8 @@ class MedIntelCrawler:
                 lat, lon, geo_status = self.geocode_location(loc_for_geocode, conf)
 
                 rows.append({
+                    "body": body,
+                    "combined_text": combined,
                     "tanggal": tanggal,
                     "penyakit_tag": kw,
                     "detected_diseases": "|".join(detected_diseases),

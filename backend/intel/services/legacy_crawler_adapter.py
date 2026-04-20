@@ -1,13 +1,66 @@
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-
 from django.utils import timezone
-
+from django.db.models import Q
 from intel.models import Signal, SignalLocation, Source, Location
-from intel.utils.location_resolver import resolve_location_from_text
+from intel.utils.location_resolver import normalize_text, resolve_location_from_text
 
 # sesuaikan import path-nya dengan lokasi file crawler lama kamu
 from intel.services.legacy_crawler import MedIntelCrawler
+
+def fallback_location_from_legacy_fields(row: dict):
+    admin_province = (row.get("admin_province") or "").strip()
+    admin_kabkota = (row.get("admin_kabkota") or "").strip()
+    level_lokasi = (row.get("level_lokasi") or "").strip().lower()
+
+    province_norm = normalize_text(admin_province)
+    kabkota_norm = normalize_text(admin_kabkota)
+
+    province_obj = None
+    if province_norm:
+        province_obj = Location.objects.filter(
+            level="province",
+            is_active=True,
+            is_false_positive=False,
+        ).filter(
+            Q(normalized_name=province_norm)
+            | Q(normalized_name=province_norm.replace("_", " "))
+            | Q(normalized_name=province_norm.replace(" ", "_"))
+            | Q(display_name__iexact=admin_province)
+            | Q(name__iexact=admin_province)
+            | Q(province_code__iexact=province_norm)
+        ).first()
+
+    if kabkota_norm:
+        qs = Location.objects.filter(
+            is_active=True,
+            is_false_positive=False,
+        ).filter(
+            Q(normalized_name=kabkota_norm)
+            | Q(normalized_name=kabkota_norm.replace("_", " "))
+            | Q(normalized_name=kabkota_norm.replace(" ", "_"))
+            | Q(display_name__iexact=admin_kabkota)
+            | Q(name__iexact=admin_kabkota)
+        )
+
+        if level_lokasi in ["city", "kota"]:
+            qs = qs.filter(level="city")
+        elif level_lokasi in ["regency", "kabupaten"]:
+            qs = qs.filter(level="regency")
+        else:
+            qs = qs.filter(level__in=["city", "regency"])
+
+        if province_obj:
+            qs = qs.filter(parent=province_obj)
+
+        loc = qs.first()
+        if loc:
+            return loc, "legacy_admin_normalized", 0.90
+
+    if province_obj:
+        return province_obj, "legacy_admin_province_normalized", 0.82
+
+    return None, "", 0.0
 
 
 def parse_datetime_safe(value):
@@ -48,7 +101,8 @@ def ingest_legacy_row(row: dict):
     source_name = row.get("sumber", "Google News")
     source_url = row.get("final_url") or row.get("link") or ""
     title = row.get("judul", "") or ""
-    content = row.get("summary", "") or ""
+    # content = row.get("summary", "") or ""
+    content = row.get("body") or row.get("combined_text") or row.get("summary", "") or ""
     raw_location_text = row.get("lokasi_mentah", "") or ""
     disease_tag = row.get("penyakit_tag", "") or ""
 
@@ -81,15 +135,26 @@ def ingest_legacy_row(row: dict):
     # resolve pakai raw_location_text dari crawler lama
     result = resolve_location_from_text(raw_location_text)
 
-    if result.location_obj:
+    location_obj = result.location_obj
+    method = result.method
+    confidence = result.confidence
+
+    if not location_obj:
+        fallback_loc, fallback_method, fallback_conf = fallback_location_from_legacy_fields(row)
+        if fallback_loc:
+            location_obj = fallback_loc
+            method = fallback_method
+            confidence = fallback_conf
+
+    if location_obj:
         SignalLocation.objects.update_or_create(
             signal=signal,
             is_primary=True,
             defaults={
-                "location": result.location_obj,
+                "location": location_obj,
                 "raw_location_text": raw_location_text,
-                "confidence": result.confidence,
-                "method": f"legacy_crawler:{result.method}",
+                "confidence": confidence,
+                "method": method,
             },
         )
 

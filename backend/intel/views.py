@@ -5,8 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from .permissions import role_required, user_has_role, ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER
 from django.core.paginator import Paginator
-from django.db.models import Q
-from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models import Prefetch, Q
+from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Count, Avg, Min, Max
@@ -250,35 +250,71 @@ def export_signals_csv(request):
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def raw_signals_list(request):
-    qs = Signal.objects.select_related("source").filter(
-        status__in=["raw", "validated"]
-    )
-
     search = request.GET.get("search", "").strip()
     disease = request.GET.get("disease", "").strip()
     geocode_status = request.GET.get("geocode_status", "").strip()
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
     sort = request.GET.get("sort", "-published_at").strip()
+    province_id = request.GET.get("province", "").strip()
+    city_id = request.GET.get("city", "").strip()
+
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location", "location__parent"
+    )
+
+    qs = (
+        Signal.objects.select_related("source")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        )
+        .filter(status__in=["raw", "validated"])
+    )
 
     if search:
         qs = qs.filter(
-            Q(title__icontains=search) |
-            Q(raw_location_text__icontains=search) |
-            Q(source_url__icontains=search)
+            Q(title__icontains=search)
+            | Q(raw_location_text__icontains=search)
+            | Q(source_url__icontains=search)
+            | Q(content__icontains=search)
+            | Q(source__name__icontains=search)
+            | Q(locations__raw_location_text__icontains=search)
+            | Q(locations__location__display_name__icontains=search)
+            | Q(locations__location__name__icontains=search)
+            | Q(locations__location__parent__display_name__icontains=search)
         )
 
     if disease:
         qs = qs.filter(disease_tag__iexact=disease)
 
     if geocode_status:
-        qs = qs.filter(geocode_status=geocode_status)
+        qs = qs.filter(geocode_status__iexact=geocode_status)
 
     if date_from:
         qs = qs.filter(published_at__date__gte=date_from)
 
     if date_to:
         qs = qs.filter(published_at__date__lte=date_to)
+
+    if province_id:
+        qs = qs.filter(
+            Q(locations__is_primary=True, locations__location__parent_id=province_id)
+            | Q(
+                locations__is_primary=True,
+                locations__location_id=province_id,
+                locations__location__level="province",
+            )
+        )
+
+    if city_id:
+        qs = qs.filter(
+            locations__is_primary=True,
+            locations__location_id=city_id,
+        )
 
     allowed_sort_fields = {
         "published_at": "published_at",
@@ -290,7 +326,9 @@ def raw_signals_list(request):
         "title": "title",
         "-title": "-title",
     }
-    qs = qs.order_by(allowed_sort_fields.get(sort, "-published_at"), "-created_at")
+
+    sort_field = allowed_sort_fields.get(sort, "-published_at")
+    qs = qs.distinct().order_by(sort_field, "-created_at", "-id")
 
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
@@ -298,6 +336,7 @@ def raw_signals_list(request):
 
     disease_choices = (
         Signal.objects.exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
         .values_list("disease_tag", flat=True)
         .distinct()
         .order_by("disease_tag")
@@ -305,10 +344,26 @@ def raw_signals_list(request):
 
     geocode_choices = (
         Signal.objects.exclude(geocode_status="")
+        .exclude(geocode_status__isnull=True)
         .values_list("geocode_status", flat=True)
         .distinct()
         .order_by("geocode_status")
     )
+
+    provinces = Location.objects.filter(
+        level="province",
+        is_active=True,
+        is_false_positive=False,
+    ).order_by("display_name", "name")
+
+    cities = Location.objects.filter(
+        level__in=["city", "regency"],
+        is_active=True,
+        is_false_positive=False,
+    ).select_related("parent").order_by("display_name", "name")
+
+    if province_id:
+        cities = cities.filter(parent_id=province_id)
 
     return render(request, "intel/raw_signals_list.html", {
         "page_title": "Raw Signals",
@@ -319,8 +374,12 @@ def raw_signals_list(request):
         "disease": disease,
         "geocode_status": geocode_status,
         "sort": sort,
+        "province_id": province_id,
+        "city_id": city_id,
         "disease_choices": disease_choices,
         "geocode_choices": geocode_choices,
+        "provinces": provinces,
+        "cities": cities,
     })
     
 @login_required

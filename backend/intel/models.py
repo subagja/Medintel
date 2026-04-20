@@ -217,7 +217,12 @@ class SignalLocation(TimeStampedModel):
         ("alias", "Alias"),
     ]
 
-    signal = models.ForeignKey(Signal, on_delete=models.CASCADE, related_name="signal_locations")
+    # signal = models.ForeignKey(Signal, on_delete=models.CASCADE, related_name="signal_locations")
+    signal = models.ForeignKey(
+        Signal,
+        on_delete=models.CASCADE,
+        related_name="locations",   # atau nama lain
+    )
     location = models.ForeignKey(Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="signal_links")
 
     raw_location_text = models.CharField(max_length=255, blank=True, default="")

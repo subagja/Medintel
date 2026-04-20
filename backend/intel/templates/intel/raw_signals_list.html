@@ -20,6 +20,25 @@
             {% endfor %}
         </select>
 
+        <select name="province">
+            <option value="">Semua provinsi</option>
+            {% for item in provinces %}
+                <option value="{{ item.id }}" {% if province_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="city">
+            <option value="">Semua kab/kota</option>
+            {% for item in cities %}
+                <option value="{{ item.id }}" {% if city_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                    {% if item.parent %} - {{ item.parent.display_name|default:item.parent.name }}{% endif %}
+                </option>
+            {% endfor %}
+        </select>
+
         <input type="date" name="date_from" value="{{ date_from }}">
         <input type="date" name="date_to" value="{{ date_to }}">
 
@@ -50,6 +69,7 @@
                 <th>Skor</th>
                 <th>Geocode</th>
                 <th>Lokasi Mentah</th>
+                <th>Lokasi Match</th>
                 <th>Sumber</th>
                 <th>Tanggal</th>
                 <th>Status</th>
@@ -77,6 +97,19 @@
                 </td>
                 <td>{{ signal.geocode_status }}</td>
                 <td>{{ signal.raw_location_text|default:"-" }}</td>
+                <td>
+                    {% if signal.primary_locations %}
+                        {% with pl=signal.primary_locations.0 %}
+                            {{ pl.location.display_name }}
+                            {% if pl.location.parent %}
+                                <br><span class="small">{{ pl.location.parent.display_name }}</span>
+                            {% endif %}
+                            <br><span class="small">{{ pl.method }} | {{ pl.confidence }}</span>
+                        {% endwith %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
                 <td>{{ signal.source.name|default:"-" }}</td>
                 <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ signal.status }}</td>
@@ -97,7 +130,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="10">Belum ada data raw signal.</td>
+                <td colspan="11">Belum ada data raw signal.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -106,7 +139,7 @@
 
 <div class="pagination">
     {% if page_obj.has_previous %}
-        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
         <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
     {% endif %}
 
