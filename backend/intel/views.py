@@ -34,6 +34,85 @@ from .models import (
     Alert,
 )
 
+def kabkota_map_view(request, province_id):
+    province = get_object_or_404(
+        Location,
+        id=province_id,
+        level="province",
+        is_active=True,
+        is_false_positive=False,
+    )
+
+    disease = (request.GET.get("disease") or "").strip()
+    date_from = (request.GET.get("date_from") or "").strip()
+    date_to = (request.GET.get("date_to") or "").strip()
+
+    qs = SignalLocation.objects.filter(
+        is_primary=True,
+        location__isnull=False,
+        location__level__in=["city", "regency"],
+        location__parent=province,
+        signal__status__in=["raw", "validated", "approved"],
+    )
+
+    if disease:
+        qs = qs.filter(signal__disease_tag__iexact=disease)
+
+    if date_from:
+        qs = qs.filter(signal__published_at__date__gte=date_from)
+
+    if date_to:
+        qs = qs.filter(signal__published_at__date__lte=date_to)
+
+    rows = list(
+        qs.values(
+            "location_id",
+            "location__display_name",
+            "location__name",
+            "location__level",
+            "location__city_regency_code",
+        )
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count(
+                "signal_id",
+                filter=Q(signal__is_high_risk=True),
+                distinct=True,
+            ),
+        )
+        .order_by("-total_signals", "location__display_name")
+    )
+
+    normalized_rows = []
+    for row in rows:
+        normalized_rows.append({
+            "location_id": row["location_id"],
+            "kabkota_name": row["location__display_name"] or row["location__name"],
+            "level": row["location__level"],
+            "city_regency_code": row["location__city_regency_code"] or "",
+            "total_signals": row["total_signals"],
+            "avg_score": round(row["avg_score"] or 0, 2),
+            "high_risk_count": row["high_risk_count"],
+        })
+
+    disease_choices = (
+        SignalLocation.objects.exclude(signal__disease_tag="")
+        .exclude(signal__disease_tag__isnull=True)
+        .values_list("signal__disease_tag", flat=True)
+        .distinct()
+        .order_by("signal__disease_tag")
+    )
+
+    return render(request, "intel/kabkota_map.html", {
+        "province": province,
+        "rows": normalized_rows,
+        "disease": disease,
+        "date_from": date_from,
+        "date_to": date_to,
+        "disease_choices": disease_choices,
+    })
+
 def province_map_view(request):
     disease = (request.GET.get("disease") or "").strip()
     date_from = (request.GET.get("date_from") or "").strip()
@@ -54,67 +133,92 @@ def province_map_view(request):
     if date_to:
         qs = qs.filter(signal__published_at__date__lte=date_to)
 
-    province_rows = []
-
-    # Ambil semua signal yang match langsung ke province
-    province_direct = (
-        qs.filter(location__level="province")
-        .values("location__display_name", "location__name")
-        .annotate(
-            total_signals=Count("signal_id", distinct=True),
-            avg_score=Avg("signal__threat_score"),
-            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
-        )
-    )
-
-    # Ambil semua signal city/regency lalu agregasikan ke parent province
-    province_from_children = (
-        qs.filter(location__level__in=["city", "regency"], location__parent__isnull=False)
-        .values("location__parent__display_name", "location__parent__name")
-        .annotate(
-            total_signals=Count("signal_id", distinct=True),
-            avg_score=Avg("signal__threat_score"),
-            high_risk_count=Count("signal_id", filter=Q(signal__is_high_risk=True), distinct=True),
-        )
-    )
-
     merged = {}
 
+    # match langsung ke province
+    province_direct = (
+        qs.filter(location__level="province")
+        .values(
+            "location_id",
+            "location__display_name",
+            "location__name",
+        )
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count(
+                "signal_id",
+                filter=Q(signal__is_high_risk=True),
+                distinct=True,
+            ),
+        )
+    )
+
+    # match ke city/regency, lalu naikkan ke parent province
+    province_from_children = (
+        qs.filter(location__level__in=["city", "regency"], location__parent__isnull=False)
+        .values(
+            "location__parent_id",
+            "location__parent__display_name",
+            "location__parent__name",
+        )
+        .annotate(
+            total_signals=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_count=Count(
+                "signal_id",
+                filter=Q(signal__is_high_risk=True),
+                distinct=True,
+            ),
+        )
+    )
+
     for row in province_direct:
-        name = row["location__display_name"] or row["location__name"]
-        merged.setdefault(name, {
-            "province_name": name,
+        province_id = row["location_id"]
+        province_name = row["location__display_name"] or row["location__name"]
+
+        merged.setdefault(province_id, {
+            "province_id": province_id,
+            "province_name": province_name,
             "total_signals": 0,
             "score_sum": 0.0,
             "score_count": 0,
             "high_risk_count": 0,
         })
-        merged[name]["total_signals"] += row["total_signals"]
-        merged[name]["high_risk_count"] += row["high_risk_count"]
+
+        merged[province_id]["total_signals"] += row["total_signals"]
+        merged[province_id]["high_risk_count"] += row["high_risk_count"]
         if row["avg_score"] is not None:
-            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
-            merged[name]["score_count"] += row["total_signals"]
+            merged[province_id]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[province_id]["score_count"] += row["total_signals"]
 
     for row in province_from_children:
-        name = row["location__parent__display_name"] or row["location__parent__name"]
-        merged.setdefault(name, {
-            "province_name": name,
+        province_id = row["location__parent_id"]
+        province_name = row["location__parent__display_name"] or row["location__parent__name"]
+
+        merged.setdefault(province_id, {
+            "province_id": province_id,
+            "province_name": province_name,
             "total_signals": 0,
             "score_sum": 0.0,
             "score_count": 0,
             "high_risk_count": 0,
         })
-        merged[name]["total_signals"] += row["total_signals"]
-        merged[name]["high_risk_count"] += row["high_risk_count"]
-        if row["avg_score"] is not None:
-            merged[name]["score_sum"] += row["avg_score"] * row["total_signals"]
-            merged[name]["score_count"] += row["total_signals"]
 
+        merged[province_id]["total_signals"] += row["total_signals"]
+        merged[province_id]["high_risk_count"] += row["high_risk_count"]
+        if row["avg_score"] is not None:
+            merged[province_id]["score_sum"] += row["avg_score"] * row["total_signals"]
+            merged[province_id]["score_count"] += row["total_signals"]
+
+    province_rows = []
     for item in merged.values():
+        avg_score = item["score_sum"] / item["score_count"] if item["score_count"] else 0
         province_rows.append({
+            "province_id": item["province_id"],
             "province_name": item["province_name"],
             "total_signals": item["total_signals"],
-            "avg_score": round(item["score_sum"] / item["score_count"], 2) if item["score_count"] else 0,
+            "avg_score": round(avg_score, 2),
             "high_risk_count": item["high_risk_count"],
         })
 

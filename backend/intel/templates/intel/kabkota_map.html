@@ -3,10 +3,15 @@
 
 {% block content %}
 <div class="card">
-    <h1>Thematic Map Provinsi</h1>
+    <h1>Thematic Map Kab/Kota - {{ province.display_name|default:province.name }}</h1>
 
     <form method="get" class="filters">
-        <input type="text" name="disease" placeholder="Filter penyakit" value="{{ disease }}">
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+        </select>
         <input type="date" name="date_from" value="{{ date_from }}">
         <input type="date" name="date_to" value="{{ date_to }}">
         <button type="submit">Filter</button>
@@ -14,11 +19,11 @@
 </div>
 
 <div class="card">
-    <p>Total provinsi dengan signal: <strong>{{ province_rows|length }}</strong></p>
+    <p>Total kab/kota dengan signal: <strong>{{ rows|length }}</strong></p>
 </div>
 
 <div class="card">
-    <div id="province-map" style="height: 520px;"></div>
+    <div id="kabkota-map" style="height: 560px;"></div>
 </div>
 
 <div class="card">
@@ -49,55 +54,55 @@
     <table>
         <thead>
             <tr>
-                <th>Provinsi</th>
+                <th>Kab/Kota</th>
+                <th>Level</th>
+                <th>Kode</th>
                 <th>Total Signal</th>
                 <th>Rata-rata Skor</th>
                 <th>High Risk</th>
             </tr>
         </thead>
         <tbody>
-            {% for row in province_rows %}
+            {% for row in rows %}
             <tr>
-                <td>
-                    {% if row.province_id %}
-                        <a href="{% url 'intel:kabkota_map_view' row.province_id %}">{{ row.province_name }}</a>
-                    {% else %}
-                        {{ row.province_name }}
-                    {% endif %}
-                </td>
+                <td>{{ row.kabkota_name }}</td>
+                <td>{{ row.level }}</td>
+                <td>{{ row.city_regency_code|default:"-" }}</td>
                 <td>{{ row.total_signals }}</td>
                 <td>{{ row.avg_score }}</td>
                 <td>{{ row.high_risk_count }}</td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4">Belum ada data.</td>
+                <td colspan="6">Belum ada data.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-const provinceStats = {
-    {% for row in province_rows %}
-    "{{ row.province_name|escapejs }}": {
+const kabkotaStats = {
+    {% for row in rows %}
+    "{{ row.kabkota_name|escapejs }}": {
         total_signals: {{ row.total_signals }},
         avg_score: {{ row.avg_score }},
-        high_risk_count: {{ row.high_risk_count }}
+        high_risk_count: {{ row.high_risk_count }},
+        level: "{{ row.level }}",
+        city_regency_code: "{{ row.city_regency_code|default:''|escapejs }}"
     },
     {% endfor %}
 };
 
-console.log("provinceStats keys =", Object.keys(provinceStats));
+console.log("kabkotaStats keys =", Object.keys(kabkotaStats));
 
-const map = L.map('province-map').setView([-2.5, 118], 5);
+const map = L.map('kabkota-map').setView(
+    [{{ province.lat|default:"-2.5" }}, {{ province.lon|default:"118" }}],
+    8
+);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -107,9 +112,16 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 function normalizeName(value) {
     return (value || "")
         .toLowerCase()
-        .replace(/^provinsi\s+/, "")
+        .replace(/^kabupaten\s+/, "")
+        .replace(/^kab\.\s+/, "")
+        .replace(/^kab\s+/, "")
+        .replace(/^kota\s+/, "")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+function normalizeCode(value) {
+    return (value || "").toString().trim();
 }
 
 function getColor(value) {
@@ -122,63 +134,84 @@ function getColor(value) {
     return '#FFEDA0';
 }
 
-function getProvinceName(feature) {
+function getFeatureName(feature) {
     const props = feature.properties || {};
     return (
+        props.display_name ||
         props.name ||
-        props.NAME_1 ||
-        props.PROVINSI ||
-        props.Propinsi ||
-        props.province ||
-        props.PROV_NAME ||
-        props.WADMPR ||
-        props.state ||
+        props.NAME_2 ||
+        props.kabkot ||
+        props.kabupaten ||
+        props.kota ||
         ""
     );
 }
 
-function findProvinceStats(featureName) {
-    const target = normalizeName(featureName);
+function getFeatureCode(feature) {
+    const props = feature.properties || {};
+    return normalizeCode(
+        props.city_regency_code ||
+        props.bps_code ||
+        props.kode ||
+        props.code ||
+        ""
+    );
+}
 
-    for (const key in provinceStats) {
+function findKabkotaStats(feature) {
+    const featureCode = getFeatureCode(feature);
+    const featureName = getFeatureName(feature);
+
+    if (featureCode) {
+        for (const key in kabkotaStats) {
+            const item = kabkotaStats[key];
+            if (normalizeCode(item.city_regency_code) === featureCode) {
+                return {
+                    matchedKey: key,
+                    stats: item,
+                    matchedBy: "code"
+                };
+            }
+        }
+    }
+
+    const target = normalizeName(featureName);
+    for (const key in kabkotaStats) {
         if (normalizeName(key) === target) {
             return {
                 matchedKey: key,
-                stats: provinceStats[key]
+                stats: kabkotaStats[key],
+                matchedBy: "name"
             };
         }
     }
+
     return null;
 }
 
 function styleFeature(feature) {
-    const featureName = getProvinceName(feature);
-    const matched = findProvinceStats(featureName);
+    const matched = findKabkotaStats(feature);
     const total = matched ? matched.stats.total_signals : 0;
 
     return {
         fillColor: getColor(total),
-        weight: 2,
+        weight: 1.2,
         opacity: 1,
         color: '#333',
-        fillOpacity: total > 0 ? 0.85 : 0.35
+        fillOpacity: total > 0 ? 0.85 : 0.30
     };
 }
+
+let geojsonLayer = null;
 
 function highlightFeature(e) {
     const layer = e.target;
     layer.setStyle({
-        weight: 3,
+        weight: 2,
         color: '#111',
         fillOpacity: 0.95
     });
-
-    if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-        layer.bringToFront();
-    }
 }
-
-let geojsonLayer = null;
 
 function resetHighlight(e) {
     if (geojsonLayer) {
@@ -187,14 +220,17 @@ function resetHighlight(e) {
 }
 
 function onEachFeature(feature, layer) {
-    const featureName = getProvinceName(feature) || "-";
-    const matched = findProvinceStats(featureName);
+    const rawName = getFeatureName(feature) || "-";
+    const rawCode = getFeatureCode(feature) || "-";
+    const matched = findKabkotaStats(feature);
 
-    let popup = `<strong>${featureName}</strong><br>Total Signal: 0<br>Avg Score: 0<br>High Risk: 0`;
+    let popup = `<strong>${rawName}</strong><br>Kode: ${rawCode}<br>Total Signal: 0<br>Avg Score: 0<br>High Risk: 0`;
 
     if (matched) {
         popup = `
-            <strong>${featureName}</strong><br>
+            <strong>${rawName}</strong><br>
+            Kode: ${rawCode}<br>
+            Match By: ${matched.matchedBy}<br>
             Total Signal: ${matched.stats.total_signals}<br>
             Avg Score: ${matched.stats.avg_score}<br>
             High Risk: ${matched.stats.high_risk_count}
@@ -209,27 +245,42 @@ function onEachFeature(feature, layer) {
     });
 }
 
-fetch("{% static 'geo/indonesia_provinces.geojson' %}")
+fetch("{% static 'geo/indonesia_kabkota.geojson' %}")
     .then(response => {
-        console.log("geojson fetch status =", response.status);
+        console.log("kabkota geojson status =", response.status);
         if (!response.ok) {
             throw new Error("GeoJSON gagal dimuat. Status: " + response.status);
         }
         return response.json();
     })
     .then(data => {
-        console.log("geojson loaded =", data);
-        console.log("first feature props =", data.features?.[0]?.properties);
+        console.log("kabkota geojson loaded =", data);
+        console.log("first kabkota feature props =", data.features?.[0]?.properties);
 
-        geojsonLayer = L.geoJSON(data, {
-            style: styleFeature,
-            onEachFeature: onEachFeature
-        }).addTo(map);
+        const provinceName = "{{ province.display_name|default:province.name|escapejs }}".toLowerCase();
 
-        map.fitBounds(geojsonLayer.getBounds());
+        const filteredFeatures = (data.features || []).filter(f => {
+            const props = f.properties || {};
+            const pName = (props.province_name || "").toLowerCase();
+            return pName === provinceName;
+        });
+
+        console.log("filtered kabkota features =", filteredFeatures.length);
+
+        geojsonLayer = L.geoJSON(
+            { type: "FeatureCollection", features: filteredFeatures },
+            {
+                style: styleFeature,
+                onEachFeature: onEachFeature
+            }
+        ).addTo(map);
+
+        if (filteredFeatures.length > 0) {
+            map.fitBounds(geojsonLayer.getBounds());
+        }
     })
     .catch(error => {
-        console.error("geojson load error =", error);
+        console.error("GeoJSON load error:", error);
     });
 </script>
 {% endblock %}

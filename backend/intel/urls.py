@@ -56,4 +56,6 @@ urlpatterns = [
     path("region-summary/", views.signal_region_summary, name="signal_region_summary"),
     path("province-map/", views.province_map_view, name="province_map_view"),
     path("province-map/data/", views.province_map_data, name="province_map_data"),
+    path("province-map/<int:province_id>/kabkota/", views.kabkota_map_view, name="kabkota_map_view"),
+    
 ]
