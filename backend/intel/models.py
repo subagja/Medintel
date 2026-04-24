@@ -146,6 +146,20 @@ class Signal(TimeStampedModel):
     ]
 
     GEOCODE_STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("ok", "OK"),
+        ("matched", "Matched"),
+        ("gazetteer_only", "Gazetteer Only"),
+        ("manual", "Manual"),
+
+        ("empty_loc", "Empty Location"),
+        ("not_found", "Not Found"),
+        ("net_err", "Network Error"),
+        ("skip_noise", "Skip Noise"),
+        ("skip_too_general", "Skip Too General"),
+        ("skip_low_conf", "Skip Low Confidence"),
+
+        # Legacy uppercase compatibility
         ("OK", "OK"),
         ("EMPTY_LOC", "EMPTY_LOC"),
         ("NOT_FOUND", "NOT_FOUND"),
@@ -165,6 +179,14 @@ class Signal(TimeStampedModel):
     published_at = models.DateTimeField(null=True, blank=True)
     crawled_at = models.DateTimeField(null=True, blank=True)
 
+    admin_province = models.CharField(max_length=150, blank=True, default="")
+    admin_kabkota = models.CharField(max_length=150, blank=True, default="")
+    location_level = models.CharField(max_length=50, blank=True, default="")
+
+    scoring_reason = models.TextField(blank=True, default="")
+    scoring_breakdown = models.JSONField(blank=True, default=dict)
+    risk_level = models.CharField(max_length=20, blank=True, default="")
+
     disease_tag = models.CharField(max_length=100, blank=True, default="", db_index=True)
     threat_score = models.IntegerField(default=0, db_index=True)
 
@@ -172,7 +194,7 @@ class Signal(TimeStampedModel):
     geocode_status = models.CharField(
         max_length=30,
         choices=GEOCODE_STATUS_CHOICES,
-        default="PENDING",
+        default="pending",
         db_index=True,
     )
 
@@ -215,19 +237,28 @@ class SignalLocation(TimeStampedModel):
         ("manual", "Manual"),
         ("gazetteer", "Gazetteer"),
         ("alias", "Alias"),
+        ("location_exact", "Location Exact"),
+        ("location_alias", "Location Alias"),
+        ("legacy_admin_normalized", "Legacy Admin Normalized"),
+        ("legacy_admin_province_normalized", "Legacy Admin Province Normalized"),
     ]
 
-    # signal = models.ForeignKey(Signal, on_delete=models.CASCADE, related_name="signal_locations")
     signal = models.ForeignKey(
         Signal,
         on_delete=models.CASCADE,
-        related_name="locations",   # atau nama lain
+        related_name="locations",
     )
-    location = models.ForeignKey(Location, null=True, blank=True, on_delete=models.SET_NULL, related_name="signal_links")
+    location = models.ForeignKey(
+        Location,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signal_links",
+    )
 
     raw_location_text = models.CharField(max_length=255, blank=True, default="")
     confidence = models.FloatField(null=True, blank=True)
-    method = models.CharField(max_length=20, choices=METHOD_CHOICES, default="auto")
+    method = models.CharField(max_length=50, choices=METHOD_CHOICES, default="auto")
     is_primary = models.BooleanField(default=True)
 
     class Meta:

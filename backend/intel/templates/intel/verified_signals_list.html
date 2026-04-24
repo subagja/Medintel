@@ -1,15 +1,393 @@
 {% extends "intel/base.html" %}
+{% load static %}
 
 {% block content %}
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    .page-title {
+        margin-bottom: 16px;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .card {
+        background: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filters input,
+    .filters select {
+        padding: 7px 9px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 13px;
+        min-width: 150px;
+    }
+
+    .filters input[name="search"] {
+        min-width: 260px;
+    }
+
+    .btn,
+    button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: #111;
+        display: inline-block;
+    }
+
+    .btn:hover,
+    button:hover {
+        background: #e8e8e8;
+    }
+
+    .filters button[type="submit"] {
+        background: #4b0082;
+        color: white;
+        border-color: #4b0082;
+    }
+
+    .filters button[type="submit"]:hover {
+        background: #36005e;
+    }
+
+    .stats-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .stat-box {
+        flex: 1;
+        min-width: 160px;
+        padding: 12px;
+        border: 1px solid #e1e1e1;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .stat-box .label {
+        font-size: 12px;
+        color: #666;
+        margin-bottom: 4px;
+    }
+
+    .stat-box .value {
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .summary-row p {
+        margin: 0;
+    }
+
+    .small,
+    .small-muted {
+        color: #666;
+        font-size: 11px;
+    }
+
+    .table-card {
+        background: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .verified-signals-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .verified-signals-table th,
+    .verified-signals-table td {
+        vertical-align: top;
+        border-bottom: 1px solid #e1e1e1;
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .verified-signals-table thead th {
+        background: #f5f5f5;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .verified-signals-table td:nth-child(1),
+    .verified-signals-table th:nth-child(1) {
+        text-align: center;
+    }
+
+    .signal-cell {
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .signal-title {
+        font-weight: 700;
+        color: #111;
+        margin-bottom: 4px;
+    }
+
+    .signal-meta {
+        font-size: 11px;
+        color: #666;
+        margin-bottom: 4px;
+    }
+
+    .signal-meta a {
+        font-size: 11px;
+    }
+
+    .signal-detail,
+    .location-detail,
+    .score-detail,
+    .validation-detail {
+        margin-top: 5px;
+        font-size: 11px;
+    }
+
+    .signal-detail summary,
+    .location-detail summary,
+    .score-detail summary,
+    .validation-detail summary {
+        cursor: pointer;
+        color: #4b0082;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .detail-box {
+        margin-top: 4px;
+        padding: 7px;
+        background: #fafafa;
+        border: 1px solid #e1e1e1;
+        border-radius: 5px;
+        color: #333;
+        font-size: 11px;
+        line-height: 1.4;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .pill {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .pill-disease {
+        background: #f1ecff;
+        color: #4b0082;
+    }
+
+    .score-cell {
+        white-space: normal;
+        line-height: 1.3;
+    }
+
+    .score-value {
+        display: inline-block;
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .risk-label {
+        margin-top: 4px;
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .risk-low {
+        background: #eef3ff;
+        color: #2451a6;
+    }
+
+    .risk-medium {
+        background: #fff5d6;
+        color: #7a5500;
+    }
+
+    .risk-high {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .location-main-cell {
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .location-title {
+        font-weight: 700;
+        color: #111;
+    }
+
+    .location-sub {
+        font-size: 12px;
+        color: #555;
+    }
+
+    .location-method {
+        font-size: 11px;
+        color: #666;
+        margin-top: 3px;
+    }
+
+    .muted {
+        color: #999;
+        font-weight: 600;
+    }
+
+    .mapping-badge,
+    .status-badge {
+        display: inline-block;
+        padding: 4px 7px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .mapping-yes {
+        background: #e8f7ec;
+        color: #08762a;
+    }
+
+    .mapping-no {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .status-raw {
+        background: #fff5d6;
+        color: #795500;
+    }
+
+    .status-validated,
+    .status-valid,
+    .status-verified {
+        background: #e8f7ec;
+        color: #08762a;
+    }
+
+    .status-approved {
+        background: #eef3ff;
+        color: #2451a6;
+    }
+
+    .status-noise {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .validator-cell {
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+    }
+
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 8px 10px !important;
+    }
+
+    table.dataTable tbody th,
+    table.dataTable tbody td {
+        padding: 8px 10px !important;
+    }
+
+    .pagination {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #111;
+        background: #fff;
+    }
+
+    .pagination span {
+        background: #f5f5f5;
+        font-weight: 600;
+    }
+</style>
+
+<h1 class="page-title">Verified Signals</h1>
+
 <div class="card">
-    <h1>Verified Signals</h1>
     <form method="get" class="filters">
         <input type="text" name="search" placeholder="Search judul / URL / lokasi" value="{{ search }}">
-        
+
         <select name="disease">
             <option value="">Semua penyakit</option>
             {% for item in disease_choices %}
-                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>
+                    {{ item }}
+                </option>
             {% endfor %}
         </select>
 
@@ -45,69 +423,193 @@
         </select>
 
         <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:verified_signals' %}">Reset</a>
     </form>
 </div>
 
 <div class="card">
-    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+    <div class="summary-row">
+        <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+        <p class="small-muted">
+            Filter server-side tetap aktif. Pencarian cepat DataTables hanya mencari data pada halaman ini.
+        </p>
+    </div>
 </div>
 
 <div class="card stats-row">
-    <div><strong>Total:</strong> {{ stats.total_signals }}</div>
-    <div><strong>Mapped:</strong> {{ stats.mapped_signals }}</div>
-    <div><strong>High Risk:</strong> {{ stats.high_risk_signals }}</div>
+    <div class="stat-box">
+        <div class="label">Total</div>
+        <div class="value">{{ stats.total_signals }}</div>
+    </div>
+
+    <div class="stat-box">
+        <div class="label">Mapped</div>
+        <div class="value">{{ stats.mapped_signals }}</div>
+    </div>
+
+    <div class="stat-box">
+        <div class="label">High Risk</div>
+        <div class="value">{{ stats.high_risk_signals }}</div>
+    </div>
 </div>
 
-<div class="card">
-    <table>
+<div class="table-card">
+    <table id="verifiedSignalsTable" class="display stripe hover compact verified-signals-table">
+        <colgroup>
+            <col style="width: 60px;">
+            <col style="width: 45%;">
+            <col style="width: 110px;">
+            <col style="width: 130px;">
+            <col style="width: 230px;">
+            <col style="width: 125px;">
+            <col style="width: 150px;">
+        </colgroup>
+
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Judul</th>
+                <th>Signal</th>
                 <th>Penyakit</th>
                 <th>Skor</th>
-                <th>Status</th>
-                <th>Approved Mapping</th>
-                <th>Lokasi Mentah</th>
-                <th>Lokasi Match</th>
+                <th>Lokasi</th>
+                <th>Mapping</th>
                 <th>Validator</th>
-                <th>Tanggal</th>
             </tr>
         </thead>
+
         <tbody>
             {% for signal in page_obj %}
             <tr>
                 <td>{{ signal.id }}</td>
-                <td>
-                    <strong>{{ signal.title }}</strong><br>
-                    <span class="small">
-                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
-                    </span>
-                </td>
-                <td>{{ signal.disease_tag|default:"-" }}</td>
-                <td>{{ signal.threat_score }}</td>
-                <td>{{ signal.status }}</td>
-                <td>{{ signal.approved_for_mapping|yesno:"Ya,Tidak" }}</td>
-                <td>{{ signal.raw_location_text|default:"-" }}</td>
-                <td>
-                    {% if signal.primary_locations %}
-                        {% with pl=signal.primary_locations.0 %}
-                            {{ pl.location.display_name }}
-                            {% if pl.location.parent %}
-                                <br><span class="small">{{ pl.location.parent.display_name }}</span>
-                            {% endif %}
-                            <br><span class="small">{{ pl.method }} | {{ pl.confidence }}</span>
-                        {% endwith %}
-                    {% else %}
-                        -
+
+                <td class="signal-cell">
+                    <div class="signal-title">
+                        {{ signal.title|default:"-" }}
+                    </div>
+
+                    <div class="signal-meta">
+                        {% if signal.source_url %}
+                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                        {% endif %}
+
+                        {% if signal.source %}
+                            <span> · {{ signal.source.name|default:"-" }}</span>
+                        {% endif %}
+
+                        {% if signal.published_at %}
+                            <span> · {{ signal.published_at|date:"Y-m-d H:i" }}</span>
+                        {% endif %}
+                    </div>
+
+                    {% if signal.status %}
+                        <span class="status-badge status-{{ signal.status }}">
+                            {{ signal.status }}
+                        </span>
+                    {% endif %}
+
+                    {% if signal.content %}
+                        <details class="signal-detail">
+                            <summary>Detail teks</summary>
+                            <div class="detail-box">
+                                {{ signal.content|truncatechars:500 }}
+                            </div>
+                        </details>
                     {% endif %}
                 </td>
-                <td>{{ signal.validated_by|default:"-" }}</td>
-                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+
+                <td>
+                    <span class="pill pill-disease">
+                        {{ signal.disease_tag|default:"-" }}
+                    </span>
+                </td>
+
+                <td class="score-cell">
+                    <span class="score-value">{{ signal.threat_score }}</span>
+
+                    {% if signal.risk_level %}
+                        <br>
+                        <span class="risk-label risk-{{ signal.risk_level }}">
+                            {{ signal.risk_level }}
+                        </span>
+                    {% endif %}
+
+                    {% if signal.scoring_reason %}
+                        <details class="score-detail">
+                            <summary>Reasoning</summary>
+                            <div class="detail-box">
+                                {{ signal.scoring_reason|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
+
+                <td class="location-main-cell">
+                    {% if signal.primary_locations %}
+                        {% with pl=signal.primary_locations.0 %}
+                            <div class="location-title">
+                                {{ pl.location.display_name }}
+                            </div>
+
+                            {% if pl.location.parent %}
+                                <div class="location-sub">
+                                    {{ pl.location.parent.display_name }}
+                                </div>
+                            {% endif %}
+
+                            <div class="location-method">
+                                {{ pl.method }} · {{ pl.confidence }}
+                            </div>
+                        {% endwith %}
+                    {% else %}
+                        <div class="location-title muted">Belum match</div>
+                    {% endif %}
+
+                    <details class="location-detail">
+                        <summary>Raw</summary>
+                        <div class="detail-box">
+                            <strong>Lokasi mentah:</strong>
+                            {{ signal.raw_location_text|default:"-" }}<br>
+
+                            <strong>Provinsi:</strong>
+                            {{ signal.admin_province|default:"-" }}<br>
+
+                            <strong>Kab/Kota:</strong>
+                            {{ signal.admin_kabkota|default:"-" }}
+                        </div>
+                    </details>
+                </td>
+
+                <td>
+                    {% if signal.approved_for_mapping %}
+                        <span class="mapping-badge mapping-yes">Approved</span>
+                    {% else %}
+                        <span class="mapping-badge mapping-no">Belum</span>
+                    {% endif %}
+                </td>
+
+                <td class="validator-cell">
+                    <strong>{{ signal.validated_by|default:"-" }}</strong>
+
+                    {% if signal.validated_at %}
+                        <br>
+                        <span class="small">
+                            {{ signal.validated_at|date:"Y-m-d H:i" }}
+                        </span>
+                    {% endif %}
+
+                    {% if signal.validation_notes %}
+                        <details class="validation-detail">
+                            <summary>Catatan</summary>
+                            <div class="detail-box">
+                                {{ signal.validation_notes|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="9">Belum ada data verified signal.</td>
+                <td colspan="7">Belum ada data verified signal.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -116,15 +618,60 @@
 
 <div class="pagination">
     {% if page_obj.has_previous %}
-        <a href="?page=1&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
-        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
     {% endif %}
 
     <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
 
     {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
     {% endif %}
 </div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        const tableSelector = '#verifiedSignalsTable';
+
+        if ($.fn.DataTable.isDataTable(tableSelector)) {
+            $(tableSelector).DataTable().destroy();
+        }
+
+        const table = $(tableSelector).DataTable({
+            paging: false,
+            info: false,
+            searching: true,
+            ordering: true,
+            order: [],
+            autoWidth: false,
+            scrollX: false,
+            fixedHeader: false,
+            responsive: false,
+            destroy: true,
+            language: {
+                search: "Cari cepat:",
+                zeroRecords: "Tidak ada data yang cocok",
+                emptyTable: "Belum ada data verified signal"
+            },
+            columns: [
+                { width: "60px" },
+                { width: "45%" },
+                { width: "110px" },
+                { width: "130px" },
+                { width: "230px" },
+                { width: "125px" },
+                { width: "150px" }
+            ]
+        });
+
+        setTimeout(function () {
+            table.columns.adjust();
+        }, 200);
+    });
+</script>
+
 {% endblock %}

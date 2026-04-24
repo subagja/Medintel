@@ -218,7 +218,13 @@ class MedIntelCrawler:
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (MedIntel-ID; +https://example.local)"
         })
-        self.fetch_timeout = 12
+        self.fetch_timeout = 5
+
+        # Mode cepat untuk tracing awal.
+        # Jangan scrape artikel penuh dan jangan geocode online dulu.
+        self.max_entries_per_keyword = 5
+        self.enable_article_scrape = True
+        self.enable_online_geocode = False
 
         self.geolocator = Nominatim(user_agent="medintel-id-crawler")
         self.geocode = RateLimiter(
@@ -323,6 +329,10 @@ class MedIntelCrawler:
     def resolve_final_url(self, url: str) -> str:
         if not url:
             return ""
+
+        if not self.enable_article_scrape:
+            return url
+
         try:
             r = self.session.get(url, timeout=self.fetch_timeout, allow_redirects=True)
             return r.url or url
@@ -335,6 +345,10 @@ class MedIntelCrawler:
     def get_article_text(self, url: str) -> str:
         if not url:
             return ""
+
+        if not self.enable_article_scrape:
+            return ""
+
         if url in self._article_cache:
             return self._article_cache[url]
 
@@ -365,25 +379,216 @@ class MedIntelCrawler:
     # =========================
     # Scoring
     # =========================
-    def score(self, title: str, body: str = "", event_types: List[str] | None = None, severity_nlp: int = 0) -> int:
-        base = 20
-        t = ((title or "") + " " + (body or "")).lower()
+    def score_with_reasoning(
+        self,
+        title: str,
+        body: str = "",
+        disease_tag: str = "",
+        detected_diseases: List[str] | None = None,
+        event_types: List[str] | None = None,
+        severity_nlp: int = 0,
+    ) -> dict:
+        """
+        Menghitung skor ancaman secara transparan.
 
-        for kw in self.danger_keywords:
-            if kw in t:
-                base += 15
+        Output:
+        {
+            "score": int,
+            "reason": str,
+            "breakdown": dict
+        }
+        """
 
-        if event_types:
-            if "outbreak" in event_types:
-                base += 20
-            if "death" in event_types:
-                base += 20
-            if "increase" in event_types:
-                base += 10
-            if "alert" in event_types:
-                base += 10
+        text = f"{title or ''} {body or ''}".lower()
+        detected_diseases = detected_diseases or []
+        event_types = event_types or []
 
-        return min(max(base, severity_nlp or 0), 100)
+        score = 20
+        reasons = []
+        matched_keywords = []
+        matched_events = []
+        matched_diseases = []
+
+        reasons.append("Base score: 20 untuk setiap signal hasil crawling.")
+
+        # =========================
+        # 1. Disease indicator
+        # =========================
+        disease_weights = {
+            "dbd": 25,
+            "demam berdarah": 25,
+            "dengue": 25,
+            "mpox": 30,
+            "monkeypox": 30,
+            "flu burung": 35,
+            "avian influenza": 35,
+            "bird flu": 35,
+            "antraks": 35,
+            "anthrax": 35,
+            "rabies": 30,
+            "polio": 35,
+            "difteri": 30,
+            "campak": 25,
+            "rubela": 20,
+            "diare": 15,
+            "kolera": 35,
+            "tifoid": 20,
+            "demam tifoid": 20,
+            "chikungunya": 25,
+            "leptospirosis": 30,
+            "nipah": 40,
+            "tbc": 20,
+            "tuberkulosis": 20,
+            "hiv": 20,
+            "aids": 20,
+            "ims": 15,
+            "infeksi menular seksual": 15,
+            "pertusis": 25,
+            "batuk rejan": 25,
+        }
+
+        disease_text_candidates = []
+        if disease_tag:
+            disease_text_candidates.append(disease_tag.lower())
+
+        for d in detected_diseases:
+            disease_text_candidates.append(str(d).lower())
+
+        # Tambahkan pencarian langsung dari teks
+        for disease_keyword, weight in disease_weights.items():
+            found = False
+
+            if disease_keyword in text:
+                found = True
+
+            for candidate in disease_text_candidates:
+                if disease_keyword in candidate:
+                    found = True
+
+            if found:
+                score += weight
+                matched_diseases.append({
+                    "keyword": disease_keyword,
+                    "weight": weight,
+                })
+                reasons.append(f"Indikator penyakit ditemukan: {disease_keyword} (+{weight}).")
+                break
+
+        # =========================
+        # 2. Event / outbreak indicator
+        # =========================
+        event_weights = {
+            "outbreak": 25,
+            "death": 25,
+            "increase": 15,
+            "alert": 15,
+            "case_report": 10,
+        }
+
+        event_labels = {
+            "outbreak": "indikator wabah/KLB",
+            "death": "indikator kematian",
+            "increase": "indikator peningkatan/lonjakan kasus",
+            "alert": "indikator kewaspadaan/darurat",
+            "case_report": "indikator laporan kasus",
+        }
+
+        for event_type in event_types:
+            weight = event_weights.get(event_type, 0)
+            if weight <= 0:
+                continue
+
+            score += weight
+            matched_events.append({
+                "event_type": event_type,
+                "weight": weight,
+            })
+            reasons.append(f"{event_labels.get(event_type, event_type)} terdeteksi (+{weight}).")
+
+        # =========================
+        # 3. Keyword severity indicator
+        # =========================
+        keyword_weights = {
+            "klb": 30,
+            "kejadian luar biasa": 30,
+            "wabah": 25,
+            "meninggal": 25,
+            "kematian": 25,
+            "tewas": 25,
+            "darurat": 20,
+            "waspada": 15,
+            "meningkat": 15,
+            "lonjakan": 20,
+            "merebak": 20,
+            "meluas": 20,
+            "suspek": 10,
+            "positif": 10,
+            "dirawat": 10,
+        }
+
+        for keyword, weight in keyword_weights.items():
+            if keyword in text:
+                score += weight
+                matched_keywords.append({
+                    "keyword": keyword,
+                    "weight": weight,
+                })
+                reasons.append(f"Keyword risiko ditemukan: {keyword} (+{weight}).")
+
+        # =========================
+        # 4. Numerical indicator
+        # =========================
+        import re
+
+        numbers = re.findall(r"\b\d+\b", text)
+        if numbers:
+            score += 5
+            reasons.append("Terdapat angka jumlah kasus/korban dalam teks (+5).")
+
+        # =========================
+        # 5. NLP severity comparison
+        # =========================
+        if severity_nlp and severity_nlp > score:
+            reasons.append(
+                f"Severity NLP lebih tinggi dari skor rule-based ({severity_nlp}), skor dinaikkan mengikuti severity NLP."
+            )
+            score = severity_nlp
+
+        # =========================
+        # 6. Final clamp
+        # =========================
+        raw_score = score
+        final_score = max(0, min(raw_score, 100))
+
+        if raw_score > 100:
+            reasons.append(f"Skor mentah {raw_score} dibatasi menjadi 100.")
+
+        if final_score >= 70:
+            risk_level = "high"
+            reasons.append("Klasifikasi akhir: high risk karena skor >= 70.")
+        elif final_score >= 40:
+            risk_level = "medium"
+            reasons.append("Klasifikasi akhir: medium risk karena skor 40-69.")
+        else:
+            risk_level = "low"
+            reasons.append("Klasifikasi akhir: low risk karena skor < 40.")
+
+        return {
+            "score": final_score,
+            "risk_level": risk_level,
+            "reason": "\n".join([f"- {r}" for r in reasons]),
+            "breakdown": {
+                "base_score": 20,
+                "raw_score": raw_score,
+                "final_score": final_score,
+                "risk_level": risk_level,
+                "matched_diseases": matched_diseases,
+                "matched_events": matched_events,
+                "matched_keywords": matched_keywords,
+                "severity_nlp": severity_nlp,
+                "numbers_detected": numbers[:10],
+            }
+        }
 
     # =========================
     # Extract location
@@ -504,6 +709,11 @@ class MedIntelCrawler:
         if conf < self.MIN_CONF_FOR_GEOCODE:
             return "", "", "SKIP_LOW_CONF"
 
+        # Untuk tracing awal, jangan panggil Nominatim online.
+        # Lokasi tetap akan disimpan melalui SignalLocation berbasis gazetteer/alias.
+        if not self.enable_online_geocode:
+            return "", "", "GAZETTEER_ONLY"
+
         cache_key = loc_query.lower().strip()
         if cache_key in self._geocode_cache:
             return self._geocode_cache[cache_key]
@@ -563,7 +773,11 @@ class MedIntelCrawler:
             print(f"🔎 Scanning {kw}...")
             feed = feedparser.parse(self.rss_url.format(query=kw.replace(" ", "+")))
 
-            for entry in getattr(feed, "entries", []):
+            entries = list(getattr(feed, "entries", []))[:self.max_entries_per_keyword]
+            print(f"   found {len(entries)} entries for {kw}", flush=True)
+
+            for idx, entry in enumerate(entries, start=1):
+                print(f"   [{kw}] processing {idx}/{len(entries)}", flush=True)
                 title = truncate(clean_text(getattr(entry, "title", "")), 220)
                 summary = truncate(clean_text(getattr(entry, "summary", "")), 320)
                 link = clean_text(getattr(entry, "link", ""))
@@ -586,12 +800,18 @@ class MedIntelCrawler:
                 event_types = entities.get("event_types", [])
                 severity_nlp = entities.get("severity", 0)
 
-                skor = self.score(
-                    title,
+                score_result = self.score_with_reasoning(
+                    title=title,
                     body=combined,
+                    disease_tag=kw,
+                    detected_diseases=detected_diseases,
                     event_types=event_types,
-                    severity_nlp=severity_nlp
+                    severity_nlp=severity_nlp,
                 )
+
+                skor = score_result["score"]
+                scoring_reason = score_result["reason"]
+                scoring_breakdown = score_result["breakdown"]
 
                 lokasi, level, conf, admin_province, admin_kabkota = self.match_location(combined)
 
@@ -612,6 +832,9 @@ class MedIntelCrawler:
                     "event_types": "|".join(event_types),
                     "severity_nlp": severity_nlp,
                     "skor_ancaman": skor,
+                    "scoring_reason": scoring_reason,
+                    "scoring_breakdown": scoring_breakdown,
+                    "risk_level": score_result["risk_level"],
                     "lokasi_mentah": lokasi,
                     "level_lokasi": level,
                     "confidence_lokasi": conf,
