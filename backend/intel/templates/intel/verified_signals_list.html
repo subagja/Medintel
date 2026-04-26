@@ -515,6 +515,26 @@
                             </div>
                         </details>
                     {% endif %}
+
+                    {% if signal.assessment_summary %}
+                        <details class="assessment-detail">
+                            <summary>Assessment 5W+1H</summary>
+                            <div class="detail-box assessment-box">
+                                <strong>Ringkasan:</strong><br>
+                                {{ signal.assessment_summary|linebreaksbr }}
+
+                                {% if signal.assessment_5w1h %}
+                                    <hr>
+                                    <strong>What:</strong> {{ signal.assessment_5w1h.what|default:"-" }}<br>
+                                    <strong>Who:</strong> {{ signal.assessment_5w1h.who|default:"-" }}<br>
+                                    <strong>When:</strong> {{ signal.assessment_5w1h.when|default:"-" }}<br>
+                                    <strong>Where:</strong> {{ signal.assessment_5w1h.where|default:"-" }}<br>
+                                    <strong>Why:</strong> {{ signal.assessment_5w1h.why|default:"-" }}<br>
+                                    <strong>How:</strong> {{ signal.assessment_5w1h.how|default:"-" }}<br>
+                                {% endif %}
+                            </div>
+                        </details>
+                    {% endif %}
                 </td>
 
                 <td>
@@ -607,10 +627,6 @@
                     {% endif %}
                 </td>
             </tr>
-            {% empty %}
-            <tr>
-                <td colspan="7">Belum ada data verified signal.</td>
-            </tr>
             {% endfor %}
         </tbody>
     </table>
@@ -657,14 +673,14 @@
                 zeroRecords: "Tidak ada data yang cocok",
                 emptyTable: "Belum ada data verified signal"
             },
-            columns: [
-                { width: "60px" },
-                { width: "45%" },
-                { width: "110px" },
-                { width: "130px" },
-                { width: "230px" },
-                { width: "125px" },
-                { width: "150px" }
+            columnDefs: [
+                { targets: 0, width: "60px" },
+                { targets: 1, width: "45%" },
+                { targets: 2, width: "110px" },
+                { targets: 3, width: "130px" },
+                { targets: 4, width: "230px" },
+                { targets: 5, width: "125px" },
+                { targets: 6, width: "150px" }
             ]
         });
 

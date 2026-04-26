@@ -1,24 +1,408 @@
 {% extends "intel/base.html" %}
+{% load static %}
 
 {% block content %}
-<div class="card">
-    <h1>Geocode Error Center</h1>
-    <p class="small">Pusat penanganan signal yang gagal atau bermasalah pada proses geocode.</p>
 
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e6e6e6;
+        --text: #111;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title {
+        margin: 0 0 6px;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .page-subtitle {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+    }
+
+    .card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filters input,
+    .filters select {
+        min-width: 150px;
+        padding: 7px 9px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    .filters input[name="q"] {
+        min-width: 300px;
+    }
+
+    .btn,
+    button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: var(--text);
+        display: inline-block;
+    }
+
+    .btn:hover,
+    button:hover {
+        background: #e8e8e8;
+    }
+
+    .filters button[type="submit"] {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+    }
+
+    .filters button[type="submit"]:hover {
+        background: #36005e;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .summary-row p {
+        margin: 0;
+    }
+
+    .small-muted,
+    .small {
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .table-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .geocode-error-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .geocode-error-table th,
+    .geocode-error-table td {
+        vertical-align: top;
+        border-bottom: 1px solid var(--soft-border);
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .geocode-error-table thead th {
+        background: #f5f5f5;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .id-cell {
+        text-align: center;
+        font-weight: 700;
+    }
+
+    .signal-cell,
+    .location-cell,
+    .score-cell {
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .signal-title,
+    .location-title {
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+
+    .signal-meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+
+    .signal-meta a {
+        font-size: 11px;
+    }
+
+    details {
+        margin-top: 5px;
+        font-size: 11px;
+    }
+
+    details summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .detail-box {
+        margin-top: 4px;
+        padding: 7px;
+        background: var(--bg-soft);
+        border: 1px solid var(--soft-border);
+        border-radius: 5px;
+        color: #333;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .pill {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .pill-disease {
+        background: var(--purple-bg);
+        color: var(--primary);
+    }
+
+    .score-value {
+        display: inline-block;
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .risk-label {
+        margin-top: 4px;
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .risk-low {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .risk-medium {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .risk-high {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .geo-badge {
+        display: inline-block;
+        padding: 4px 7px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .geo-empty,
+    .geo-empty_loc,
+    .geo-unmatched,
+    .geo-not_found,
+    .geo-skip_low_conf,
+    .geo-net_err,
+    .geo-skip_noise,
+    .geo-skip_too_general,
+    .geo-pending,
+    .geo-EMPTY_LOC,
+    .geo-NOT_FOUND,
+    .geo-NET_ERR,
+    .geo-SKIP_NOISE,
+    .geo-SKIP_TOO_GENERAL,
+    .geo-SKIP_LOW_CONF,
+    .geo-PENDING {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .geo-manual,
+    .geo-MANUAL {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .geo-ok,
+    .geo-matched,
+    .geo-gazetteer_only,
+    .geo-OK {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .location-sub,
+    .location-method {
+        color: var(--muted);
+    }
+
+    .location-sub {
+        font-size: 12px;
+    }
+
+    .location-method {
+        font-size: 11px;
+        margin-top: 3px;
+    }
+
+    .muted {
+        color: #999;
+    }
+
+    .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .actions form {
+        margin: 0;
+    }
+
+    .actions a,
+    .actions button {
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
+        padding: 6px 8px;
+        font-size: 12px;
+        border-radius: 4px;
+    }
+
+    .btn-edit {
+        background: var(--blue-bg);
+        border: 1px solid #7d95d8;
+    }
+
+    .btn-manual {
+        background: var(--green-bg);
+        border: 1px solid #7acb8a;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+    }
+
+    table.dataTable thead th,
+    table.dataTable thead td,
+    table.dataTable tbody th,
+    table.dataTable tbody td {
+        padding: 8px 10px !important;
+    }
+
+    .pagination {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-decoration: none;
+        color: var(--text);
+        background: #fff;
+    }
+
+    .pagination span {
+        background: #f5f5f5;
+        font-weight: 700;
+    }
+</style>
+
+<h1 class="page-title">Geocode Error Center</h1>
+<p class="page-subtitle">Pusat koreksi signal yang gagal, belum lengkap, atau belum memiliki hasil pemetaan lokasi.</p>
+
+<div class="card">
     <form method="get" class="filters">
         <input type="text" name="q" placeholder="Search judul / lokasi / URL" value="{{ q }}">
 
         <select name="geocode_status">
             <option value="">Semua error status</option>
             {% for item in geocode_choices %}
-                <option value="{{ item }}" {% if geocode_status == item %}selected{% endif %}>{{ item }}</option>
+                <option value="{{ item }}" {% if geocode_status == item %}selected{% endif %}>
+                    {{ item }}
+                </option>
             {% endfor %}
         </select>
 
         <select name="disease">
             <option value="">Semua penyakit</option>
             {% for item in disease_choices %}
-                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>
+                    {{ item }}
+                </option>
             {% endfor %}
         </select>
 
@@ -27,56 +411,164 @@
             <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
             <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
             <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+            <option value="title" {% if sort == "title" %}selected{% endif %}>Judul A-Z</option>
+            <option value="-title" {% if sort == "-title" %}selected{% endif %}>Judul Z-A</option>
         </select>
 
         <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:geocode_error_center' %}">Reset</a>
     </form>
 </div>
 
 <div class="card">
-    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal bermasalah</p>
+    <div class="summary-row">
+        <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal bermasalah</p>
+        <p class="small-muted">
+            Gunakan Edit manual untuk memilih provinsi/kabupaten/kota dan membuat SignalLocation.
+        </p>
+    </div>
 </div>
 
-<div class="card">
-    <table>
+<div class="table-card">
+    <table id="geocodeErrorTable" class="display stripe hover compact geocode-error-table">
+        <colgroup>
+            <col style="width: 60px;">
+            <col style="width: 43%;">
+            <col style="width: 110px;">
+            <col style="width: 120px;">
+            <col style="width: 230px;">
+            <col style="width: 140px;">
+            <col style="width: 160px;">
+        </colgroup>
+
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Judul</th>
+                <th>Signal</th>
                 <th>Penyakit</th>
                 <th>Skor</th>
-                <th>Lokasi Mentah</th>
-                <th>Status Error</th>
-                <th>Tanggal</th>
+                <th>Lokasi</th>
+                <th>Error</th>
                 <th>Aksi</th>
             </tr>
         </thead>
+
         <tbody>
             {% for signal in page_obj %}
             <tr>
-                <td>{{ signal.id }}</td>
+                <td class="id-cell">{{ signal.id }}</td>
+
+                <td class="signal-cell">
+                    <div class="signal-title">
+                        {{ signal.title|default:"-" }}
+                    </div>
+
+                    <div class="signal-meta">
+                        {% if signal.source_url %}
+                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                        {% endif %}
+
+                        {% if signal.source %}
+                            <span> · {{ signal.source.name|default:"-" }}</span>
+                        {% endif %}
+
+                        {% if signal.published_at %}
+                            <span> · {{ signal.published_at|date:"Y-m-d H:i" }}</span>
+                        {% endif %}
+                    </div>
+
+                    {% if signal.content %}
+                        <details>
+                            <summary>Detail teks</summary>
+                            <div class="detail-box">
+                                {{ signal.content|truncatechars:500 }}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
+
                 <td>
-                    <strong>{{ signal.title }}</strong><br>
-                    <span class="small">
-                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                    <span class="pill pill-disease">
+                        {{ signal.disease_tag|default:"-" }}
                     </span>
                 </td>
-                <td>{{ signal.disease_tag|default:"-" }}</td>
-                <td>{{ signal.threat_score }}</td>
-                <td>{{ signal.raw_location_text|default:"-" }}</td>
-                <td>{{ signal.geocode_status }}</td>
-                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
+
+                <td class="score-cell">
+                    <span class="score-value">{{ signal.threat_score }}</span>
+
+                    {% if signal.risk_level %}
+                        <br>
+                        <span class="risk-label risk-{{ signal.risk_level }}">
+                            {{ signal.risk_level }}
+                        </span>
+                    {% endif %}
+
+                    {% if signal.scoring_reason %}
+                        <details>
+                            <summary>Reasoning</summary>
+                            <div class="detail-box">
+                                {{ signal.scoring_reason|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
+
+                <td class="location-cell">
+                    {% if signal.primary_locations %}
+                        {% with pl=signal.primary_locations.0 %}
+                            <div class="location-title">
+                                {{ pl.location.display_name|default:"-" }}
+                            </div>
+
+                            {% if pl.location.parent %}
+                                <div class="location-sub">
+                                    {{ pl.location.parent.display_name }}
+                                </div>
+                            {% endif %}
+
+                            <div class="location-method">
+                                {{ pl.method }} · {{ pl.confidence }}
+                            </div>
+                        {% endwith %}
+                    {% else %}
+                        <div class="location-title muted">Belum match</div>
+                    {% endif %}
+
+                    <details>
+                        <summary>Raw</summary>
+                        <div class="detail-box">
+                            <strong>Lokasi mentah:</strong>
+                            {{ signal.raw_location_text|default:"-" }}<br>
+
+                            <strong>Provinsi:</strong>
+                            {{ signal.admin_province|default:"-" }}<br>
+
+                            <strong>Kab/Kota:</strong>
+                            {{ signal.admin_kabkota|default:"-" }}
+                        </div>
+                    </details>
+                </td>
+
+                <td>
+                    <span class="geo-badge geo-{{ signal.geocode_status|default:'empty' }}">
+                        {{ signal.geocode_status|default:"-" }}
+                    </span>
+                </td>
+
                 <td class="actions">
-                    <a href="{% url 'intel:geocode_manual_update' signal.id %}">Edit manual</a>
+                    <a class="btn btn-edit" href="{% url 'intel:geocode_manual_update' signal.id %}">
+                        Edit manual
+                    </a>
+
                     <form method="post" action="{% url 'intel:geocode_mark_manual_ok' signal.id %}">
                         {% csrf_token %}
-                        <button type="submit">Mark manual</button>
+                        <button type="submit" class="btn-manual">Mark manual</button>
                     </form>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8">Belum ada data geocode error.</td>
+                <td colspan="7">Belum ada data geocode error.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -96,4 +588,49 @@
         <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&geocode_status={{ geocode_status }}&disease={{ disease }}&sort={{ sort }}">Akhir</a>
     {% endif %}
 </div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        const tableSelector = '#geocodeErrorTable';
+
+        if ($.fn.DataTable.isDataTable(tableSelector)) {
+            $(tableSelector).DataTable().destroy();
+        }
+
+        const table = $(tableSelector).DataTable({
+            paging: false,
+            info: false,
+            searching: true,
+            ordering: true,
+            order: [],
+            autoWidth: false,
+            scrollX: false,
+            fixedHeader: false,
+            responsive: false,
+            destroy: true,
+            language: {
+                search: "Cari cepat:",
+                zeroRecords: "Tidak ada data yang cocok",
+                emptyTable: "Belum ada data geocode error"
+            },
+            columns: [
+                { width: "60px" },
+                { width: "43%" },
+                { width: "110px" },
+                { width: "120px" },
+                { width: "230px" },
+                { width: "140px" },
+                { width: "160px", orderable: false, searchable: false }
+            ]
+        });
+
+        setTimeout(function () {
+            table.columns.adjust();
+        }, 200);
+    });
+</script>
+
 {% endblock %}

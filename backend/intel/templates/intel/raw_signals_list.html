@@ -415,6 +415,124 @@
         background: #f5f5f5;
         font-weight: 700;
     }
+
+    .assessment-form {
+        margin-top: 6px;
+    }
+
+    .btn-assessment {
+        background: #f1ecff;
+        color: #4b0082;
+        border: 1px solid #b99be8;
+        padding: 5px 8px;
+        font-size: 11px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-assessment:hover {
+        background: #e5d7ff;
+    }
+
+    .assessment-detail {
+        margin-top: 6px;
+    }
+
+    .assessment-box {
+        max-width: 620px;
+    }
+
+    .assessment-box hr {
+        border: 0;
+        border-top: 1px solid #e1e1e1;
+        margin: 8px 0;
+    }
+
+    .assessment-box ul {
+        margin: 4px 0 0 16px;
+        padding: 0;
+    }
+
+    .resolved-url-detail {
+        margin-top: 6px;
+        font-size: 11px;
+    }
+
+    .resolved-url-form {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .resolved-url-input {
+        min-width: 320px;
+        max-width: 520px;
+        flex: 1;
+        padding: 5px 7px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .url-warning-box {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin: 8px 0;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .assessment-meta {
+        margin-top: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--soft-border);
+        background: #fff;
+        border-radius: 5px;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    .resolved-url-detail {
+        margin-top: 8px;
+        font-size: 12px;
+    }
+
+    .resolved-url-form {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .resolved-url-input {
+        min-width: 360px;
+        max-width: 620px;
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    .btn-url-assess {
+        background: var(--purple-bg);
+        color: var(--primary);
+        border: 1px solid #b99be8;
+        padding: 6px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .btn-url-assess:hover {
+        background: #e5d7ff;
+    }
 </style>
 
 <h1 class="page-title">Raw Signals</h1>
@@ -536,11 +654,145 @@
                         {% endif %}
                     </div>
 
-                    {% if signal.content %}
-                        <details>
-                            <summary>Detail teks</summary>
-                            <div class="detail-box">
-                                {{ signal.content|truncatechars:500 }}
+                     <form method="post" action="{% url 'intel:signal_generate_assessment' signal.id %}" class="assessment-form">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-assessment">
+                            Assessment 5W+1H
+                        </button>
+                    </form>
+
+                    {% if signal.assessment_summary %}
+                        <details class="assessment-detail" open>
+                            <summary>Hasil assessment</summary>
+
+                            <div class="detail-box assessment-box">
+                                <strong>Ringkasan:</strong><br>
+                                {{ signal.assessment_summary|linebreaksbr }}
+
+                                {% if signal.assessment_5w1h %}
+                                    <div class="assessment-meta">
+                                        <strong>Status:</strong> {{ signal.assessment_status|default:"-" }}<br>
+                                        {% if signal.assessment_5w1h.assessment_quality == "article_based" %}
+                                            <strong>Quality:</strong> Article-based<br>
+                                        {% elif signal.assessment_5w1h.assessment_quality == "article_based_partial" %}
+                                            <strong>Quality:</strong> Article-based partial<br>
+                                            <span class="small-muted">
+                                                Artikel berhasil dibuka, tetapi teks yang berhasil diekstrak masih terbatas.
+                                            </span><br>
+                                        {% elif signal.assessment_5w1h.assessment_quality == "low_fallback" %}
+                                            <strong>Quality:</strong> Low fallback<br>
+                                        {% else %}
+                                            <strong>Quality:</strong> {{ signal.assessment_5w1h.assessment_quality|default:"-" }}<br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.article_url %}
+                                            <strong>Artikel yang dipakai:</strong>
+                                            <a href="{{ signal.assessment_5w1h.article_url }}" target="_blank">
+                                                Buka artikel hasil fetch
+                                            </a><br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.fetch_mode %}
+                                            <strong>Fetch mode:</strong> {{ signal.assessment_5w1h.fetch_mode }}<br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.fetch_warning %}
+                                            <strong>Catatan fetch:</strong> {{ signal.assessment_5w1h.fetch_warning }}<br>
+                                        {% endif %}
+                                    </div>
+
+                                    <hr>
+
+                                    <!-- <strong>5W+1H:</strong><br>
+                                    <strong>What:</strong> {{ signal.assessment_5w1h.what|default:"-" }}<br>
+                                    <strong>Who:</strong> {{ signal.assessment_5w1h.who|default:"-" }}<br>
+                                    <strong>When:</strong> {{ signal.assessment_5w1h.when|default:"-" }}<br>
+                                    <strong>Where:</strong> {{ signal.assessment_5w1h.where|default:"-" }}<br>
+                                    <strong>Why:</strong> {{ signal.assessment_5w1h.why|default:"-" }}<br>
+                                    <strong>How:</strong> {{ signal.assessment_5w1h.how|default:"-" }}<br>
+
+                                    {% if signal.assessment_5w1h.numbers_context %}
+                                        <br>
+                                        <strong>Angka penting:</strong>
+                                        <ul>
+                                            {% for item in signal.assessment_5w1h.numbers_context %}
+                                                <li>{{ item }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+ -->
+                                    {% if signal.assessment_5w1h.assessment_quality == "low_fallback" or signal.assessment_status == "fallback" or signal.assessment_error %}
+                                        <hr>
+
+                                        <div class="url-warning-box">
+                                            <strong>Perlu koreksi URL artikel.</strong><br>
+                                            Artikel asli belum berhasil diambil. Paste URL artikel asli, lalu jalankan ulang assessment.
+                                        </div>
+
+                                        <details class="resolved-url-detail" open>
+                                            <summary>Update URL artikel asli</summary>
+
+                                            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                                                {% csrf_token %}
+
+                                                <input
+                                                    type="url"
+                                                    name="resolved_url"
+                                                    value="{{ signal.resolved_url|default:'' }}"
+                                                    placeholder="Paste URL artikel asli"
+                                                    class="resolved-url-input"
+                                                >
+
+                                                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                                                    Simpan & Re-assessment
+                                                </button>
+                                            </form>
+
+                                            {% if signal.resolved_url %}
+                                                <div class="small-muted" style="margin-top: 4px;">
+                                                    Resolved URL:
+                                                    <a href="{{ signal.resolved_url }}" target="_blank">Buka artikel asli</a>
+                                                    · {{ signal.url_resolution_method|default:"-" }}
+                                                </div>
+                                            {% endif %}
+                                        </details>
+                                    {% else %}
+                                        <details class="resolved-url-detail">
+                                            <summary>Perlu koreksi URL?</summary>
+
+                                            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                                                {% csrf_token %}
+
+                                                <input
+                                                    type="url"
+                                                    name="resolved_url"
+                                                    value="{{ signal.resolved_url|default:'' }}"
+                                                    placeholder="Paste URL artikel asli jika hasil fetch salah"
+                                                    class="resolved-url-input"
+                                                >
+
+                                                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                                                    Simpan & Re-assessment
+                                                </button>
+                                            </form>
+
+                                            {% if signal.resolved_url %}
+                                                <div class="small-muted" style="margin-top: 4px;">
+                                                    Resolved URL:
+                                                    <a href="{{ signal.resolved_url }}" target="_blank">Buka artikel asli</a>
+                                                    · {{ signal.url_resolution_method|default:"-" }}
+                                                </div>
+                                            {% endif %}
+                                        </details>
+                                    {% endif %}
+                                {% endif %}
+
+                                {% if signal.assessment_generated_at %}
+                                    <hr>
+                                    <span class="small-muted">
+                                        Dibuat: {{ signal.assessment_generated_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                {% endif %}
                             </div>
                         </details>
                     {% endif %}

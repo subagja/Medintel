@@ -14,7 +14,7 @@ urlpatterns = [
     path("geocode-errors/<int:pk>/edit/", views.geocode_manual_update, name="geocode_manual_update"),
     path("geocode-errors/<int:pk>/mark-manual/", views.geocode_mark_manual_ok, name="geocode_mark_manual_ok"),
 
-    path("gazetteer/", views.gazetteer_manager, name="gazetteer_manager"),
+    path("gazetteer/", views.gazetteer_alias_manager, name="gazetteer_manager"),
     path("gazetteer/create/", views.gazetteer_location_create, name="gazetteer_location_create"),
     path("gazetteer/<int:pk>/edit/", views.gazetteer_location_edit, name="gazetteer_location_edit"),
     path("gazetteer/<int:pk>/toggle-false-positive/", views.gazetteer_toggle_false_positive, name="gazetteer_toggle_false_positive"),
@@ -27,7 +27,14 @@ urlpatterns = [
     path("signals/<int:pk>/noise/", views.signal_mark_noise, name="signal_noise"),
     path("signals/<int:pk>/approve/", views.signal_approve_mapping, name="signal_approve"),
     path("signals/<int:pk>/quick-score/", views.signal_quick_score, name="signal_quick_score"),
+    path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
 
+    path("signals/<int:pk>/validate/", views.signal_mark_validated, name="signal_validate"),
+    path("signals/<int:pk>/noise/", views.signal_mark_noise, name="signal_noise"),
+    path("signals/<int:pk>/approve/", views.signal_approve_mapping, name="signal_approve"),
+    path("signals/<int:pk>/quick-score/", views.signal_quick_score, name="signal_quick_score"),
+    path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
+    path("signals/<int:pk>/resolved-url/", views.signal_update_resolved_url, name="signal_update_resolved_url"),
     path("scoring-rules/", views.scoring_rules_manager, name="scoring_rules_manager"),
     path("scoring-rules/create/", views.scoring_rule_create, name="scoring_rule_create"),
     path("scoring-rules/<int:pk>/edit/", views.scoring_rule_edit, name="scoring_rule_edit"),

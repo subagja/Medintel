@@ -136,6 +136,19 @@ class LocationAlias(TimeStampedModel):
     def __str__(self):
         return f"{self.alias} -> {self.location}"
 
+class PublisherDomainAlias(TimeStampedModel):
+    alias = models.CharField(max_length=255, unique=True)
+    normalized_alias = models.CharField(max_length=255, db_index=True)
+    domain = models.CharField(max_length=255, db_index=True)
+
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["alias"]
+
+    def __str__(self):
+        return f"{self.alias} -> {self.domain}"
 
 class Signal(TimeStampedModel):
     STATUS_CHOICES = [
@@ -190,6 +203,18 @@ class Signal(TimeStampedModel):
     disease_tag = models.CharField(max_length=100, blank=True, default="", db_index=True)
     threat_score = models.IntegerField(default=0, db_index=True)
 
+    assessment_status = models.CharField(max_length=30, blank=True, default="")
+    assessment_summary = models.TextField(blank=True, default="")
+    assessment_5w1h = models.JSONField(blank=True, default=dict)
+    assessment_source_text = models.TextField(blank=True, default="")
+    assessment_error = models.TextField(blank=True, default="")
+    assessment_generated_at = models.DateTimeField(null=True, blank=True)
+
+    source_url = models.URLField(max_length=1000, blank=True, default="")          # URL awal dari crawler, bisa Google News
+    resolved_url = models.URLField(max_length=1000, blank=True, default="")
+    url_resolution_status = models.CharField(max_length=40, blank=True, default="")
+    url_resolution_method = models.CharField(max_length=60, blank=True, default="")
+    url_resolution_error = models.TextField(blank=True, default="")
     raw_location_text = models.CharField(max_length=255, blank=True, default="", db_index=True)
     geocode_status = models.CharField(
         max_length=30,
@@ -230,6 +255,16 @@ class Signal(TimeStampedModel):
     def __str__(self):
         return self.title[:100]
 
+class ResolvedSourceURL(models.Model):
+    original_url = models.URLField(max_length=1000, unique=True)
+    resolved_url = models.URLField(max_length=1000)
+    source_name = models.CharField(max_length=255, blank=True, default="")
+    title = models.TextField(blank=True, default="")
+    method = models.CharField(max_length=60, blank=True, default="")
+    confidence = models.FloatField(default=0.0)
+    is_manual = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 class SignalLocation(TimeStampedModel):
     METHOD_CHOICES = [

@@ -9,6 +9,7 @@ from .models import (
     SystemSetting,
     Alert,
     AuditLog,
+    PublisherDomainAlias,
 )
 
 
@@ -18,6 +19,11 @@ class SourceAdmin(admin.ModelAdmin):
     search_fields = ("name", "base_url", "rss_url")
     list_filter = ("is_active", "country_code")
 
+@admin.register(PublisherDomainAlias)
+class PublisherDomainAliasAdmin(admin.ModelAdmin):
+    list_display = ("alias", "domain", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("alias", "normalized_alias", "domain")
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
