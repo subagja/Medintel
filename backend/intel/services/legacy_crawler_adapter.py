@@ -16,7 +16,7 @@ from intel.models import (
 from intel.utils.location_resolver import normalize_text, resolve_location_from_text
 from intel.services.geojson_gazetteer import ensure_geojson_gazetteer
 from intel.services.legacy_crawler import MedIntelCrawler
-
+from intel.services.signal_dedup import should_skip_as_noise
 
 # =========================================================
 # STATUS NORMALIZATION
@@ -617,6 +617,34 @@ def ingest_legacy_row(row: dict):
     source_name = row.get("sumber", "Google News")
     source_url = row.get("final_url") or row.get("link") or ""
 
+    title = row.get("judul", "") or ""
+    content = row.get("body") or row.get("combined_text") or row.get("summary", "") or ""
+
+    raw_location_text = row.get("lokasi_mentah", "") or ""
+    admin_province = row.get("admin_province", "") or ""
+    admin_kabkota = row.get("admin_kabkota", "") or ""
+    location_level = row.get("level_lokasi", "") or ""
+
+    if not raw_location_text:
+        if admin_kabkota:
+            raw_location_text = admin_kabkota
+        elif admin_province:
+            raw_location_text = admin_province
+
+    disease_tag = row.get("penyakit_tag", "") or ""
+
+    skip_noise, existing_signal = should_skip_as_noise(
+        source_url=source_url,
+        resolved_url=row.get("final_url") or "",
+        title=title,
+        disease_tag=disease_tag,
+        raw_location_text=raw_location_text,
+        source_name=source_name,
+    )
+
+    if skip_noise:
+        return existing_signal, False, None, "skipped_noise"
+
     if not source_url:
         source_url = f"legacy://{hash(str(row))}"
 
@@ -740,7 +768,7 @@ def ingest_legacy_row(row: dict):
             signal.geocode_status = "skip_low_conf"
             signal.save(update_fields=["geocode_status", "updated_at"])
 
-    return signal, created, location_obj
+    return signal, created, location_obj, "created" if created else "updated"
 
 
 def run_legacy_crawler_ingest():
@@ -754,9 +782,14 @@ def run_legacy_crawler_ingest():
     created_count = 0
     updated_count = 0
     matched_count = 0
+    skipped_noise_count = 0
 
     for row in rows:
-        signal, created, location_obj = ingest_legacy_row(row)
+        signal, created, location_obj, ingest_status = ingest_legacy_row(row)
+
+        if ingest_status == "skipped_noise":
+            skipped_noise_count += 1
+            continue
 
         if created:
             created_count += 1
@@ -771,4 +804,5 @@ def run_legacy_crawler_ingest():
         "created": created_count,
         "updated": updated_count,
         "matched_locations": matched_count,
+        "skipped_noise": skipped_noise_count,
     }

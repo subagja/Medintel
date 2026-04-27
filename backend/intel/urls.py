@@ -11,7 +11,7 @@ urlpatterns = [
     path("verified-signals/", views.verified_signals_list, name="verified_signals"),
 
     path("geocode-errors/", views.geocode_error_center, name="geocode_error_center"),
-    path("geocode-errors/<int:pk>/edit/", views.geocode_manual_update, name="geocode_manual_update"),
+    path("geocode-errors/<int:pk>/edit/", views.geocode_manual_update, name="geocode_manual_update"),    
     path("geocode-errors/<int:pk>/mark-manual/", views.geocode_mark_manual_ok, name="geocode_mark_manual_ok"),
 
     path("gazetteer/", views.gazetteer_alias_manager, name="gazetteer_manager"),
@@ -35,6 +35,7 @@ urlpatterns = [
     path("signals/<int:pk>/quick-score/", views.signal_quick_score, name="signal_quick_score"),
     path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
     path("signals/<int:pk>/resolved-url/", views.signal_update_resolved_url, name="signal_update_resolved_url"),
+    path("signals/<int:pk>/geocode/", views.geocode_manual_update, name="geocode_manual_update"),
     path("scoring-rules/", views.scoring_rules_manager, name="scoring_rules_manager"),
     path("scoring-rules/create/", views.scoring_rule_create, name="scoring_rule_create"),
     path("scoring-rules/<int:pk>/edit/", views.scoring_rule_edit, name="scoring_rule_edit"),

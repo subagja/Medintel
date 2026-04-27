@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 from urllib.parse import quote_plus, urljoin, urlparse
 
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 from intel.models import PublisherDomainAlias
 from intel.services.google_news_resolver import resolve_google_news_url
@@ -20,6 +21,15 @@ REQUEST_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
     "Cache-Control": "no-cache",
+}
+
+# Beberapa situs pemda/media lokal memakai certificate chain yang tidak lengkap.
+# Default tetap verify=True. Fallback verify=False hanya dipakai bila terjadi SSLError
+# dan domain ada dalam allowlist ini.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+SSL_FALLBACK_DOMAINS = {
+    "berita.cilegon.go.id",
 }
 
 BLOCKED_DOMAINS = [
@@ -495,6 +505,22 @@ def extract_article_text_from_html(html: str) -> tuple[str, dict]:
     return combined[:18000], metadata
 
 
+def should_use_ssl_fallback(url: str) -> bool:
+    """
+    SSL fallback hanya untuk domain yang memang sering bermasalah certificate chain-nya.
+    Ini menjaga agar verify=False tidak dipakai secara umum.
+    """
+    try:
+        host = urlparse(url).netloc.lower().strip()
+    except Exception:
+        return False
+
+    if host.startswith("www."):
+        host = host[4:]
+
+    return host in SSL_FALLBACK_DOMAINS
+
+
 def request_html(url: str, timeout: int = 10) -> tuple[str, str, str]:
     if not url:
         return "", "", "URL sumber kosong."
@@ -510,12 +536,36 @@ def request_html(url: str, timeout: int = 10) -> tuple[str, str, str]:
             timeout=timeout,
             headers=REQUEST_HEADERS,
             allow_redirects=True,
+            verify=True,
         )
 
         if response.status_code >= 400:
             return "", response.url or url, f"HTTP {response.status_code}"
 
         return response.text or "", response.url or url, ""
+
+    except requests.exceptions.SSLError as ssl_exc:
+        if not should_use_ssl_fallback(url):
+            return "", url, f"Gagal mengambil artikel karena SSL: {ssl_exc}"
+
+        try:
+            response = requests.get(
+                url,
+                timeout=timeout,
+                headers=REQUEST_HEADERS,
+                allow_redirects=True,
+                verify=False,
+            )
+
+            if response.status_code >= 400:
+                return "", response.url or url, f"HTTP {response.status_code} setelah SSL fallback"
+
+            return response.text or "", response.url or url, ""
+
+        except requests.exceptions.Timeout:
+            return "", url, "Timeout saat mengambil artikel setelah SSL fallback."
+        except requests.exceptions.RequestException as fallback_exc:
+            return "", url, f"SSL fallback juga gagal: {fallback_exc}"
 
     except requests.exceptions.Timeout:
         return "", url, "Timeout saat mengambil artikel."
@@ -828,10 +878,10 @@ def resolve_by_publisher_search(
     timeout: int = 4,
     max_attempts: int = 4,
 ) -> dict:
-    domain = source_name_to_domain(source_name, title=title)
+    domains = source_name_to_domain_candidates(source_name, title=title)
     title_clean = clean_title_for_search(title)
 
-    if not domain or not title_clean:
+    if not domains or not title_clean:
         return {
             "url": "",
             "mode": "publisher_search_failed",
@@ -839,11 +889,6 @@ def resolve_by_publisher_search(
         }
 
     query = quote_plus(title_clean)
-
-    base_hosts = [
-        f"https://{domain}",
-        f"https://www.{domain}" if not domain.startswith("www.") else f"https://{domain}",
-    ]
 
     search_paths = [
         f"/search?keyword={query}",
@@ -854,6 +899,12 @@ def resolve_by_publisher_search(
         f"/search/{query}",
     ]
 
+    base_hosts = []
+    for domain in domains:
+        base_hosts.append(f"https://{domain}")
+        if not domain.startswith("www."):
+            base_hosts.append(f"https://www.{domain}")
+
     errors = []
     attempts = 0
 
@@ -862,7 +913,9 @@ def resolve_by_publisher_search(
             attempts += 1
             if attempts > max_attempts:
                 break
+
             search_url = f"{base_host}{path}"
+
             html, final_url, error = request_html(search_url, timeout=timeout)
 
             if error:
@@ -881,6 +934,9 @@ def resolve_by_publisher_search(
                     "mode": "publisher_search",
                     "error": "",
                 }
+
+        if attempts >= max_attempts:
+            break
 
     return {
         "url": "",
@@ -915,10 +971,10 @@ def discover_article_from_publisher(
     Sistem membuka beberapa halaman listing berita publisher, lalu mencari
     link artikel yang paling mirip dengan judul signal.
     """
-    domain = source_name_to_domain(source_name, title=title)
+    domains = source_name_to_domain_candidates(source_name, title=title)
     title_clean = clean_title_for_search(title)
 
-    if not domain or not title_clean:
+    if not domains or not title_clean:
         return {
             "url": "",
             "mode": "publisher_discovery_failed",
@@ -927,16 +983,19 @@ def discover_article_from_publisher(
 
     query = quote_plus(title_clean)
 
-    base_hosts = [
-        f"https://{domain}",
-        f"https://www.{domain}" if not domain.startswith("www.") else f"https://{domain}",
-    ]
+    base_hosts = []
+    for domain in domains:
+        base_hosts.append(f"https://{domain}")
+        if not domain.startswith("www."):
+            base_hosts.append(f"https://www.{domain}")
 
     errors = []
     attempts = 0
 
     for base_host in base_hosts:
-        for path in get_discovery_paths_for_domain(domain, query):
+        domain_from_host = urlparse(base_host).netloc.replace("www.", "")
+
+        for path in get_discovery_paths_for_domain(domain_from_host, query):
             attempts += 1
             if attempts > max_attempts:
                 break
@@ -962,7 +1021,7 @@ def discover_article_from_publisher(
                     "error": "",
                 }
 
-        if attempts > max_attempts:
+        if attempts >= max_attempts:
             break
 
     return {
@@ -971,6 +1030,7 @@ def discover_article_from_publisher(
         "error": "Publisher discovery tidak menemukan artikel yang cukup relevan.",
         "debug": errors[:3],
     }
+    
 # =========================================================
 # FETCH ARTICLE
 # =========================================================
@@ -991,6 +1051,15 @@ def fetch_article_text(
       Ini dipakai untuk resolved_url manual dari validator.
     - Jika URL belum resolved, baru coba Google resolver -> publisher search -> discovery.
     """
+
+    if not url:
+        return {
+            "text": "",
+            "final_url": "",
+            "error": "URL sumber kosong.",
+            "fetch_mode": "failed",
+            "metadata": {},
+        }
 
     if skip_resolution:
         resolved = {
@@ -1422,18 +1491,37 @@ def build_assessment(signal) -> dict:
     if not source_name or source_name.lower() in ["google news", "google", "google rss"]:
         source_name = extract_source_from_title(signal.title or "")
 
+    manual_resolved_url = getattr(signal, "resolved_url", "") or ""
+    article_url = manual_resolved_url or signal.source_url or ""
+
     fetch_result = {
         "text": "",
-        "final_url": signal.source_url or "",
+        "final_url": article_url,
         "error": "",
         "fetch_mode": "fallback",
         "metadata": {},
     }
 
-    manual_resolved_url = getattr(signal, "resolved_url", "") or ""
-    article_url = manual_resolved_url or signal.source_url
+    # Cache: kalau URL sama dan source text sudah pernah tersimpan,
+    # tidak perlu fetch ulang.
+    existing_source_text = getattr(signal, "assessment_source_text", "") or ""
+    existing_article_url = ""
 
-    if article_url:
+    try:
+        if getattr(signal, "assessment_5w1h", None):
+            existing_article_url = signal.assessment_5w1h.get("article_url", "") or ""
+    except Exception:
+        existing_article_url = ""
+
+    if existing_source_text and article_url and existing_article_url == article_url:
+        fetch_result = {
+            "text": existing_source_text,
+            "final_url": article_url,
+            "error": "",
+            "fetch_mode": "cached",
+            "metadata": {},
+        }
+    elif article_url:
         fetch_result = fetch_article_text(
             article_url,
             title=signal.title or "",
@@ -1448,6 +1536,7 @@ def build_assessment(signal) -> dict:
     if article_text and (
         not is_text_too_weak(article_text, title=signal.title or "")
         or (manual_resolved_url and len(clean_text(article_text)) >= 250)
+        or fetch_result.get("fetch_mode") == "cached"
     ):
         source_text = article_text
         status = "ok"
@@ -1458,9 +1547,9 @@ def build_assessment(signal) -> dict:
     assessment = build_5w1h_assessment(
         signal=signal,
         article_text=source_text,
-        article_url=fetch_result.get("final_url") or signal.source_url or "",
+        article_url=fetch_result.get("final_url") or article_url or signal.source_url or "",
         fetch_mode=fetch_result.get("fetch_mode") or "fallback",
-        trusted_url=bool(manual_resolved_url),
+        trusted_url=bool(manual_resolved_url) or fetch_result.get("fetch_mode") == "cached",
     )
 
     if fetch_result.get("error"):

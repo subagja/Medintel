@@ -9,14 +9,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from .permissions import role_required, user_has_role, ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER
 from django.core.paginator import Paginator
-from django.db.models import Avg, Prefetch, Q
 from django.shortcuts import render, get_object_or_404, redirect
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count, Avg, Min, Max
+from django.db.models import Count, Avg, Min, Max, Prefetch, Q
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from intel.services.signal_assessment import build_assessment
+from datetime import timedelta
 from .forms import (
     GeocodeManualUpdateForm,
     LocationForm,
@@ -535,6 +535,66 @@ def export_signals_csv(request):
 
     return response
 
+def get_signal_triage_flag(signal):
+    """
+    Menentukan prioritas tindak lanjut analis untuk Raw Signal.
+    Tidak disimpan ke database, hanya dihitung saat halaman dibuka.
+    """
+
+    assessment_status = signal.assessment_status or ""
+    geocode_status = signal.geocode_status or ""
+    threat_score = signal.threat_score or 0
+    assessment_summary = signal.assessment_summary or ""
+    assessment_error = signal.assessment_error or ""
+
+    if threat_score >= 70:
+        return {
+            "code": "high_risk",
+            "label": "High Risk",
+            "class": "triage-high",
+            "reason": "Skor ancaman tinggi dan perlu diprioritaskan analis."
+        }
+
+    if assessment_status in ["failed", "fallback"] or assessment_error:
+        return {
+            "code": "assessment_failed",
+            "label": "Perlu Re-assessment",
+            "class": "triage-red",
+            "reason": "Assessment gagal atau hanya memakai fallback."
+        }
+
+    if not assessment_summary:
+        return {
+            "code": "needs_assessment",
+            "label": "Belum Assessment",
+            "class": "triage-yellow",
+            "reason": "Signal belum memiliki assessment 5W+1H."
+        }
+
+    if geocode_status in [
+        "empty",
+        "empty_loc",
+        "unmatched",
+        "not_found",
+        "skip_low_conf",
+        "skip_too_general",
+        "net_err",
+    ]:
+        return {
+            "code": "needs_location",
+            "label": "Perlu Koreksi Lokasi",
+            "class": "triage-orange",
+            "reason": "Lokasi belum berhasil dipetakan secara meyakinkan."
+        }
+
+    return {
+        "code": "normal",
+        "label": "Normal",
+        "class": "triage-normal",
+        "reason": "Signal sudah relatif lengkap untuk proses validasi."
+    }
+
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def raw_signals_list(request):
@@ -546,9 +606,12 @@ def raw_signals_list(request):
     sort = request.GET.get("sort", "-published_at").strip()
     province_id = request.GET.get("province", "").strip()
     city_id = request.GET.get("city", "").strip()
+    assessment = request.GET.get("assessment", "").strip()
+    triage = request.GET.get("triage", "").strip()
 
     primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
-        "location", "location__parent"
+        "location",
+        "location__parent",
     )
 
     qs = (
@@ -563,6 +626,54 @@ def raw_signals_list(request):
         .filter(status__in=["raw", "validated"])
     )
 
+    # =========================
+    # TRIAGE FILTER
+    # =========================
+    if triage == "high_risk":
+        qs = qs.filter(threat_score__gte=70)
+
+    elif triage == "needs_assessment":
+        qs = qs.filter(
+            Q(assessment_summary__isnull=True) |
+            Q(assessment_summary="") |
+            Q(assessment_status__in=["pending", "not_generated", ""])
+        )
+
+    elif triage == "assessment_failed":
+        qs = qs.filter(
+            Q(assessment_status__in=["failed", "fallback"]) |
+            (
+                Q(assessment_error__isnull=False) &
+                ~Q(assessment_error="")
+            )
+        )
+
+    elif triage == "needs_location":
+        qs = qs.filter(
+            Q(geocode_status__in=[
+                "empty",
+                "empty_loc",
+                "unmatched",
+                "not_found",
+                "skip_low_conf",
+                "skip_too_general",
+                "net_err",
+            ]) |
+            Q(locations__isnull=True)
+        ).distinct()
+
+    elif triage == "url_problem":
+        qs = qs.filter(
+            Q(assessment_status__in=["failed", "fallback"]) |
+            (
+                Q(assessment_error__isnull=False) &
+                ~Q(assessment_error="")
+            )
+        )
+
+    # =========================
+    # SEARCH FILTER
+    # =========================
     if search:
         qs = qs.filter(
             Q(title__icontains=search)
@@ -582,12 +693,51 @@ def raw_signals_list(request):
     if geocode_status:
         qs = qs.filter(geocode_status__iexact=geocode_status)
 
+    # =========================
+    # ASSESSMENT FILTER
+    # =========================
+    if assessment == "not_generated":
+        qs = qs.filter(
+            Q(assessment_summary="") |
+            Q(assessment_summary__isnull=True)
+        )
+
+    elif assessment == "article_based":
+        qs = qs.filter(
+            assessment_5w1h__assessment_quality="article_based"
+        )
+
+    elif assessment == "article_based_partial":
+        qs = qs.filter(
+            assessment_5w1h__assessment_quality="article_based_partial"
+        )
+
+    elif assessment == "low_fallback":
+        qs = qs.filter(
+            assessment_5w1h__assessment_quality="low_fallback"
+        )
+
+    elif assessment == "failed":
+        qs = qs.filter(
+            Q(assessment_status="failed") |
+            (
+                Q(assessment_error__isnull=False) &
+                ~Q(assessment_error="")
+            )
+        )
+
+    # =========================
+    # DATE FILTER
+    # =========================
     if date_from:
         qs = qs.filter(published_at__date__gte=date_from)
 
     if date_to:
         qs = qs.filter(published_at__date__lte=date_to)
 
+    # =========================
+    # LOCATION FILTER
+    # =========================
     if province_id:
         qs = qs.filter(
             Q(locations__is_primary=True, locations__location__parent_id=province_id)
@@ -604,6 +754,9 @@ def raw_signals_list(request):
             locations__location_id=city_id,
         )
 
+    # =========================
+    # SORTING
+    # =========================
     allowed_sort_fields = {
         "published_at": "published_at",
         "-published_at": "-published_at",
@@ -618,10 +771,43 @@ def raw_signals_list(request):
     sort_field = allowed_sort_fields.get(sort, "-published_at")
     qs = qs.distinct().order_by(sort_field, "-created_at", "-id")
 
+    # =========================
+    # PAGINATION
+    # =========================
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
+    # =========================
+    # DISPLAY FLAGS
+    # =========================
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = Signal.objects.filter(
+                disease_tag__iexact=signal.disease_tag,
+                raw_location_text__iexact=signal.raw_location_text,
+            ).exclude(id=signal.id)
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
+
+    # =========================
+    # FILTER CHOICES
+    # =========================
     disease_choices = (
         Signal.objects.exclude(disease_tag="")
         .exclude(disease_tag__isnull=True)
@@ -661,6 +847,8 @@ def raw_signals_list(request):
         "date_to": date_to,
         "disease": disease,
         "geocode_status": geocode_status,
+        "assessment": assessment,
+        "triage": triage,
         "sort": sort,
         "province_id": province_id,
         "city_id": city_id,
@@ -669,7 +857,7 @@ def raw_signals_list(request):
         "provinces": provinces,
         "cities": cities,
     })
-    
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def verified_signals_list(request):
@@ -762,6 +950,29 @@ def verified_signals_list(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = Signal.objects.filter(
+                disease_tag__iexact=signal.disease_tag,
+                raw_location_text__iexact=signal.raw_location_text,
+            ).exclude(id=signal.id)
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
 
     disease_choices = (
         Signal.objects.exclude(disease_tag="")
@@ -1242,6 +1453,7 @@ def signal_approve_mapping(request, pk):
     return redirect("intel:raw_signals")
 
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def signal_quick_score(request, pk):
@@ -1249,25 +1461,33 @@ def signal_quick_score(request, pk):
 
     if request.method == "POST":
         try:
-            new_score = int(request.POST.get("threat_score", signal.threat_score))
+            new_score = int(request.POST.get("threat_score", signal.threat_score or 0))
         except ValueError:
             messages.error(request, "Nilai threat score tidak valid.")
             return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
+        if new_score < 0 or new_score > 100:
+            messages.error(request, "Nilai threat score harus berada antara 0 sampai 100.")
+            return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+
         signal.threat_score = new_score
+        signal.is_high_risk = new_score > 50
         signal.validated_by = request.user
         signal.validated_at = timezone.now()
+
         signal.save(update_fields=[
-            "raw_location_text",
-            "geocode_status",
-            "validation_notes",
+            "threat_score",
+            "is_high_risk",
             "validated_by",
             "validated_at",
-            "approved_for_mapping",
             "updated_at",
         ])
 
-        messages.success(request, f'Skor signal "{signal.title[:60]}" berhasil diperbarui.')
+        messages.success(
+            request,
+            f'Skor signal "{signal.title[:60]}" berhasil diperbarui.'
+        )
+
         return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
     return redirect("intel:raw_signals")
@@ -1418,6 +1638,29 @@ def geocode_error_center(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = Signal.objects.filter(
+                disease_tag__iexact=signal.disease_tag,
+                raw_location_text__iexact=signal.raw_location_text,
+            ).exclude(id=signal.id)
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
 
     geocode_choices = (
         Signal.objects.exclude(geocode_status="")
@@ -1452,6 +1695,7 @@ def geocode_error_center(request):
 
     return render(request, "intel/geocode_error_center.html", context)
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def geocode_manual_update(request, pk):
@@ -1463,7 +1707,11 @@ def geocode_manual_update(request, pk):
         .first()
     )
 
-    current_location = signal_location.location if signal_location and signal_location.location else None
+    current_location = (
+        signal_location.location
+        if signal_location and signal_location.location
+        else None
+    )
 
     initial_province = None
     initial_kabkota = None
@@ -1471,13 +1719,16 @@ def geocode_manual_update(request, pk):
     if current_location:
         if current_location.level == "province":
             initial_province = current_location
+
         elif current_location.level in ["city", "regency"]:
             initial_kabkota = current_location
+
             if current_location.province_code:
                 initial_province = Location.objects.filter(
                     level="province",
-                    province_code=current_location.province_code
+                    province_code=current_location.province_code,
                 ).first()
+
             elif current_location.parent and current_location.parent.level == "province":
                 initial_province = current_location.parent
 
@@ -1493,8 +1744,12 @@ def geocode_manual_update(request, pk):
     if request.method == "POST":
         province_obj = None
         province_id = request.POST.get("province")
+
         if province_id:
-            province_obj = Location.objects.filter(id=province_id, level="province").first()
+            province_obj = Location.objects.filter(
+                id=province_id,
+                level="province",
+            ).first()
 
         province_code = province_obj.province_code if province_obj else None
         form = GeocodeManualUpdateForm(request.POST, province_code=province_code)
@@ -1504,11 +1759,20 @@ def geocode_manual_update(request, pk):
             old_raw_location = signal.raw_location_text
             old_location_id = signal_location.location_id if signal_location else None
 
+            province = form.cleaned_data["province"]
+            kabkota = form.cleaned_data["kabkota"]
+            confidence = form.cleaned_data["confidence"]
+            final_location = kabkota or province
+
             signal.raw_location_text = form.cleaned_data["raw_location_text"]
             signal.geocode_status = (form.cleaned_data["geocode_status"] or "manual").lower()
             signal.validation_notes = form.cleaned_data["notes"]
             signal.validated_by = request.user
             signal.validated_at = timezone.now()
+
+            if final_location:
+                signal.approved_for_mapping = True
+
             signal.save(update_fields=[
                 "raw_location_text",
                 "geocode_status",
@@ -1519,30 +1783,30 @@ def geocode_manual_update(request, pk):
                 "updated_at",
             ])
 
-            province = form.cleaned_data["province"]
-            kabkota = form.cleaned_data["kabkota"]
-            confidence = form.cleaned_data["confidence"]
-
-            final_location = kabkota or province
             if final_location:
-                signal.approved_for_mapping = True
-
-            if signal_location:
-                signal_location.location = final_location
-                signal_location.raw_location_text = signal.raw_location_text
-                signal_location.confidence = confidence
-                signal_location.method = "manual"
-                signal_location.is_primary = True
-                signal_location.save()
-            else:
-                SignalLocation.objects.create(
-                    signal=signal,
-                    location=final_location,
-                    raw_location_text=signal.raw_location_text,
-                    confidence=confidence,
-                    method="manual",
-                    is_primary=True,
-                )
+                if signal_location:
+                    signal_location.location = final_location
+                    signal_location.raw_location_text = signal.raw_location_text
+                    signal_location.confidence = confidence
+                    signal_location.method = "manual"
+                    signal_location.is_primary = True
+                    signal_location.save(update_fields=[
+                        "location",
+                        "raw_location_text",
+                        "confidence",
+                        "method",
+                        "is_primary",
+                        "updated_at",
+                    ])
+                else:
+                    SignalLocation.objects.create(
+                        signal=signal,
+                        location=final_location,
+                        raw_location_text=signal.raw_location_text,
+                        confidence=confidence,
+                        method="manual",
+                        is_primary=True,
+                    )
 
             AuditLog.objects.create(
                 user=request.user,
@@ -1562,11 +1826,17 @@ def geocode_manual_update(request, pk):
                     "kabkota_id": kabkota.id if kabkota else None,
                     "location_id": final_location.id if final_location else None,
                     "confidence": confidence,
+                    "approved_for_mapping": signal.approved_for_mapping,
                 },
             )
 
-            messages.success(request, f'Geocode signal "{signal.title[:60]}" berhasil diperbarui secara manual.')
-            return redirect("intel:geocode_error_center")
+            messages.success(
+                request,
+                f'Geocode signal "{signal.title[:60]}" berhasil diperbarui secara manual.'
+            )
+
+            return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+
     else:
         province_code = initial_province.province_code if initial_province else None
         form = GeocodeManualUpdateForm(initial=initial_data, province_code=province_code)
@@ -1577,6 +1847,7 @@ def geocode_manual_update(request, pk):
         "form": form,
         "signal_location": signal_location,
     }
+
     return render(request, "intel/geocode_manual_update.html", context)
 
 @login_required
@@ -1697,6 +1968,7 @@ def gazetteer_location_edit(request, pk):
     })
 
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def gazetteer_alias_manager(request):
@@ -1737,7 +2009,6 @@ def gazetteer_alias_manager(request):
         "is_active": is_active,
         "is_primary": is_primary,
     })
-
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -1816,6 +2087,7 @@ def gazetteer_toggle_active(request, pk):
     messages.success(request, f'Location "{loc.display_name or loc.name}" sekarang {state}.')
     return redirect(request.META.get("HTTP_REFERER", "intel:gazetteer_manager"))
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def scoring_rules_manager(request):
@@ -1857,7 +2129,6 @@ def scoring_rules_manager(request):
         "rule_type_choices": ScoringRule.RULE_TYPE_CHOICES,
         "settings_qs": settings_qs,
     })
-
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -2039,6 +2310,7 @@ def system_setting_edit(request, pk):
         "setting_obj": setting,
     })
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def alert_center(request):
@@ -2067,7 +2339,6 @@ def alert_center(request):
         "alert_type_choices": Alert.ALERT_TYPE_CHOICES,
         "status_choices": Alert.STATUS_CHOICES,
     })
-
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)

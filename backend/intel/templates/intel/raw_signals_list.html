@@ -295,7 +295,8 @@
 
     .geo-ok,
     .geo-matched,
-    .geo-gazetteer_only {
+    .geo-gazetteer_only,
+    .geo-manual {
         background: var(--green-bg);
         color: var(--green-text);
     }
@@ -533,6 +534,102 @@
     .btn-url-assess:hover {
         background: #e5d7ff;
     }
+
+    .assessment-badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .assessment-not-generated {
+        background: #f1f1f1;
+        color: #555;
+    }
+
+    .assessment-article_based {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .assessment-article_based_partial {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .assessment-low_fallback {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .assessment-failed {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .triage-row {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+    }
+
+    .triage-badge,
+    .duplicate-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .triage-high {
+        background: #fde8e8;
+        color: #b00020;
+        border: 1px solid #e5aaaa;
+    }
+
+    .triage-red {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .triage-orange {
+        background: #fff0df;
+        color: #9a4d00;
+    }
+
+    .triage-yellow {
+        background: #fff5d6;
+        color: #795500;
+    }
+
+    .triage-normal {
+        background: #e8f7ec;
+        color: #08762a;
+    }
+
+    .duplicate-badge {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+    }
+    .btn-edit-location {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+        text-align: center;
+        font-weight: 700;
+    }
+
+    .btn-edit-location:hover {
+        background: #ffe2bd;
+    }
 </style>
 
 <h1 class="page-title">Raw Signals</h1>
@@ -557,6 +654,54 @@
                     {{ item }}
                 </option>
             {% endfor %}
+        </select>
+
+        <select name="assessment">
+            <option value="">Semua assessment</option>
+
+            <option value="not_generated" {% if assessment == "not_generated" %}selected{% endif %}>
+                Belum assessment
+            </option>
+
+            <option value="article_based" {% if assessment == "article_based" %}selected{% endif %}>
+                Article-based
+            </option>
+
+            <option value="article_based_partial" {% if assessment == "article_based_partial" %}selected{% endif %}>
+                Article-based partial
+            </option>
+
+            <option value="low_fallback" {% if assessment == "low_fallback" %}selected{% endif %}>
+                Low fallback
+            </option>
+
+            <option value="failed" {% if assessment == "failed" %}selected{% endif %}>
+                Failed
+            </option>
+        </select>
+
+        <select name="triage">
+            <option value="">Semua tindak lanjut</option>
+
+            <option value="high_risk" {% if triage == "high_risk" %}selected{% endif %}>
+                High Risk
+            </option>
+
+            <option value="needs_assessment" {% if triage == "needs_assessment" %}selected{% endif %}>
+                Belum Assessment
+            </option>
+
+            <option value="assessment_failed" {% if triage == "assessment_failed" %}selected{% endif %}>
+                Perlu Re-assessment
+            </option>
+
+            <option value="needs_location" {% if triage == "needs_location" %}selected{% endif %}>
+                Perlu Koreksi Lokasi
+            </option>
+
+            <option value="url_problem" {% if triage == "url_problem" %}selected{% endif %}>
+                URL / Fetch Bermasalah
+            </option>
         </select>
 
         <select name="province">
@@ -640,6 +785,20 @@
                         {{ signal.title|default:"-" }}
                     </div>
 
+                    <div class="triage-row">
+                        {% if signal.triage_flag %}
+                            <span class="triage-badge {{ signal.triage_flag.class }}" title="{{ signal.triage_flag.reason }}">
+                                {{ signal.triage_flag.label }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.has_duplicate_warning %}
+                            <span class="duplicate-badge" title="Ada signal lain dengan penyakit dan lokasi yang sama dalam rentang waktu dekat.">
+                                Potensi Duplikat: {{ signal.duplicate_count }}
+                            </span>
+                        {% endif %}
+                    </div>
+
                     <div class="signal-meta">
                         {% if signal.source_url %}
                             <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
@@ -653,11 +812,26 @@
                             <span> · {{ signal.published_at|date:"Y-m-d H:i" }}</span>
                         {% endif %}
                     </div>
+                    <div>
+                        {% if signal.assessment_5w1h.assessment_quality %}
+                            <span class="assessment-badge assessment-{{ signal.assessment_5w1h.assessment_quality }}">
+                                {{ signal.assessment_5w1h.assessment_quality }}
+                            </span>
+                        {% elif signal.assessment_status == "failed" %}
+                            <span class="assessment-badge assessment-failed">
+                                failed
+                            </span>
+                        {% elif signal.assessment_status == "fallback" %}
+                            <span class="assessment-badge assessment-low_fallback">
+                                fallback
+                            </span>
+                        {% endif %}
+                    </div>
 
                      <form method="post" action="{% url 'intel:signal_generate_assessment' signal.id %}" class="assessment-form">
                         {% csrf_token %}
                         <button type="submit" class="btn-assessment">
-                            Assessment 5W+1H
+                            Generate 5W+1H
                         </button>
                     </form>
 
@@ -703,24 +877,6 @@
 
                                     <hr>
 
-                                    <!-- <strong>5W+1H:</strong><br>
-                                    <strong>What:</strong> {{ signal.assessment_5w1h.what|default:"-" }}<br>
-                                    <strong>Who:</strong> {{ signal.assessment_5w1h.who|default:"-" }}<br>
-                                    <strong>When:</strong> {{ signal.assessment_5w1h.when|default:"-" }}<br>
-                                    <strong>Where:</strong> {{ signal.assessment_5w1h.where|default:"-" }}<br>
-                                    <strong>Why:</strong> {{ signal.assessment_5w1h.why|default:"-" }}<br>
-                                    <strong>How:</strong> {{ signal.assessment_5w1h.how|default:"-" }}<br>
-
-                                    {% if signal.assessment_5w1h.numbers_context %}
-                                        <br>
-                                        <strong>Angka penting:</strong>
-                                        <ul>
-                                            {% for item in signal.assessment_5w1h.numbers_context %}
-                                                <li>{{ item }}</li>
-                                            {% endfor %}
-                                        </ul>
-                                    {% endif %}
- -->
                                     {% if signal.assessment_5w1h.assessment_quality == "low_fallback" or signal.assessment_status == "fallback" or signal.assessment_error %}
                                         <hr>
 
@@ -808,7 +964,7 @@
                     <div class="score-edit-row">
                         <form method="post" action="{% url 'intel:signal_quick_score' signal.id %}" class="score-box">
                             {% csrf_token %}
-                            <input type="number" name="threat_score" value="{{ signal.threat_score }}" min="0" max="100">
+                            <input type="number" name="threat_score" value="{{  signal.threat_score|default:0 }}" min="0" max="100">
                             <button type="submit">Ubah</button>
                         </form>
                     </div>
@@ -833,17 +989,26 @@
                     {% if signal.primary_locations %}
                         {% with pl=signal.primary_locations.0 %}
                             <div class="location-title">
-                                {{ pl.location.display_name }}
+                               {{ pl.location.display_name|default:pl.location.name|default:"-" }}
                             </div>
 
                             {% if pl.location.parent %}
                                 <div class="location-sub">
-                                    {{ pl.location.parent.display_name }}
+                                    {{ pl.location.parent.display_name|default:pl.location.parent.name|default:"-" }}
                                 </div>
                             {% endif %}
 
                             <div class="location-method">
-                                {{ pl.method }} · {{ pl.confidence }}
+                                {% if pl.method == "manual" %}
+                                    Manual correction
+                                {% elif pl.method == "alias" %}
+                                    Alias match
+                                {% elif pl.method == "gazetteer" %}
+                                    Gazetteer match
+                                {% else %}
+                                    {{ pl.method|default:"-" }}
+                                {% endif %}
+                                · Confidence: {{ pl.confidence|default:"-" }}
                             </div>
                         {% endwith %}
                     {% else %}
@@ -872,12 +1037,16 @@
                 </td>
 
                 <td>
-                    <span class="status-badge status-{{ signal.status }}">
-                        {{ signal.status|default:"-" }}
+                    <span class="status-badge status-{{ signal.status|default:'raw' }}">
+                        {{ signal.status|default:"raw" }}
                     </span>
                 </td>
 
                 <td class="actions">
+                    <a href="{% url 'intel:geocode_manual_update' signal.id %}" class="btn btn-edit-location">
+                        Edit Lokasi
+                    </a>
+
                     <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
                         {% csrf_token %}
                         <button type="submit" class="btn-valid">Valid</button>
@@ -895,9 +1064,9 @@
                 </td>
             </tr>
             {% empty %}
-            <tr>
+            <!-- <tr>
                 <td colspan="8">Belum ada data raw signal.</td>
-            </tr>
+            </tr> -->
             {% endfor %}
         </tbody>
     </table>
@@ -905,15 +1074,15 @@
 
 <div class="pagination">
     {% if page_obj.has_previous %}
-        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
-        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
     {% endif %}
 
     <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
 
     {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
     {% endif %}
 </div>
 

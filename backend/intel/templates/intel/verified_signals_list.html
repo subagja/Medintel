@@ -502,8 +502,8 @@
                     </div>
 
                     {% if signal.status %}
-                        <span class="status-badge status-{{ signal.status }}">
-                            {{ signal.status }}
+                        <span class="status-badge status-{{ signal.status|default:'raw' }}">
+                            {{ signal.status|default:"raw" }}
                         </span>
                     {% endif %}
 
@@ -544,7 +544,7 @@
                 </td>
 
                 <td class="score-cell">
-                    <span class="score-value">{{ signal.threat_score }}</span>
+                    <span class="score-value">{{ signal.threat_score|default:0 }}</span>
 
                     {% if signal.risk_level %}
                         <br>
@@ -567,12 +567,12 @@
                     {% if signal.primary_locations %}
                         {% with pl=signal.primary_locations.0 %}
                             <div class="location-title">
-                                {{ pl.location.display_name }}
+                                {{ pl.location.display_name|default:pl.location.name|default:"-" }}
                             </div>
 
                             {% if pl.location.parent %}
                                 <div class="location-sub">
-                                    {{ pl.location.parent.display_name }}
+                                    {{ pl.location.parent.display_name|default:pl.location.parent.name|default:"-" }}
                                 </div>
                             {% endif %}
 

@@ -3,9 +3,12 @@ import re
 import unicodedata
 import pandas as pd
 from pathlib import Path
+
 from django.core.management.base import BaseCommand
 from django.utils.dateparse import parse_datetime
+
 from intel.models import Source, Location, Signal, SignalLocation
+from intel.services.signal_dedup import should_skip_as_noise
 
 
 def clean_str(val):
@@ -51,6 +54,21 @@ def parse_dt(val):
         return None
 
 
+def normalize_region_code(value):
+    value = clean_str(value)
+    if not value:
+        return ""
+
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    value = value.lower()
+    value = value.replace("/", " ")
+    value = re.sub(r"[^a-z0-9\s_-]", "", value)
+    value = re.sub(r"[\s\-]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+
+    return value
+
+
 class Command(BaseCommand):
     help = "Import old crawling CSV into Source, Signal, Location, and SignalLocation"
 
@@ -76,6 +94,9 @@ class Command(BaseCommand):
         created_signals = 0
         created_links = 0
         skipped = 0
+        skipped_noise = 0
+        updated_signals = 0
+        updated_links = 0
 
         for _, row in df.iterrows():
             title = clean_str(row.get("judul"))
@@ -99,6 +120,27 @@ class Command(BaseCommand):
                 skipped += 1
                 continue
 
+            # =====================================================
+            # NOISE-AWARE DEDUPLICATION
+            # =====================================================
+            skip_noise, existing_signal = should_skip_as_noise(
+                source_url=source_url,
+                resolved_url=source_url,
+                title=title,
+                disease_tag=disease_tag,
+                raw_location_text=raw_location_text,
+                source_name=source_name,
+            )
+
+            if skip_noise:
+                skipped_noise += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"SKIP noise: existing_id={existing_signal.id} title={existing_signal.title[:80]}"
+                    )
+                )
+                continue
+
             source_obj = None
             if source_name:
                 source_obj, source_created = Source.objects.get_or_create(
@@ -110,6 +152,7 @@ class Command(BaseCommand):
                         "is_active": True,
                     },
                 )
+
                 if source_created:
                     created_sources += 1
 
@@ -133,36 +176,56 @@ class Command(BaseCommand):
             if signal_created:
                 created_signals += 1
             else:
-                # update ringan bila record sudah ada
+                # Jangan pernah hidupkan ulang signal yang sudah noise.
+                if signal_obj.status == "noise":
+                    skipped_noise += 1
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"SKIP existing noise: existing_id={signal_obj.id} title={signal_obj.title[:80]}"
+                        )
+                    )
+                    continue
+
+                # Update ringan bila record sudah ada.
                 changed = False
 
                 if not signal_obj.title and title:
                     signal_obj.title = title[:500]
                     changed = True
+
                 if not signal_obj.content and summary:
                     signal_obj.content = summary
                     changed = True
+
                 if not signal_obj.source and source_obj:
                     signal_obj.source = source_obj
                     changed = True
+
                 if not signal_obj.published_at and published_at:
                     signal_obj.published_at = published_at
                     changed = True
+
                 if not signal_obj.disease_tag and disease_tag:
                     signal_obj.disease_tag = disease_tag
                     changed = True
+
                 if signal_obj.threat_score == 0 and threat_score:
                     signal_obj.threat_score = threat_score
                     changed = True
+
                 if not signal_obj.raw_location_text and raw_location_text:
                     signal_obj.raw_location_text = raw_location_text
                     changed = True
+
                 if signal_obj.geocode_status == "PENDING" and geocode_status:
                     signal_obj.geocode_status = geocode_status
                     changed = True
 
+                # Jangan ubah status existing menjadi raw.
+                # Status yang sudah validated / approved / noise tetap dijaga.
                 if changed:
                     signal_obj.save()
+                    updated_signals += 1
 
             province_obj = None
             if admin_province:
@@ -179,6 +242,7 @@ class Command(BaseCommand):
                         "is_active": True,
                     },
                 )
+
                 if province_created:
                     created_locations += 1
 
@@ -186,6 +250,7 @@ class Command(BaseCommand):
             if admin_kabkota:
                 loc_level = "city"
                 kab_lower = admin_kabkota.lower()
+
                 if "kab" in kab_lower or "kabupaten" in kab_lower:
                     loc_level = "regency"
 
@@ -204,8 +269,10 @@ class Command(BaseCommand):
                         "is_active": True,
                     },
                 )
+
                 if location_created:
                     created_locations += 1
+
             elif province_obj:
                 location_obj = province_obj
 
@@ -220,34 +287,30 @@ class Command(BaseCommand):
                         "method": "auto",
                     },
                 )
+
                 if link_created:
                     created_links += 1
                 else:
                     changed = False
+
                     if not link_obj.location and location_obj:
                         link_obj.location = location_obj
                         changed = True
+
                     if not link_obj.raw_location_text and raw_location_text:
                         link_obj.raw_location_text = raw_location_text
                         changed = True
+
                     if changed:
                         link_obj.save()
+                        updated_links += 1
 
         self.stdout.write(self.style.SUCCESS("Import finished"))
         self.stdout.write(f"Created sources: {created_sources}")
         self.stdout.write(f"Created locations: {created_locations}")
         self.stdout.write(f"Created signals: {created_signals}")
+        self.stdout.write(f"Updated signals: {updated_signals}")
         self.stdout.write(f"Created signal links: {created_links}")
+        self.stdout.write(f"Updated signal links: {updated_links}")
         self.stdout.write(f"Skipped rows: {skipped}")
-        
-def normalize_region_code(value):
-    value = clean_str(value)
-    if not value:
-        return ""
-    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
-    value = value.lower()
-    value = value.replace("/", " ")
-    value = re.sub(r"[^a-z0-9\s_-]", "", value)
-    value = re.sub(r"[\s\-]+", "_", value)
-    value = re.sub(r"_+", "_", value).strip("_")
-    return value
+        self.stdout.write(f"Skipped noise rows: {skipped_noise}")
