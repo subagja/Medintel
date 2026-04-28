@@ -1,0 +1,72 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+
+<style>
+    .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px; max-width: 760px; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-weight: 700; margin-bottom: 5px; }
+    input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
+    textarea { min-height: 90px; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 7px 11px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: #4b0082; color: #fff; border-color: #4b0082; }
+    .help { color: #666; font-size: 12px; margin-top: 4px; }
+</style>
+
+<h1 class="page-title">{{ page_title }}</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="field">
+            <label>Alias / Nama Source</label>
+            <input
+                type="text"
+                name="alias"
+                value="{% if alias_obj %}{{ alias_obj.alias }}{% endif %}"
+                placeholder="Contoh: Radar Madiun"
+                required
+            >
+            <div class="help">
+                Nama source sebagaimana muncul dari crawler/RSS.
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Domain Publisher</label>
+            <input
+                type="text"
+                name="domain"
+                value="{% if alias_obj %}{{ alias_obj.domain }}{% endif %}"
+                placeholder="Contoh: radarmadiun.jawapos.com"
+                required
+            >
+            <div class="help">
+                Isi domain saja, tanpa https://.
+            </div>
+        </div>
+
+        <div class="field">
+            <label>Notes</label>
+            <textarea name="notes" placeholder="Catatan opsional">{% if alias_obj %}{{ alias_obj.notes }}{% endif %}</textarea>
+        </div>
+
+        <div class="field">
+            <label>
+                <input
+                    type="checkbox"
+                    name="is_active"
+                    {% if not alias_obj or alias_obj.is_active %}checked{% endif %}
+                >
+                Aktif
+            </label>
+        </div>
+
+        <button type="submit" class="btn-primary">Simpan</button>
+        <a class="btn" href="{% url 'intel:publisher_alias_manager' %}">Batal</a>
+    </form>
+</div>
+
+{% endblock %}

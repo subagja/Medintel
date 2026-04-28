@@ -6,7 +6,7 @@ from urllib.parse import quote_plus, urljoin, urlparse
 import requests
 import urllib3
 from bs4 import BeautifulSoup
-from intel.models import PublisherDomainAlias
+from intel.models import PublisherDomainAlias, ResolvedSourceURL
 from intel.services.google_news_resolver import resolve_google_news_url
 
 
@@ -1061,13 +1061,25 @@ def fetch_article_text(
             "metadata": {},
         }
 
-    if skip_resolution:
+    if not skip_resolution:
+        cached = ResolvedSourceURL.objects.filter(original_url=url).first()
+
+        if cached and cached.resolved_url:
+            resolved = {
+                "url": cached.resolved_url,
+                "mode": "cache",
+                "error": "",
+            }
+        else:
+            resolved = None
+    else:
         resolved = {
             "url": url,
             "mode": "direct",
             "error": "",
         }
-    else:
+
+    if resolved is None:
         resolved = resolve_google_news_url(
             url=url,
             title=title,
@@ -1198,6 +1210,19 @@ def fetch_article_text(
             "fetch_mode": resolved.get("mode") or "weak_text",
             "metadata": metadata,
         }
+
+    if not skip_resolution and final_article_url and final_article_url != url:
+        ResolvedSourceURL.objects.update_or_create(
+            original_url=url,
+            defaults={
+                "resolved_url": final_article_url,
+                "source_name": source_name,
+                "title": title,
+                "method": resolved.get("mode") or "auto",
+                "confidence": 0.8,
+                "is_manual": False,
+            },
+        )
 
     return {
         "text": text,

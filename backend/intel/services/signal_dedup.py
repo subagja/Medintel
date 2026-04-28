@@ -93,7 +93,6 @@ def find_existing_signal(
 
     return None
 
-
 def should_skip_as_noise(
     source_url=None,
     resolved_url=None,
@@ -101,12 +100,16 @@ def should_skip_as_noise(
     disease_tag=None,
     raw_location_text=None,
     source_name=None,
+    respect_noise=False,
 ):
     """
     Return:
-    - True, existing_signal  → signal lama sudah noise, jangan ingest ulang.
-    - False, existing_signal → signal lama ada tapi bukan noise.
+    - True, existing_signal  → hanya jika respect_noise=True dan signal lama noise.
+    - False, existing_signal → signal lama ada, tapi jangan hard-skip.
     - False, None            → belum pernah ada.
+
+    Default dibuat tidak hard-skip noise agar crawling/import tidak membuang data.
+    Noise tetap menjadi status validasi manusia, bukan penghapus otomatis.
     """
 
     existing = find_existing_signal(
@@ -118,7 +121,7 @@ def should_skip_as_noise(
         source_name=source_name,
     )
 
-    if existing and existing.status == "noise":
+    if respect_noise and existing and existing.status == "noise":
         return True, existing
 
     return False, existing

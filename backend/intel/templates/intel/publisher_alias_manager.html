@@ -1,0 +1,110 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+
+<style>
+    .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .filters input, .filters select { min-width: 180px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 6px 10px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: #4b0082; color: #fff; border-color: #4b0082; }
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th, .table td { border-bottom: 1px solid #e6e6e6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .table th { background: #f5f5f5; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge-active { background: #e8f7ec; color: #08762a; }
+    .badge-inactive { background: #fde8e8; color: #b00020; }
+    .small-muted { color: #666; font-size: 11px; }
+    .pagination { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #111; background: #fff; }
+    .pagination span { background: #f5f5f5; font-weight: 700; }
+</style>
+
+<h1 class="page-title">Publisher Alias Manager</h1>
+
+<div class="card">
+    <form method="get" class="filters">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search alias / domain">
+
+        <select name="is_active">
+            <option value="">Semua status</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <button type="submit" class="btn-primary">Filter</button>
+        <a class="btn" href="{% url 'intel:publisher_alias_manager' %}">Reset</a>
+        <a class="btn btn-primary" href="{% url 'intel:publisher_alias_create' %}">Tambah Alias</a>
+    </form>
+</div>
+
+<div class="card">
+    <p style="margin:0;">
+        Total: <strong>{{ page_obj.paginator.count }}</strong> publisher alias
+    </p>
+    <p class="small-muted" style="margin:6px 0 0;">
+        Alias ini dipakai resolver assessment untuk menerjemahkan nama media menjadi domain publisher.
+    </p>
+</div>
+
+<div class="card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Alias</th>
+                <th>Normalized</th>
+                <th>Domain</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th style="width: 160px;">Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in page_obj %}
+                <tr>
+                    <td><strong>{{ item.alias }}</strong></td>
+                    <td><code>{{ item.normalized_alias }}</code></td>
+                    <td><code>{{ item.domain }}</code></td>
+                    <td>
+                        {% if item.is_active %}
+                            <span class="badge badge-active">aktif</span>
+                        {% else %}
+                            <span class="badge badge-inactive">nonaktif</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.notes|default:"-" }}</td>
+                    <td>
+                        <a class="btn" href="{% url 'intel:publisher_alias_edit' item.id %}">Edit</a>
+                        <form method="post" action="{% url 'intel:publisher_alias_toggle_active' item.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit">
+                                {% if item.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="6">Belum ada publisher alias.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&is_active={{ is_active }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&is_active={{ is_active }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&is_active={{ is_active }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&is_active={{ is_active }}">Akhir</a>
+    {% endif %}
+</div>
+
+{% endblock %}

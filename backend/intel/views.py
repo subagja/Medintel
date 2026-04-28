@@ -1,5 +1,6 @@
 import csv
 import json
+import re
 from pathlib import Path
 from intel.services.signal_assessment import build_assessment
 from django.conf import settings
@@ -35,6 +36,7 @@ from .models import (
     ScoringRule,
     SystemSetting,
     Alert,
+    PublisherDomainAlias,
 )
 
 def kabkota_map_view(request, province_id):
@@ -393,6 +395,180 @@ def get_system_setting_value(key, default_value):
         return setting.value
     return default_value
 
+def normalize_publisher_alias(value):
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9\s\.\-]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_manager(request):
+    q = request.GET.get("q", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+
+    qs = PublisherDomainAlias.objects.all()
+
+    if q:
+        qs = qs.filter(
+            Q(alias__icontains=q) |
+            Q(normalized_alias__icontains=q) |
+            Q(domain__icontains=q) |
+            Q(notes__icontains=q)
+        )
+
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+
+    qs = qs.order_by("alias")
+
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "intel/publisher_alias_manager.html", {
+        "page_title": "Publisher Alias Manager",
+        "page_obj": page_obj,
+        "q": q,
+        "is_active": is_active,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_create(request):
+    if request.method == "POST":
+        alias = (request.POST.get("alias") or "").strip()
+        domain = (request.POST.get("domain") or "").strip().lower()
+        notes = (request.POST.get("notes") or "").strip()
+        is_active = request.POST.get("is_active") == "on"
+
+        if not alias or not domain:
+            messages.error(request, "Alias dan domain wajib diisi.")
+            return redirect("intel:publisher_alias_create")
+
+        normalized_alias = normalize_publisher_alias(alias)
+
+        obj, created = PublisherDomainAlias.objects.update_or_create(
+            normalized_alias=normalized_alias,
+            defaults={
+                "alias": alias,
+                "domain": domain,
+                "notes": notes,
+                "is_active": is_active,
+            },
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="create" if created else "update",
+            model_name="PublisherDomainAlias",
+            object_id=str(obj.id),
+            notes="Publisher alias created/updated from manager",
+            after_data={
+                "alias": obj.alias,
+                "normalized_alias": obj.normalized_alias,
+                "domain": obj.domain,
+                "is_active": obj.is_active,
+            },
+        )
+
+        messages.success(request, f'Publisher alias "{alias}" berhasil disimpan.')
+        return redirect("intel:publisher_alias_manager")
+
+    return render(request, "intel/publisher_alias_form.html", {
+        "page_title": "Tambah Publisher Alias",
+        "mode": "create",
+        "alias_obj": None,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_edit(request, pk):
+    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
+
+    if request.method == "POST":
+        before_data = {
+            "alias": obj.alias,
+            "normalized_alias": obj.normalized_alias,
+            "domain": obj.domain,
+            "is_active": obj.is_active,
+            "notes": obj.notes,
+        }
+
+        alias = (request.POST.get("alias") or "").strip()
+        domain = (request.POST.get("domain") or "").strip().lower()
+        notes = (request.POST.get("notes") or "").strip()
+        is_active = request.POST.get("is_active") == "on"
+
+        if not alias or not domain:
+            messages.error(request, "Alias dan domain wajib diisi.")
+            return redirect("intel:publisher_alias_edit", pk=obj.id)
+
+        obj.alias = alias
+        obj.normalized_alias = normalize_publisher_alias(alias)
+        obj.domain = domain
+        obj.notes = notes
+        obj.is_active = is_active
+        obj.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="update",
+            model_name="PublisherDomainAlias",
+            object_id=str(obj.id),
+            notes="Publisher alias updated from manager",
+            before_data=before_data,
+            after_data={
+                "alias": obj.alias,
+                "normalized_alias": obj.normalized_alias,
+                "domain": obj.domain,
+                "is_active": obj.is_active,
+                "notes": obj.notes,
+            },
+        )
+
+        messages.success(request, f'Publisher alias "{obj.alias}" berhasil diperbarui.')
+        return redirect("intel:publisher_alias_manager")
+
+    return render(request, "intel/publisher_alias_form.html", {
+        "page_title": "Edit Publisher Alias",
+        "mode": "edit",
+        "alias_obj": obj,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_toggle_active(request, pk):
+    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
+
+    before_data = {
+        "is_active": obj.is_active,
+    }
+
+    obj.is_active = not obj.is_active
+    obj.save(update_fields=["is_active", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="manual_edit",
+        model_name="PublisherDomainAlias",
+        object_id=str(obj.id),
+        notes="Toggle publisher alias active state",
+        before_data=before_data,
+        after_data={
+            "is_active": obj.is_active,
+        },
+    )
+
+    state = "aktif" if obj.is_active else "nonaktif"
+    messages.success(request, f'Publisher alias "{obj.alias}" sekarang {state}.')
+    return redirect(request.META.get("HTTP_REFERER", "intel:publisher_alias_manager"))
+
 def get_date_range_from_request(request):
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
@@ -623,7 +799,7 @@ def raw_signals_list(request):
                 to_attr="primary_locations",
             )
         )
-        .filter(status__in=["raw", "validated"])
+        .filter(status="raw")
     )
 
     # =========================
@@ -883,7 +1059,7 @@ def verified_signals_list(request):
                 to_attr="primary_locations",
             )
         )
-        .filter(status="approved")
+        .filter(status__in=["validated", "approved"])
     )
 
     if search:
@@ -1122,6 +1298,7 @@ def signal_generate_assessment(request, pk):
 
     return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def signal_update_resolved_url(request, pk):
@@ -1190,10 +1367,21 @@ def signal_update_resolved_url(request, pk):
                 "updated_at",
             ])
 
-            messages.success(
-                request,
-                f'URL artikel asli disimpan dan assessment ulang berhasil untuk signal "{signal.title[:60]}".'
-            )
+            if result["status"] == "ok":
+                messages.success(
+                    request,
+                    f'URL artikel asli disimpan dan assessment article-based berhasil untuk signal "{signal.title[:60]}".'
+                )
+            elif result["status"] == "fallback":
+                messages.warning(
+                    request,
+                    f'URL artikel asli disimpan, tetapi assessment masih fallback untuk signal "{signal.title[:60]}".'
+                )
+            else:
+                messages.error(
+                    request,
+                    f'URL artikel asli disimpan, tetapi assessment gagal untuk signal "{signal.title[:60]}".'
+                )
 
         except Exception as exc:
             signal.assessment_status = "failed"
@@ -1389,7 +1577,7 @@ def signal_mark_validated(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" ditandai sebagai validated.')
-    return redirect("intel:raw_signals")
+    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
@@ -1419,7 +1607,7 @@ def signal_mark_noise(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" ditandai sebagai noise.')
-    return redirect("intel:raw_signals")
+    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
 
 @login_required
@@ -1450,7 +1638,7 @@ def signal_approve_mapping(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" berhasil di-approve untuk mapping.')
-    return redirect("intel:raw_signals")
+    return redirect(request.META.get("HTTP_REFERER", "intel:verified_signals"))
 
 
 
@@ -1490,7 +1678,7 @@ def signal_quick_score(request, pk):
 
         return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
-    return redirect("intel:raw_signals")
+    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)

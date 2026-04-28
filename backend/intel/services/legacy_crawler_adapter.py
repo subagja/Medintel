@@ -389,7 +389,6 @@ def apply_location_to_signal(signal: Signal, location_obj, method: str, confiden
     signal.admin_kabkota = admin_kabkota
     signal.location_level = location_level
     signal.geocode_status = "gazetteer_only"
-    signal.approved_for_mapping = True
 
     signal.save(update_fields=[
         "raw_location_text",
@@ -397,7 +396,6 @@ def apply_location_to_signal(signal: Signal, location_obj, method: str, confiden
         "admin_kabkota",
         "location_level",
         "geocode_status",
-        "approved_for_mapping",
         "updated_at",
     ])
 
@@ -634,17 +632,22 @@ def ingest_legacy_row(row: dict):
     disease_tag = row.get("penyakit_tag", "") or ""
 
     skip_noise, existing_signal = should_skip_as_noise(
-        source_url=source_url,
+    source_url=source_url,
         resolved_url=row.get("final_url") or "",
         title=title,
         disease_tag=disease_tag,
         raw_location_text=raw_location_text,
         source_name=source_name,
+        respect_noise=False,
     )
 
-    if skip_noise:
-        return existing_signal, False, None, "skipped_noise"
-
+    # Jangan hard-skip noise saat crawling.
+    # Kalau signal lama ditemukan, status lama harus dipertahankan.
+    preserved_status = existing_signal.status if existing_signal else map_status_from_row(row)
+    preserved_approved_for_mapping = (
+        existing_signal.approved_for_mapping if existing_signal else False
+    )
+    
     if not source_url:
         source_url = f"legacy://{hash(str(row))}"
 
@@ -711,9 +714,9 @@ def ingest_legacy_row(row: dict):
             "location_level": location_level,
             "geocode_status": geocode_status,
 
-            "status": map_status_from_row(row),
+            "status": preserved_status,
             "is_high_risk": threat_score >= 70,
-            "approved_for_mapping": True if raw_location_text else False,
+            "approved_for_mapping": preserved_approved_for_mapping,
         },
     )
 

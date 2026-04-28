@@ -28,12 +28,6 @@ urlpatterns = [
     path("signals/<int:pk>/approve/", views.signal_approve_mapping, name="signal_approve"),
     path("signals/<int:pk>/quick-score/", views.signal_quick_score, name="signal_quick_score"),
     path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
-
-    path("signals/<int:pk>/validate/", views.signal_mark_validated, name="signal_validate"),
-    path("signals/<int:pk>/noise/", views.signal_mark_noise, name="signal_noise"),
-    path("signals/<int:pk>/approve/", views.signal_approve_mapping, name="signal_approve"),
-    path("signals/<int:pk>/quick-score/", views.signal_quick_score, name="signal_quick_score"),
-    path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
     path("signals/<int:pk>/resolved-url/", views.signal_update_resolved_url, name="signal_update_resolved_url"),
     path("signals/<int:pk>/geocode/", views.geocode_manual_update, name="geocode_manual_update"),
     path("scoring-rules/", views.scoring_rules_manager, name="scoring_rules_manager"),
@@ -65,5 +59,10 @@ urlpatterns = [
     path("province-map/", views.province_map_view, name="province_map_view"),
     path("province-map/data/", views.province_map_data, name="province_map_data"),
     path("province-map/<int:province_id>/kabkota/", views.kabkota_map_view, name="kabkota_map_view"),
+
+    path("publisher-aliases/", views.publisher_alias_manager, name="publisher_alias_manager"),
+    path("publisher-aliases/create/", views.publisher_alias_create, name="publisher_alias_create"),
+    path("publisher-aliases/<int:pk>/edit/", views.publisher_alias_edit, name="publisher_alias_edit"),
+    path("publisher-aliases/<int:pk>/toggle-active/", views.publisher_alias_toggle_active, name="publisher_alias_toggle_active"),
     
 ]
