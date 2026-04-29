@@ -1,6 +1,56 @@
 {% extends "intel/base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<style>
+    .table-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+        margin-bottom: 16px;
+    }
+
+    .datatable-table {
+        width: 100% !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .datatable-table th,
+    .datatable-table td {
+        vertical-align: top;
+        border-bottom: 1px solid #e6e6e6;
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+    }
+
+    .datatable-table thead th {
+        background: #f5f5f5;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+    }
+</style>
 <div class="card">
     <h1>Alert Center</h1>
     <p class="small">Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi.</p>
@@ -30,7 +80,10 @@
 
 <div class="card">
     <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alert</p>
+</div>
 
+<div class="table-card">
+    <table id="alertCenterTable" class="display stripe hover compact datatable-table">
     <table>
         <thead>
             <tr>
@@ -89,4 +142,34 @@
         <a href="?page={{ page_obj.paginator.num_pages }}&status={{ status_filter }}&alert_type={{ alert_type }}">Akhir</a>
     {% endif %}
 </div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        $('.datatable-table').each(function () {
+            if ($.fn.DataTable.isDataTable(this)) {
+                $(this).DataTable().destroy();
+            }
+
+            $(this).DataTable({
+                paging: false,
+                info: false,
+                searching: true,
+                ordering: true,
+                order: [],
+                autoWidth: false,
+                scrollX: false,
+                responsive: false,
+                destroy: true,
+                language: {
+                    search: "Cari cepat:",
+                    zeroRecords: "Tidak ada data yang cocok",
+                    emptyTable: "Belum ada data"
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}

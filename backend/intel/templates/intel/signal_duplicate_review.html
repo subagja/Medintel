@@ -1,0 +1,323 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e6e6e6;
+        --text: #111;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --orange-bg: #fff0df;
+        --orange-text: #9a4d00;
+    }
+
+    .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .main-signal-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .status-raw { background: var(--yellow-bg); color: var(--yellow-text); }
+    .status-validated, .status-approved, .status-valid, .status-verified { background: var(--green-bg); color: var(--green-text); }
+    .status-noise { background: var(--red-bg); color: var(--red-text); }
+    .dup-high { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
+    .dup-medium { background: var(--orange-bg); color: var(--orange-text); border: 1px solid #efc28f; }
+    .dup-low { background: var(--yellow-bg); color: var(--yellow-text); }
+    .actions-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 7px 10px; font-size: 13px; cursor: pointer; text-decoration: none; color: var(--text); display: inline-block; }
+    .btn:hover, button:hover { background: #e8e8e8; }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: #36005e; }
+    .btn-danger { background: var(--red-bg); color: var(--red-text); border-color: #d88; }
+    .btn-warning { background: var(--orange-bg); color: var(--orange-text); border-color: #efc28f; }
+    .btn-success { background: var(--green-bg); color: var(--green-text); border-color: #7acb8a; }
+    .candidate-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .candidate-table th, .candidate-table td { border-bottom: 1px solid var(--soft-border); padding: 8px 10px; vertical-align: top; }
+    .candidate-table th { background: #f5f5f5; text-align: left; white-space: nowrap; }
+    .candidate-title { font-weight: 700; margin-bottom: 4px; }
+    .candidate-reasons { margin: 6px 0 0 16px; padding: 0; color: #333; font-size: 12px; }
+    .candidate-reasons li { margin-bottom: 3px; }
+    .small-muted { color: var(--muted); font-size: 11px; }
+    .empty-box { background: var(--bg-soft); border: 1px dashed #ccc; border-radius: 8px; padding: 16px; color: var(--muted); }
+    .source-link { font-size: 12px; }
+    .checkbox-cell { width: 36px; text-align: center; }
+    .help-box { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 6px; padding: 10px; font-size: 12px; color: #333; line-height: 1.45; }
+    .bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .bulk-action-note { margin-top: 8px; color: #666; font-size: 12px; }
+    .action-cell { text-align: center; vertical-align: middle; }
+    .row-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .row-actions .btn, .row-actions button { width: 160px; text-align: center; box-sizing: border-box; }
+</style>
+
+<h1 class="page-title">Duplicate Review</h1>
+
+<div class="card">
+    <div class="main-signal-title">
+        Signal Utama #{{ signal.id }} — {{ signal.title|default:"-" }}
+    </div>
+
+    <div class="meta">
+        <strong>Penyakit:</strong> {{ signal.disease_tag|default:"-" }}<br>
+        <strong>Lokasi mentah:</strong> {{ signal.raw_location_text|default:"-" }}<br>
+        <strong>Provinsi:</strong> {{ signal.admin_province|default:"-" }}<br>
+        <strong>Kab/Kota:</strong> {{ signal.admin_kabkota|default:"-" }}<br>
+        <strong>Tanggal:</strong>
+        {% if signal.published_at %}{{ signal.published_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}<br>
+        <strong>Status:</strong>
+        <span class="badge status-{{ signal.status|default:'raw' }}">{{ signal.status|default:"raw" }}</span><br>
+        {% if signal.source %}<strong>Sumber:</strong> {{ signal.source.name|default:"-" }}<br>{% endif %}
+        {% if signal.source_url %}<a href="{{ signal.source_url }}" target="_blank" class="source-link">Buka sumber utama</a>{% endif %}
+    </div>
+
+    <div class="actions-row">
+        <a href="{% url 'intel:raw_signals' %}" class="btn">Kembali ke Raw Signals</a>
+
+        {% if signal.status != "validated" and signal.status != "approved" and signal.status != "noise" %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="mark_current_valid">
+                <button type="submit" class="btn-primary">Tandai Signal Utama Valid</button>
+            </form>
+        {% endif %}
+
+        {% if signal.status != "noise" %}
+            <form method="post" onsubmit="return confirm('Tandai signal utama sebagai noise?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="mark_current_noise">
+                <button type="submit" class="btn-danger">Tandai Signal Utama Noise</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <p>Kandidat duplikat ditemukan: <strong>{{ candidate_count }}</strong></p>
+    <div class="help-box">
+        <strong>Petunjuk aksi:</strong><br>
+        <strong>Noise</strong> dipakai untuk kandidat yang benar-benar duplikat murni dan tidak perlu dihitung lagi.<br>
+        <strong>Validated/update</strong> dipakai jika kandidat ternyata bukan duplikat murni, melainkan perkembangan data baru dari kejadian yang sama.<br>
+        <strong>Review</strong> hanya membuka kandidat sebagai signal utama baru dan tidak mengubah status.
+    </div>
+</div>
+
+{% if candidates %}
+<form method="post" id="bulkDuplicateForm">
+    {% csrf_token %}
+    <input type="hidden" name="target_id" id="targetIdInput" value="">
+
+    <div class="card">
+        <div class="bulk-actions">
+            <button
+                type="submit"
+                name="action"
+                value="mark_selected_noise"
+                class="btn-warning bulk-action-btn"
+                data-min-selected="1"
+                data-max-selected=""
+                data-confirm-message="Tandai kandidat terpilih sebagai noise?"
+            >
+                Mark Selected as Noise
+            </button>
+
+            <button
+                type="submit"
+                name="action"
+                value="mark_selected_valid_update"
+                class="btn-success bulk-action-btn"
+                data-min-selected="1"
+                data-max-selected="1"
+                data-confirm-message="Tandai kandidat terpilih sebagai valid/update? Untuk keamanan, aksi ini hanya boleh 1 kandidat sekali proses."
+            >
+                Mark Selected as Valid/Update
+            </button>
+
+            <button
+                type="submit"
+                name="action"
+                value="validate_main_and_noise_selected"
+                class="btn-primary bulk-action-btn"
+                data-min-selected="1"
+                data-max-selected=""
+                data-confirm-message="Validasi signal utama dan tandai kandidat terpilih sebagai noise?"
+            >
+                Validasi Utama + Noise Kandidat Terpilih
+            </button>
+        </div>
+
+        <div class="bulk-action-note">
+            Pilih minimal 1 kandidat sebelum menjalankan aksi massal. Untuk aksi Valid/Update, pilih maksimal 1 kandidat.
+        </div>
+    </div>
+
+    <div class="card">
+        <table class="candidate-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">Pilih</th>
+                    <th>ID</th>
+                    <th>Signal Kandidat</th>
+                    <th>Skor Duplikat</th>
+                    <th>Status</th>
+                    <th>Sumber</th>
+                    <th class="action-cell">Aksi</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for item in candidates %}
+                <tr>
+                    <td class="checkbox-cell">
+                        {% if item.status != "noise" %}
+                            <input type="checkbox" name="selected_ids" value="{{ item.id }}">
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+
+                    <td><strong>#{{ item.id }}</strong></td>
+
+                    <td>
+                        <div class="candidate-title">{{ item.title|default:"-" }}</div>
+                        <div class="small-muted">
+                            <strong>Penyakit:</strong> {{ item.disease_tag|default:"-" }}<br>
+                            <strong>Lokasi:</strong> {{ item.raw_location_text|default:"-" }}<br>
+                            <strong>Tanggal:</strong>
+                            {% if item.published_at %}{{ item.published_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}<br>
+                            <strong>Title similarity:</strong> {{ item.title_similarity_score }}%
+                        </div>
+                        {% if item.duplicate_reasons %}
+                            <ul class="candidate-reasons">
+                                {% for reason in item.duplicate_reasons %}<li>{{ reason }}</li>{% endfor %}
+                            </ul>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        <span class="badge {{ item.duplicate_label_class }}">{{ item.duplicate_score }}%</span><br>
+                        <span class="small-muted">{{ item.duplicate_label }}</span>
+                    </td>
+
+                    <td>
+                        <span class="badge status-{{ item.status|default:'raw' }}">{{ item.status|default:"raw" }}</span>
+                    </td>
+
+                    <td>
+                        {% if item.source %}{{ item.source.name|default:"-" }}<br>{% endif %}
+                        {% if item.source_url %}<a href="{{ item.source_url }}" target="_blank" class="source-link">Buka sumber</a>{% endif %}
+                    </td>
+
+                    <td class="action-cell">
+                        <div class="row-actions">
+                            <a href="{% url 'intel:signal_duplicate_review' item.id %}" class="btn">
+                                Review
+                            </a>
+
+                            {% if item.status != "noise" %}
+                                <button
+                                    type="submit"
+                                    name="action"
+                                    value="mark_single_noise"
+                                    class="btn-danger single-action-btn"
+                                    data-target-id="{{ item.id }}"
+                                    data-confirm-message="Tandai kandidat ini sebagai noise?"
+                                >
+                                    Noise
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    name="action"
+                                    value="mark_single_valid_update"
+                                    class="btn-success single-action-btn"
+                                    data-target-id="{{ item.id }}"
+                                    data-confirm-message="Tandai kandidat ini sebagai valid/update?"
+                                >
+                                    Valid/Update
+                                </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+{% else %}
+<div class="empty-box">Tidak ada kandidat duplikat yang cukup kuat untuk signal.</div>
+{% endif %}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const targetIdInput = document.getElementById("targetIdInput");
+        const bulkButtons = document.querySelectorAll(".bulk-action-btn");
+        const singleButtons = document.querySelectorAll(".single-action-btn");
+
+        function getCheckedCandidates() {
+            return Array.from(document.querySelectorAll('input[name="selected_ids"]:checked'));
+        }
+
+        bulkButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                if (targetIdInput) {
+                    targetIdInput.value = "";
+                }
+
+                const checked = getCheckedCandidates();
+                const selectedCount = checked.length;
+                const minSelected = parseInt(button.dataset.minSelected || "0", 10);
+                const maxSelectedRaw = button.dataset.maxSelected || "";
+                const maxSelected = maxSelectedRaw ? parseInt(maxSelectedRaw, 10) : null;
+                const confirmMessage = button.dataset.confirmMessage || "Lanjutkan aksi ini?";
+
+                if (selectedCount < minSelected) {
+                    event.preventDefault();
+                    alert("Pilih minimal " + minSelected + " kandidat terlebih dahulu.");
+                    return false;
+                }
+
+                if (maxSelected !== null && selectedCount > maxSelected) {
+                    event.preventDefault();
+                    alert("Terlalu banyak kandidat dipilih. Untuk aksi ini maksimal " + maxSelected + " kandidat.");
+                    return false;
+                }
+
+                if (!confirm(confirmMessage + "\n\nJumlah kandidat dipilih: " + selectedCount)) {
+                    event.preventDefault();
+                    return false;
+                }
+
+                return true;
+            });
+        });
+
+        singleButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                if (targetIdInput) {
+                    targetIdInput.value = button.dataset.targetId || "";
+                }
+
+                const confirmMessage = button.dataset.confirmMessage || "Lanjutkan aksi ini?";
+                if (!confirm(confirmMessage)) {
+                    event.preventDefault();
+                    return false;
+                }
+
+                return true;
+            });
+        });
+    });
+</script>
+
+{% endblock %}

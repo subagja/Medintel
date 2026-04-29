@@ -17,13 +17,6 @@
 
         <input type="date" name="date_from" value="{{ date_from }}">
         <input type="date" name="date_to" value="{{ date_to }}">
-
-        <select name="status">
-            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved only</option>
-            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated only</option>
-            <option value="all" {% if status_filter == "all" %}selected{% endif %}>Validated + Approved</option>
-        </select>
-
         <button type="submit">Apply</button>
     </form>
 

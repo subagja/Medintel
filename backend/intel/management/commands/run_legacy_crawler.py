@@ -32,7 +32,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Created signals    : {result['created']}")
         self.stdout.write(f"Updated signals    : {result['updated']}")
         self.stdout.write(f"Matched locations  : {result['matched_locations']}")
-        self.stdout.write(f"Skipped noise      : {result.get('skipped_noise', 0)}")
+        self.stdout.write(f"Noise filtering    : analyst validation mode")
 
 
 def bootstrap_minimal_reference_data():

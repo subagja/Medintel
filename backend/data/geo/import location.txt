@@ -1,0 +1,2 @@
+python manage.py import_province_geojson --file data/geo/indonesia_provinces.geojson --update-existing --dry-run
+python manage.py import_kabkota_geojson --file data/geo/indonesia_kabkota.geojson --update-existing

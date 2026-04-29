@@ -619,6 +619,25 @@
         color: #9a4d00;
         border: 1px solid #efc28f;
     }
+
+    .duplicate-badge-link {
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .duplicate-badge-link:hover {
+        background: #ffe2bd;
+        color: #7a3d00;
+        border-color: #d99b51;
+    }
+
+    .duplicate-mini-action {
+        display: inline-block;
+        margin-left: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #7a3d00;
+    }
     .btn-edit-location {
         background: #fff0df;
         color: #9a4d00;
@@ -792,10 +811,15 @@
                             </span>
                         {% endif %}
 
-                        {% if signal.has_duplicate_warning %}
-                            <span class="duplicate-badge" title="Ada signal lain dengan penyakit dan lokasi yang sama dalam rentang waktu dekat.">
-                                Potensi Duplikat: {{ signal.duplicate_count }}
-                            </span>
+                        {% if signal.has_duplicate_warning or signal.duplicate_count %}
+                            <a
+                                href="{% url 'intel:signal_duplicate_review' signal.id %}"
+                                class="duplicate-badge duplicate-badge-link"
+                                title="Ada {{ signal.duplicate_count|default:0 }} kandidat duplikat. Klik untuk review kandidat duplikat."
+                            >
+                                Potensi Duplikat: {{ signal.duplicate_count|default:0 }}
+                                <span class="duplicate-mini-action">Review</span>
+                            </a>
                         {% endif %}
                     </div>
 
@@ -1047,20 +1071,27 @@
                         Edit Lokasi
                     </a>
 
-                    <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-valid">Valid</button>
-                    </form>
+                    {% if signal.status == "raw" %}
+                        <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-valid">Valid</button>
+                        </form>
 
-                    <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-noise">Noise</button>
-                    </form>
+                        <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-noise">Noise</button>
+                        </form>
+                    {% elif signal.status == "validated" %}
+                        <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-approve">Approve Mapping</button>
+                        </form>
 
-                    <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
-                        {% csrf_token %}
-                        <button type="submit" class="btn-approve">Approve</button>
-                    </form>
+                        <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-noise">Noise</button>
+                        </form>
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}

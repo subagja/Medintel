@@ -222,7 +222,7 @@ class MedIntelCrawler:
 
         # Mode cepat untuk tracing awal.
         # Jangan scrape artikel penuh dan jangan geocode online dulu.
-        self.max_entries_per_keyword = 5
+        self.max_entries_per_keyword = None
         self.enable_article_scrape = True
         self.enable_online_geocode = False
 
@@ -773,7 +773,14 @@ class MedIntelCrawler:
             print(f"🔎 Scanning {kw}...")
             feed = feedparser.parse(self.rss_url.format(query=kw.replace(" ", "+")))
 
-            entries = list(getattr(feed, "entries", []))[:self.max_entries_per_keyword]
+            # entries = list(getattr(feed, "entries", []))[:self.max_entries_per_keyword]
+            # print(f"   found {len(entries)} entries for {kw}", flush=True)
+
+            entries = list(getattr(feed, "entries", []))
+
+            if self.max_entries_per_keyword:
+                entries = entries[:self.max_entries_per_keyword]
+
             print(f"   found {len(entries)} entries for {kw}", flush=True)
 
             for idx, entry in enumerate(entries, start=1):

@@ -1,0 +1,491 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    .page-title {
+        margin-bottom: 16px;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .card {
+        background: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filters input,
+    .filters select {
+        padding: 7px 9px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 13px;
+        min-width: 150px;
+    }
+
+    .filters input[name="q"] {
+        min-width: 260px;
+    }
+
+    .btn,
+    button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: #111;
+        display: inline-block;
+    }
+
+    .btn:hover,
+    button:hover {
+        background: #e8e8e8;
+    }
+
+    .btn-primary,
+    .filters button[type="submit"] {
+        background: #4b0082;
+        color: #fff;
+        border-color: #4b0082;
+    }
+
+    .btn-primary:hover,
+    .filters button[type="submit"]:hover {
+        background: #36005e;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .summary-row p {
+        margin: 0;
+    }
+
+    .small-muted,
+    .small {
+        color: #666;
+        font-size: 11px;
+    }
+
+    .table-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .gazetteer-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .gazetteer-table th,
+    .gazetteer-table td {
+        vertical-align: top;
+        border-bottom: 1px solid #e1e1e1;
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .gazetteer-table thead th {
+        background: #f5f5f5;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .id-cell {
+        text-align: center;
+        font-weight: 700;
+    }
+
+    .location-title {
+        font-weight: 700;
+        color: #111;
+        margin-bottom: 3px;
+    }
+
+    .location-sub {
+        color: #666;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 7px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .badge-level {
+        background: #f1ecff;
+        color: #4b0082;
+    }
+
+    .badge-active {
+        background: #e8f7ec;
+        color: #08762a;
+    }
+
+    .badge-inactive {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .badge-fp {
+        background: #fff5d6;
+        color: #795500;
+    }
+
+    .badge-normal {
+        background: #eef3ff;
+        color: #2451a6;
+    }
+
+    .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .actions form {
+        margin: 0;
+    }
+
+    .actions .btn,
+    .actions button {
+        width: 100%;
+        text-align: center;
+        font-size: 12px;
+        padding: 6px 8px;
+        box-sizing: border-box;
+    }
+
+    .btn-edit {
+        background: #eef3ff;
+        border: 1px solid #7d95d8;
+    }
+
+    .btn-toggle {
+        background: #fff5d6;
+        border: 1px solid #e2c86d;
+    }
+
+    .btn-danger {
+        background: #fff1f1;
+        border: 1px solid #d88;
+    }
+
+    .pagination {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #111;
+        background: #fff;
+    }
+
+    .pagination span {
+        background: #f5f5f5;
+        font-weight: 700;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+</style>
+
+<h1 class="page-title">Gazetteer Manager</h1>
+
+<div class="card">
+    <div class="summary-row">
+        <div>
+            <p><strong>Master Location / Gazetteer</strong></p>
+            <p class="small-muted">
+                Halaman ini digunakan untuk mengelola data wilayah utama seperti provinsi, kabupaten, kota, dan level lokasi lainnya.
+            </p>
+        </div>
+
+        <a class="btn btn-primary" href="{% url 'intel:gazetteer_location_create' %}">
+            + Tambah Location
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <form method="get" class="filters">
+        <input
+            type="text"
+            name="q"
+            placeholder="Cari nama / kode / parent"
+            value="{{ q }}"
+        >
+
+        <select name="level">
+            <option value="">Semua level</option>
+            {% for value, label in level_choices %}
+                <option value="{{ value }}" {% if level == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="is_active">
+            <option value="">Semua status aktif</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <select name="is_false_positive">
+            <option value="">Semua FP status</option>
+            <option value="yes" {% if is_false_positive == "yes" %}selected{% endif %}>False Positive</option>
+            <option value="no" {% if is_false_positive == "no" %}selected{% endif %}>Normal</option>
+        </select>
+
+        <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:gazetteer_manager' %}">Reset</a>
+    </form>
+</div>
+
+<div class="card">
+    <div class="summary-row">
+        <p>Total: <strong>{{ page_obj.paginator.count }}</strong> location</p>
+        <p class="small-muted">
+            Filter server-side tetap aktif. Pencarian cepat DataTables hanya mencari data pada halaman ini.
+        </p>
+    </div>
+</div>
+
+<div class="table-card">
+    <table id="gazetteerLocationTable" class="display stripe hover compact gazetteer-table">
+        <colgroup>
+            <col style="width: 60px;">
+            <col style="width: 28%;">
+            <col style="width: 95px;">
+            <col style="width: 22%;">
+            <col style="width: 180px;">
+            <col style="width: 120px;">
+            <col style="width: 160px;">
+        </colgroup>
+
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Location</th>
+                <th>Level</th>
+                <th>Parent</th>
+                <th>Kode Wilayah</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for loc in page_obj %}
+            <tr>
+                <td class="id-cell">{{ loc.id }}</td>
+
+                <td>
+                    <div class="location-title">
+                        {{ loc.display_name|default:loc.name|default:"-" }}
+                    </div>
+
+                    <div class="location-sub">
+                        <strong>Name:</strong> {{ loc.name|default:"-" }}<br>
+                        <strong>Normalized:</strong> {{ loc.normalized_name|default:"-" }}
+                    </div>
+
+                    {% if loc.lat and loc.lon %}
+                        <div class="location-sub">
+                            <strong>Lat/Lon:</strong> {{ loc.lat }}, {{ loc.lon }}
+                        </div>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <span class="badge badge-level">
+                        {{ loc.level|default:"-" }}
+                    </span>
+                </td>
+
+                <td>
+                    {% if loc.parent %}
+                        <div class="location-title">
+                            {{ loc.parent.display_name|default:loc.parent.name }}
+                        </div>
+                        <div class="location-sub">
+                            {{ loc.parent.level|default:"-" }}
+                        </div>
+                    {% else %}
+                        <span class="small-muted">-</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <div class="location-sub">
+                        <strong>Province:</strong>
+                        {{ loc.province_code|default:"-" }}<br>
+
+                        <strong>City/Regency:</strong>
+                        {{ loc.city_regency_code|default:"-" }}
+                    </div>
+                </td>
+
+                <td>
+                    {% if loc.is_active %}
+                        <span class="badge badge-active">Aktif</span>
+                    {% else %}
+                        <span class="badge badge-inactive">Nonaktif</span>
+                    {% endif %}
+
+                    <br><br>
+
+                    {% if loc.is_false_positive %}
+                        <span class="badge badge-fp">False Positive</span>
+                    {% else %}
+                        <span class="badge badge-normal">Normal</span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <div class="actions">
+                        <a class="btn btn-edit" href="{% url 'intel:gazetteer_location_edit' loc.id %}">
+                            Edit
+                        </a>
+
+                        <form method="post" action="{% url 'intel:gazetteer_toggle_active' loc.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-toggle">
+                                {% if loc.is_active %}
+                                    Nonaktifkan
+                                {% else %}
+                                    Aktifkan
+                                {% endif %}
+                            </button>
+                        </form>
+
+                        <form method="post" action="{% url 'intel:gazetteer_toggle_false_positive' loc.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-danger">
+                                {% if loc.is_false_positive %}
+                                    Set Normal
+                                {% else %}
+                                    Set False Positive
+                                {% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <!-- DataTables emptyTable text handles empty state -->
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&level={{ level }}&is_active={{ is_active }}&is_false_positive={{ is_false_positive }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&level={{ level }}&is_active={{ is_active }}&is_false_positive={{ is_false_positive }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&level={{ level }}&is_active={{ is_active }}&is_false_positive={{ is_false_positive }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&level={{ level }}&is_active={{ is_active }}&is_false_positive={{ is_false_positive }}">Akhir</a>
+    {% endif %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        const tableSelector = '#gazetteerLocationTable';
+
+        if ($.fn.DataTable.isDataTable(tableSelector)) {
+            $(tableSelector).DataTable().destroy();
+        }
+
+        const table = $(tableSelector).DataTable({
+            paging: false,
+            info: false,
+            searching: true,
+            ordering: true,
+            order: [],
+            autoWidth: false,
+            scrollX: false,
+            fixedHeader: false,
+            responsive: false,
+            destroy: true,
+            language: {
+                search: "Cari cepat:",
+                zeroRecords: "Tidak ada data yang cocok",
+                emptyTable: "Belum ada data location"
+            },
+            columnDefs: [
+                { targets: 0, width: "60px" },
+                { targets: 1, width: "28%" },
+                { targets: 2, width: "95px" },
+                { targets: 3, width: "22%" },
+                { targets: 4, width: "180px" },
+                { targets: 5, width: "120px" },
+                { targets: 6, width: "160px", orderable: false, searchable: false }
+            ]
+        });
+
+        setTimeout(function () {
+            table.columns.adjust();
+        }, 200);
+    });
+</script>
+
+{% endblock %}

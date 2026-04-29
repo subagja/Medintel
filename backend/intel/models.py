@@ -40,13 +40,9 @@ class Source(TimeStampedModel):
 
 class Location(TimeStampedModel):
     LEVEL_CHOICES = [
-        ("country", "Country"),
         ("province", "Province"),
         ("regency", "Regency"),
         ("city", "City"),
-        ("district", "District"),
-        ("village", "Village"),
-        ("other", "Other"),
     ]
 
     name = models.CharField(max_length=255, db_index=True)

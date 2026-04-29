@@ -1,6 +1,7 @@
 import csv
 import json
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from intel.services.signal_assessment import build_assessment
 from django.conf import settings
@@ -395,180 +396,6 @@ def get_system_setting_value(key, default_value):
         return setting.value
     return default_value
 
-def normalize_publisher_alias(value):
-    value = (value or "").strip().lower()
-    value = re.sub(r"[^a-z0-9\s\.\-]", " ", value)
-    value = re.sub(r"\s+", " ", value).strip()
-    return value
-
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def publisher_alias_manager(request):
-    q = request.GET.get("q", "").strip()
-    is_active = request.GET.get("is_active", "").strip()
-
-    qs = PublisherDomainAlias.objects.all()
-
-    if q:
-        qs = qs.filter(
-            Q(alias__icontains=q) |
-            Q(normalized_alias__icontains=q) |
-            Q(domain__icontains=q) |
-            Q(notes__icontains=q)
-        )
-
-    if is_active == "yes":
-        qs = qs.filter(is_active=True)
-    elif is_active == "no":
-        qs = qs.filter(is_active=False)
-
-    qs = qs.order_by("alias")
-
-    paginator = Paginator(qs, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-
-    return render(request, "intel/publisher_alias_manager.html", {
-        "page_title": "Publisher Alias Manager",
-        "page_obj": page_obj,
-        "q": q,
-        "is_active": is_active,
-    })
-
-
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def publisher_alias_create(request):
-    if request.method == "POST":
-        alias = (request.POST.get("alias") or "").strip()
-        domain = (request.POST.get("domain") or "").strip().lower()
-        notes = (request.POST.get("notes") or "").strip()
-        is_active = request.POST.get("is_active") == "on"
-
-        if not alias or not domain:
-            messages.error(request, "Alias dan domain wajib diisi.")
-            return redirect("intel:publisher_alias_create")
-
-        normalized_alias = normalize_publisher_alias(alias)
-
-        obj, created = PublisherDomainAlias.objects.update_or_create(
-            normalized_alias=normalized_alias,
-            defaults={
-                "alias": alias,
-                "domain": domain,
-                "notes": notes,
-                "is_active": is_active,
-            },
-        )
-
-        AuditLog.objects.create(
-            user=request.user,
-            action="create" if created else "update",
-            model_name="PublisherDomainAlias",
-            object_id=str(obj.id),
-            notes="Publisher alias created/updated from manager",
-            after_data={
-                "alias": obj.alias,
-                "normalized_alias": obj.normalized_alias,
-                "domain": obj.domain,
-                "is_active": obj.is_active,
-            },
-        )
-
-        messages.success(request, f'Publisher alias "{alias}" berhasil disimpan.')
-        return redirect("intel:publisher_alias_manager")
-
-    return render(request, "intel/publisher_alias_form.html", {
-        "page_title": "Tambah Publisher Alias",
-        "mode": "create",
-        "alias_obj": None,
-    })
-
-
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def publisher_alias_edit(request, pk):
-    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
-
-    if request.method == "POST":
-        before_data = {
-            "alias": obj.alias,
-            "normalized_alias": obj.normalized_alias,
-            "domain": obj.domain,
-            "is_active": obj.is_active,
-            "notes": obj.notes,
-        }
-
-        alias = (request.POST.get("alias") or "").strip()
-        domain = (request.POST.get("domain") or "").strip().lower()
-        notes = (request.POST.get("notes") or "").strip()
-        is_active = request.POST.get("is_active") == "on"
-
-        if not alias or not domain:
-            messages.error(request, "Alias dan domain wajib diisi.")
-            return redirect("intel:publisher_alias_edit", pk=obj.id)
-
-        obj.alias = alias
-        obj.normalized_alias = normalize_publisher_alias(alias)
-        obj.domain = domain
-        obj.notes = notes
-        obj.is_active = is_active
-        obj.save()
-
-        AuditLog.objects.create(
-            user=request.user,
-            action="update",
-            model_name="PublisherDomainAlias",
-            object_id=str(obj.id),
-            notes="Publisher alias updated from manager",
-            before_data=before_data,
-            after_data={
-                "alias": obj.alias,
-                "normalized_alias": obj.normalized_alias,
-                "domain": obj.domain,
-                "is_active": obj.is_active,
-                "notes": obj.notes,
-            },
-        )
-
-        messages.success(request, f'Publisher alias "{obj.alias}" berhasil diperbarui.')
-        return redirect("intel:publisher_alias_manager")
-
-    return render(request, "intel/publisher_alias_form.html", {
-        "page_title": "Edit Publisher Alias",
-        "mode": "edit",
-        "alias_obj": obj,
-    })
-
-
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def publisher_alias_toggle_active(request, pk):
-    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
-
-    before_data = {
-        "is_active": obj.is_active,
-    }
-
-    obj.is_active = not obj.is_active
-    obj.save(update_fields=["is_active", "updated_at"])
-
-    AuditLog.objects.create(
-        user=request.user,
-        action="manual_edit",
-        model_name="PublisherDomainAlias",
-        object_id=str(obj.id),
-        notes="Toggle publisher alias active state",
-        before_data=before_data,
-        after_data={
-            "is_active": obj.is_active,
-        },
-    )
-
-    state = "aktif" if obj.is_active else "nonaktif"
-    messages.success(request, f'Publisher alias "{obj.alias}" sekarang {state}.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:publisher_alias_manager"))
-
 def get_date_range_from_request(request):
     date_from = request.GET.get("date_from", "").strip()
     date_to = request.GET.get("date_to", "").strip()
@@ -771,6 +598,366 @@ def get_signal_triage_flag(signal):
     }
 
 
+
+def normalize_duplicate_text(value):
+    value = value or ""
+    value = str(value).lower().strip()
+    value = re.sub(r"[^a-z0-9\s]", " ", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
+def duplicate_title_similarity(title_a, title_b):
+    a = normalize_duplicate_text(title_a)
+    b = normalize_duplicate_text(title_b)
+
+    if not a or not b:
+        return 0.0
+
+    return round(SequenceMatcher(None, a, b).ratio() * 100, 2)
+
+
+def get_primary_location_ids_for_signal(signal):
+    ids = []
+
+    for item in getattr(signal, "primary_locations", []):
+        if item.location_id:
+            ids.append(item.location_id)
+
+    if not ids:
+        ids = list(
+            SignalLocation.objects.filter(
+                signal=signal,
+                is_primary=True,
+                location__isnull=False,
+            ).values_list("location_id", flat=True)
+        )
+
+    return ids
+
+
+def get_duplicate_candidates(signal, days=7, limit=30):
+    """
+    Cari kandidat duplikat berbasis:
+    - URL sama / mirip
+    - disease sama
+    - lokasi sama
+    - rentang tanggal dekat
+    - kemiripan judul
+
+    Candidate diberi atribut tambahan:
+    duplicate_score, duplicate_label, title_similarity_score, duplicate_reasons.
+    """
+
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location",
+        "location__parent",
+    )
+
+    qs = (
+        Signal.objects.select_related("source")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        )
+        .exclude(id=signal.id)
+        .exclude(status="noise")
+    )
+
+    if signal.disease_tag:
+        qs = qs.filter(disease_tag__iexact=signal.disease_tag)
+
+    if signal.published_at:
+        qs = qs.filter(
+            published_at__range=(
+                signal.published_at - timedelta(days=days),
+                signal.published_at + timedelta(days=days),
+            )
+        )
+
+    loc_q = Q()
+
+    if signal.raw_location_text:
+        loc_q |= Q(raw_location_text__iexact=signal.raw_location_text)
+
+    if getattr(signal, "admin_kabkota", ""):
+        loc_q |= Q(admin_kabkota__iexact=signal.admin_kabkota)
+
+    if getattr(signal, "admin_province", ""):
+        loc_q |= Q(admin_province__iexact=signal.admin_province)
+
+    primary_location_ids = get_primary_location_ids_for_signal(signal)
+
+    if primary_location_ids:
+        loc_q |= Q(
+            locations__is_primary=True,
+            locations__location_id__in=primary_location_ids,
+        )
+
+    if loc_q:
+        qs = qs.filter(loc_q).distinct()
+
+    qs = qs.order_by("-published_at", "-created_at", "-id")[:200]
+
+    candidates = []
+
+    signal_title = signal.title or ""
+    signal_source_url = signal.source_url or ""
+    signal_resolved_url = getattr(signal, "resolved_url", "") or ""
+
+    for item in qs:
+        score = 0
+        reasons = []
+
+        title_sim = duplicate_title_similarity(signal_title, item.title)
+
+        if title_sim >= 85:
+            score += 35
+            reasons.append(f"Judul sangat mirip ({title_sim}%).")
+        elif title_sim >= 60:
+            score += 20
+            reasons.append(f"Judul cukup mirip ({title_sim}%).")
+        elif title_sim >= 40:
+            score += 10
+            reasons.append(f"Judul agak mirip ({title_sim}%).")
+
+        item_source_url = item.source_url or ""
+        item_resolved_url = getattr(item, "resolved_url", "") or ""
+
+        if signal_source_url and (
+            signal_source_url == item_source_url
+            or signal_source_url == item_resolved_url
+        ):
+            score += 50
+            reasons.append("URL sumber sama dengan signal utama.")
+
+        if signal_resolved_url and (
+            signal_resolved_url == item_source_url
+            or signal_resolved_url == item_resolved_url
+        ):
+            score += 50
+            reasons.append("Resolved URL sama dengan signal utama.")
+
+        if signal.disease_tag and item.disease_tag and signal.disease_tag.lower() == item.disease_tag.lower():
+            score += 15
+            reasons.append("Kategori penyakit sama.")
+
+        same_location = False
+
+        if signal.raw_location_text and item.raw_location_text:
+            if signal.raw_location_text.strip().lower() == item.raw_location_text.strip().lower():
+                same_location = True
+
+        if getattr(signal, "admin_kabkota", "") and getattr(item, "admin_kabkota", ""):
+            if signal.admin_kabkota.strip().lower() == item.admin_kabkota.strip().lower():
+                same_location = True
+
+        if getattr(signal, "admin_province", "") and getattr(item, "admin_province", ""):
+            if signal.admin_province.strip().lower() == item.admin_province.strip().lower():
+                same_location = True
+
+        item_primary_location_ids = get_primary_location_ids_for_signal(item)
+
+        if primary_location_ids and item_primary_location_ids:
+            if set(primary_location_ids).intersection(set(item_primary_location_ids)):
+                same_location = True
+
+        if same_location:
+            score += 25
+            reasons.append("Lokasi sama atau mengarah ke wilayah yang sama.")
+
+        if signal.published_at and item.published_at:
+            diff_days = abs((signal.published_at.date() - item.published_at.date()).days)
+
+            if diff_days <= 1:
+                score += 15
+                reasons.append("Tanggal publikasi sangat dekat.")
+            elif diff_days <= 3:
+                score += 10
+                reasons.append("Tanggal publikasi dekat.")
+            elif diff_days <= days:
+                score += 5
+                reasons.append("Tanggal publikasi masih dalam rentang review.")
+
+        score = min(score, 100)
+
+        if score >= 80:
+            label = "Kemungkinan Duplikat Tinggi"
+            label_class = "dup-high"
+        elif score >= 55:
+            label = "Perlu Review"
+            label_class = "dup-medium"
+        else:
+            label = "Kemiripan Rendah"
+            label_class = "dup-low"
+
+        item.duplicate_score = score
+        item.duplicate_label = label
+        item.duplicate_label_class = label_class
+        item.title_similarity_score = title_sim
+        item.duplicate_reasons = reasons
+
+        if score >= 35:
+            candidates.append(item)
+
+    candidates.sort(key=lambda x: x.duplicate_score, reverse=True)
+
+    return candidates[:limit]
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
+def signal_duplicate_review(request, pk):
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location",
+        "location__parent",
+    )
+
+    signal = get_object_or_404(
+        Signal.objects.select_related("source")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        ),
+        pk=pk,
+    )
+
+    def _mark_noise(item, note):
+        before_data = {"status": item.status, "approved_for_mapping": item.approved_for_mapping}
+        item.status = "noise"
+        item.approved_for_mapping = False
+        item.validated_by = request.user
+        item.validated_at = timezone.now()
+        item.save(update_fields=["status", "approved_for_mapping", "validated_by", "validated_at", "updated_at"])
+        AuditLog.objects.create(
+            user=request.user,
+            action="mark_noise",
+            model_name="Signal",
+            object_id=str(item.id),
+            notes=note,
+            before_data=before_data,
+            after_data={"status": item.status, "approved_for_mapping": item.approved_for_mapping, "duplicate_review_main_signal_id": signal.id},
+        )
+
+    def _mark_validated(item, note):
+        before_data = {"status": item.status, "approved_for_mapping": item.approved_for_mapping}
+        item.status = "validated"
+        item.approved_for_mapping = False
+        item.validated_by = request.user
+        item.validated_at = timezone.now()
+        item.save(update_fields=["status", "approved_for_mapping", "validated_by", "validated_at", "updated_at"])
+        AuditLog.objects.create(
+            user=request.user,
+            action="validate",
+            model_name="Signal",
+            object_id=str(item.id),
+            notes=note,
+            before_data=before_data,
+            after_data={"status": item.status, "approved_for_mapping": item.approved_for_mapping, "duplicate_review_main_signal_id": signal.id},
+        )
+
+    if request.method == "POST":
+        action = request.POST.get("action", "").strip()
+        selected_ids = [item for item in request.POST.getlist("selected_ids") if str(item).isdigit()]
+        target_id = (request.POST.get("target_id") or request.POST.get("single_id") or "").strip()
+        single_ids = [target_id] if target_id.isdigit() else []
+
+        bulk_actions = {"mark_selected_noise", "mark_selected_valid", "mark_selected_valid_update", "validate_main_and_noise_selected"}
+        single_actions = {"mark_one_noise", "mark_single_noise", "mark_one_valid", "mark_single_valid_update"}
+
+        if action in bulk_actions and not selected_ids:
+            messages.warning(request, "Pilih minimal 1 kandidat terlebih dahulu.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        if action in {"mark_selected_valid", "mark_selected_valid_update"} and len(selected_ids) > 1:
+            messages.warning(request, "Aksi Valid/Update hanya boleh untuk 1 kandidat sekali proses agar tidak salah validasi massal.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        if action in single_actions and not single_ids:
+            messages.warning(request, "Target kandidat tidak ditemukan.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        target_ids = single_ids if action in single_actions else selected_ids
+        candidates_qs = Signal.objects.filter(id__in=target_ids).exclude(id=signal.id)
+
+        if action == "mark_selected_noise":
+            changed_count = 0
+            for item in candidates_qs:
+                if item.status == "noise":
+                    continue
+                _mark_noise(item, note=f"Marked as duplicate/noise from duplicate review. Main signal id={signal.id}")
+                changed_count += 1
+            messages.success(request, f"{changed_count} kandidat duplikat ditandai sebagai noise.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action in {"mark_selected_valid", "mark_selected_valid_update"}:
+            changed_count = 0
+            for item in candidates_qs:
+                if item.status == "noise":
+                    continue
+                _mark_validated(item, note=f"Candidate marked as valid/update from duplicate review. Main signal id={signal.id}")
+                changed_count += 1
+            messages.success(request, f"{changed_count} kandidat ditandai sebagai validated/update, bukan noise.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action in {"mark_one_noise", "mark_single_noise"}:
+            item = candidates_qs.first()
+            if not item:
+                messages.warning(request, "Kandidat tidak ditemukan.")
+                return redirect("intel:signal_duplicate_review", pk=signal.id)
+            _mark_noise(item, note=f"Single candidate marked as duplicate/noise from duplicate review. Main signal id={signal.id}")
+            messages.success(request, f"Kandidat #{item.id} ditandai sebagai noise.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action in {"mark_one_valid", "mark_single_valid_update"}:
+            item = candidates_qs.first()
+            if not item:
+                messages.warning(request, "Kandidat tidak ditemukan.")
+                return redirect("intel:signal_duplicate_review", pk=signal.id)
+            _mark_validated(item, note=f"Single candidate marked as valid/update from duplicate review. Main signal id={signal.id}")
+            messages.success(request, f"Kandidat #{item.id} ditandai sebagai validated/update.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action == "mark_current_valid":
+            _mark_validated(signal, note="Main signal marked as validated from duplicate review.")
+            messages.success(request, "Signal utama ditandai sebagai validated.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action == "mark_current_noise":
+            _mark_noise(signal, note="Main signal marked as noise from duplicate review.")
+            messages.success(request, "Signal utama ditandai sebagai noise.")
+            return redirect("intel:raw_signals")
+
+        elif action == "validate_main_and_noise_selected":
+            _mark_validated(signal, note="Main signal marked as validated from duplicate review and selected candidates marked as noise.")
+            changed_count = 0
+            for item in candidates_qs:
+                if item.status == "noise":
+                    continue
+                _mark_noise(item, note=f"Marked as duplicate/noise after validating main signal. Main signal id={signal.id}")
+                changed_count += 1
+            messages.success(request, f"Signal utama divalidasi dan {changed_count} kandidat terpilih ditandai sebagai noise.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        else:
+            messages.warning(request, "Tidak ada aksi yang dipilih.")
+            return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+    candidates = get_duplicate_candidates(signal, days=7, limit=30)
+    return render(request, "intel/signal_duplicate_review.html", {
+        "page_title": "Duplicate Review",
+        "signal": signal,
+        "candidates": candidates,
+        "candidate_count": len(candidates),
+    })
+
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def raw_signals_list(request):
@@ -799,7 +986,7 @@ def raw_signals_list(request):
                 to_attr="primary_locations",
             )
         )
-        .filter(status="raw")
+        .filter(status__in=["raw", "validated"])
     )
 
     # =========================
@@ -963,10 +1150,14 @@ def raw_signals_list(request):
         duplicate_count = 0
 
         if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = Signal.objects.filter(
-                disease_tag__iexact=signal.disease_tag,
-                raw_location_text__iexact=signal.raw_location_text,
-            ).exclude(id=signal.id)
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
 
             if signal.published_at:
                 duplicate_qs = duplicate_qs.filter(
@@ -1033,7 +1224,7 @@ def raw_signals_list(request):
         "provinces": provinces,
         "cities": cities,
     })
-
+    
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def verified_signals_list(request):
@@ -1059,7 +1250,7 @@ def verified_signals_list(request):
                 to_attr="primary_locations",
             )
         )
-        .filter(status__in=["validated", "approved"])
+        .filter(status="approved")
     )
 
     if search:
@@ -1132,10 +1323,14 @@ def verified_signals_list(request):
         duplicate_count = 0
 
         if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = Signal.objects.filter(
-                disease_tag__iexact=signal.disease_tag,
-                raw_location_text__iexact=signal.raw_location_text,
-            ).exclude(id=signal.id)
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
 
             if signal.published_at:
                 duplicate_qs = duplicate_qs.filter(
@@ -1298,7 +1493,6 @@ def signal_generate_assessment(request, pk):
 
     return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
-
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def signal_update_resolved_url(request, pk):
@@ -1367,21 +1561,10 @@ def signal_update_resolved_url(request, pk):
                 "updated_at",
             ])
 
-            if result["status"] == "ok":
-                messages.success(
-                    request,
-                    f'URL artikel asli disimpan dan assessment article-based berhasil untuk signal "{signal.title[:60]}".'
-                )
-            elif result["status"] == "fallback":
-                messages.warning(
-                    request,
-                    f'URL artikel asli disimpan, tetapi assessment masih fallback untuk signal "{signal.title[:60]}".'
-                )
-            else:
-                messages.error(
-                    request,
-                    f'URL artikel asli disimpan, tetapi assessment gagal untuk signal "{signal.title[:60]}".'
-                )
+            messages.success(
+                request,
+                f'URL artikel asli disimpan dan assessment ulang berhasil untuk signal "{signal.title[:60]}".'
+            )
 
         except Exception as exc:
             signal.assessment_status = "failed"
@@ -1577,7 +1760,7 @@ def signal_mark_validated(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" ditandai sebagai validated.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+    return redirect("intel:raw_signals")
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
@@ -1607,7 +1790,7 @@ def signal_mark_noise(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" ditandai sebagai noise.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+    return redirect("intel:raw_signals")
 
 
 @login_required
@@ -1638,8 +1821,7 @@ def signal_approve_mapping(request, pk):
     )
 
     messages.success(request, f'Signal "{signal.title}" berhasil di-approve untuk mapping.')
-    return redirect(request.META.get("HTTP_REFERER", "intel:verified_signals"))
-
+    return redirect("intel:raw_signals")
 
 
 @login_required
@@ -1678,7 +1860,7 @@ def signal_quick_score(request, pk):
 
         return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
 
-    return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+    return redirect("intel:raw_signals")
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
@@ -1832,10 +2014,14 @@ def geocode_error_center(request):
         duplicate_count = 0
 
         if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = Signal.objects.filter(
-                disease_tag__iexact=signal.disease_tag,
-                raw_location_text__iexact=signal.raw_location_text,
-            ).exclude(id=signal.id)
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
 
             if signal.published_at:
                 duplicate_qs = duplicate_qs.filter(
@@ -1882,7 +2068,6 @@ def geocode_error_center(request):
     }
 
     return render(request, "intel/geocode_error_center.html", context)
-
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
@@ -2156,8 +2341,29 @@ def gazetteer_location_edit(request, pk):
     })
 
 
-
 @login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def gazetteer_alias_manager(request):
+    qs = LocationAlias.objects.select_related("location").all()
+    q = request.GET.get("q", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+    is_primary = request.GET.get("is_primary", "").strip()
+    if q:
+        qs = qs.filter(Q(alias__icontains=q) | Q(normalized_alias__icontains=q) | Q(location__display_name__icontains=q) | Q(location__name__icontains=q))
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+    if is_primary == "yes":
+        qs = qs.filter(is_primary=True)
+    elif is_primary == "no":
+        qs = qs.filter(is_primary=False)
+    qs = qs.order_by("alias")
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    return render(request, "intel/gazetteer_alias_manager.html", {"page_title": "Location Alias Manager", "page_obj": page_obj, "q": q, "is_active": is_active, "is_primary": is_primary})
+
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def gazetteer_alias_manager(request):
     qs = LocationAlias.objects.select_related("location").all()
@@ -2189,6 +2395,33 @@ def gazetteer_alias_manager(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
 
     return render(request, "intel/gazetteer_alias_manager.html", {
         "page_title": "Location Alias Manager",
@@ -2197,6 +2430,7 @@ def gazetteer_alias_manager(request):
         "is_active": is_active,
         "is_primary": is_primary,
     })
+
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -2275,8 +2509,28 @@ def gazetteer_toggle_active(request, pk):
     messages.success(request, f'Location "{loc.display_name or loc.name}" sekarang {state}.')
     return redirect(request.META.get("HTTP_REFERER", "intel:gazetteer_manager"))
 
-
 @login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def scoring_rules_manager(request):
+    qs = ScoringRule.objects.all()
+    q = request.GET.get("q", "").strip()
+    rule_type = request.GET.get("rule_type", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(keyword__icontains=q) | Q(notes__icontains=q))
+    if rule_type:
+        qs = qs.filter(rule_type=rule_type)
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+    qs = qs.order_by("name")
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    settings_qs = SystemSetting.objects.all().order_by("key")
+    return render(request, "intel/scoring_rules_manager.html", {"page_title": "Scoring Rules Manager", "page_obj": page_obj, "q": q, "rule_type": rule_type, "is_active": is_active, "rule_type_choices": ScoringRule.RULE_TYPE_CHOICES, "settings_qs": settings_qs})
+
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def scoring_rules_manager(request):
     qs = ScoringRule.objects.all()
@@ -2305,6 +2559,33 @@ def scoring_rules_manager(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
 
     settings_qs = SystemSetting.objects.all().order_by("key")
 
@@ -2317,6 +2598,7 @@ def scoring_rules_manager(request):
         "rule_type_choices": ScoringRule.RULE_TYPE_CHOICES,
         "settings_qs": settings_qs,
     })
+
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -2498,8 +2780,22 @@ def system_setting_edit(request, pk):
         "setting_obj": setting,
     })
 
-
 @login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def alert_center(request):
+    qs = Alert.objects.select_related("location").all()
+    status_filter = request.GET.get("status", "").strip()
+    alert_type = request.GET.get("alert_type", "").strip()
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if alert_type:
+        qs = qs.filter(alert_type=alert_type)
+    qs = qs.order_by("-created_at")
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+    return render(request, "intel/alert_center.html", {"page_title": "Alert Center", "page_obj": page_obj, "status_filter": status_filter, "alert_type": alert_type, "alert_type_choices": Alert.ALERT_TYPE_CHOICES, "status_choices": Alert.STATUS_CHOICES})
+
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def alert_center(request):
     qs = Alert.objects.select_related("location").all()
@@ -2518,6 +2814,33 @@ def alert_center(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+    for signal in page_obj.object_list:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        duplicate_count = 0
+
+        if signal.disease_tag and signal.raw_location_text:
+            duplicate_qs = (
+                Signal.objects.filter(
+                    disease_tag__iexact=signal.disease_tag,
+                    raw_location_text__iexact=signal.raw_location_text,
+                )
+                .exclude(id=signal.id)
+                .exclude(status="noise")
+            )
+
+            if signal.published_at:
+                duplicate_qs = duplicate_qs.filter(
+                    published_at__range=(
+                        signal.published_at - timedelta(days=3),
+                        signal.published_at + timedelta(days=3),
+                    )
+                )
+
+            duplicate_count = duplicate_qs.count()
+
+        signal.duplicate_count = duplicate_count
+        signal.has_duplicate_warning = duplicate_count > 0
 
     return render(request, "intel/alert_center.html", {
         "page_title": "Alert Center",
@@ -2527,6 +2850,7 @@ def alert_center(request):
         "alert_type_choices": Alert.ALERT_TYPE_CHOICES,
         "status_choices": Alert.STATUS_CHOICES,
     })
+
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -2927,3 +3251,234 @@ def map_thematic_data_api(request):
         return JsonResponse({"results": results})
 
     return JsonResponse({"results": []})
+# =========================================================
+# PATCHED BACK: GAZETTEER LOCATION MANAGER
+# =========================================================
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def gazetteer_location_manager(request):
+    q = request.GET.get("q", "").strip()
+    level = request.GET.get("level", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+    is_false_positive = request.GET.get("is_false_positive", "").strip()
+
+    qs = Location.objects.select_related("parent").all()
+
+    if q:
+        qs = qs.filter(
+            Q(name__icontains=q)
+            | Q(display_name__icontains=q)
+            | Q(normalized_name__icontains=q)
+            | Q(province_code__icontains=q)
+            | Q(city_regency_code__icontains=q)
+            | Q(parent__display_name__icontains=q)
+            | Q(parent__name__icontains=q)
+        )
+
+    if level:
+        qs = qs.filter(level=level)
+
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+
+    if is_false_positive == "yes":
+        qs = qs.filter(is_false_positive=True)
+    elif is_false_positive == "no":
+        qs = qs.filter(is_false_positive=False)
+
+    qs = qs.order_by("level", "display_name", "name")
+
+    paginator = Paginator(qs, 50)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "intel/gazetteer_location_manager.html", {
+        "page_title": "Gazetteer Manager",
+        "page_obj": page_obj,
+        "q": q,
+        "level": level,
+        "is_active": is_active,
+        "is_false_positive": is_false_positive,
+        "level_choices": Location.LEVEL_CHOICES,
+    })
+
+
+# =========================================================
+# PATCHED BACK: PUBLISHER ALIAS MANAGER
+# =========================================================
+def normalize_publisher_alias(value):
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9\s\.\-]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_manager(request):
+    q = request.GET.get("q", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+
+    qs = PublisherDomainAlias.objects.all()
+
+    if q:
+        qs = qs.filter(
+            Q(alias__icontains=q) |
+            Q(normalized_alias__icontains=q) |
+            Q(domain__icontains=q) |
+            Q(notes__icontains=q)
+        )
+
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+
+    qs = qs.order_by("alias")
+
+    paginator = Paginator(qs, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "intel/publisher_alias_manager.html", {
+        "page_title": "Publisher Alias Manager",
+        "page_obj": page_obj,
+        "q": q,
+        "is_active": is_active,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_create(request):
+    if request.method == "POST":
+        alias = (request.POST.get("alias") or "").strip()
+        domain = (request.POST.get("domain") or "").strip().lower()
+        notes = (request.POST.get("notes") or "").strip()
+        is_active = request.POST.get("is_active") == "on"
+
+        if not alias or not domain:
+            messages.error(request, "Alias dan domain wajib diisi.")
+            return redirect("intel:publisher_alias_create")
+
+        normalized_alias = normalize_publisher_alias(alias)
+
+        obj, created = PublisherDomainAlias.objects.update_or_create(
+            normalized_alias=normalized_alias,
+            defaults={
+                "alias": alias,
+                "domain": domain,
+                "notes": notes,
+                "is_active": is_active,
+            },
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="create" if created else "update",
+            model_name="PublisherDomainAlias",
+            object_id=str(obj.id),
+            notes="Publisher alias created/updated from manager",
+            after_data={
+                "alias": obj.alias,
+                "normalized_alias": obj.normalized_alias,
+                "domain": obj.domain,
+                "is_active": obj.is_active,
+            },
+        )
+
+        messages.success(request, f'Publisher alias "{alias}" berhasil disimpan.')
+        return redirect("intel:publisher_alias_manager")
+
+    return render(request, "intel/publisher_alias_form.html", {
+        "page_title": "Tambah Publisher Alias",
+        "mode": "create",
+        "alias_obj": None,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_edit(request, pk):
+    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
+
+    if request.method == "POST":
+        before_data = {
+            "alias": obj.alias,
+            "normalized_alias": obj.normalized_alias,
+            "domain": obj.domain,
+            "is_active": obj.is_active,
+            "notes": obj.notes,
+        }
+
+        alias = (request.POST.get("alias") or "").strip()
+        domain = (request.POST.get("domain") or "").strip().lower()
+        notes = (request.POST.get("notes") or "").strip()
+        is_active = request.POST.get("is_active") == "on"
+
+        if not alias or not domain:
+            messages.error(request, "Alias dan domain wajib diisi.")
+            return redirect("intel:publisher_alias_edit", pk=obj.id)
+
+        obj.alias = alias
+        obj.normalized_alias = normalize_publisher_alias(alias)
+        obj.domain = domain
+        obj.notes = notes
+        obj.is_active = is_active
+        obj.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="update",
+            model_name="PublisherDomainAlias",
+            object_id=str(obj.id),
+            notes="Publisher alias updated from manager",
+            before_data=before_data,
+            after_data={
+                "alias": obj.alias,
+                "normalized_alias": obj.normalized_alias,
+                "domain": obj.domain,
+                "is_active": obj.is_active,
+                "notes": obj.notes,
+            },
+        )
+
+        messages.success(request, f'Publisher alias "{obj.alias}" berhasil diperbarui.')
+        return redirect("intel:publisher_alias_manager")
+
+    return render(request, "intel/publisher_alias_form.html", {
+        "page_title": "Edit Publisher Alias",
+        "mode": "edit",
+        "alias_obj": obj,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def publisher_alias_toggle_active(request, pk):
+    obj = get_object_or_404(PublisherDomainAlias, pk=pk)
+
+    before_data = {
+        "is_active": obj.is_active,
+    }
+
+    obj.is_active = not obj.is_active
+    obj.save(update_fields=["is_active", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="manual_edit",
+        model_name="PublisherDomainAlias",
+        object_id=str(obj.id),
+        notes="Toggle publisher alias active state",
+        before_data=before_data,
+        after_data={
+            "is_active": obj.is_active,
+        },
+    )
+
+    state = "aktif" if obj.is_active else "nonaktif"
+    messages.success(request, f'Publisher alias "{obj.alias}" sekarang {state}.')
+    return redirect(request.META.get("HTTP_REFERER", "intel:publisher_alias_manager"))

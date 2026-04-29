@@ -452,4 +452,4 @@ class Command(BaseCommand):
         self.stdout.write(f"Updated signal links: {updated_links}")
         self.stdout.write(f"Cached resolved URLs: {cached_resolved_urls}")
         self.stdout.write(f"Skipped rows: {skipped}")
-        self.stdout.write(f"Skipped noise rows: {skipped_noise}")
+        self.stdout.write(f"Noise filtering    : analyst validation mode")
