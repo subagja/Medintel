@@ -336,21 +336,46 @@
         color: var(--red-text);
     }
 
+    td.actions {
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+    }
+
     .actions {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
+        text-align: center;
+        white-space: nowrap;
     }
 
     .actions form {
         margin: 0;
+        padding: 0;
     }
 
-    .actions button {
+    .action-stack {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 7px;
         width: 100%;
-        padding: 6px 8px;
+        min-height: 112px;
+    }
+
+    .action-stack .btn,
+    .action-stack button {
+        width: 150px;
+        min-height: 34px;
+        padding: 7px 10px;
+        box-sizing: border-box;
+        border-radius: 6px;
         font-size: 12px;
-        border-radius: 4px;
+        font-weight: 700;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        white-space: nowrap;
     }
 
     .btn-valid {
@@ -778,7 +803,7 @@
             <col style="width: 220px;">
             <col style="width: 135px;">
             <col style="width: 95px;">
-            <col style="width: 170px;">
+            <col style="width: 190px;">
         </colgroup>
 
         <thead>
@@ -1067,31 +1092,33 @@
                 </td>
 
                 <td class="actions">
-                    <a href="{% url 'intel:geocode_manual_update' signal.id %}" class="btn btn-edit-location">
-                        Edit Lokasi
-                    </a>
+                    <div class="action-stack">
+                        <a href="{% url 'intel:geocode_manual_update' signal.id %}" class="btn btn-edit-location">
+                            Edit Lokasi
+                        </a>
 
-                    {% if signal.status == "raw" %}
-                        <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-valid">Valid</button>
-                        </form>
+                        {% if signal.status == "raw" %}
+                            <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-valid">Valid</button>
+                            </form>
 
-                        <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-noise">Noise</button>
-                        </form>
-                    {% elif signal.status == "validated" %}
-                        <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-approve">Approve Mapping</button>
-                        </form>
+                            <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-noise">Noise</button>
+                            </form>
+                        {% elif signal.status == "validated" %}
+                            <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-approve">Approve Mapping</button>
+                            </form>
 
-                        <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-noise">Noise</button>
-                        </form>
-                    {% endif %}
+                            <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-noise">Noise</button>
+                            </form>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
             {% empty %}
@@ -1152,7 +1179,7 @@
                 { width: "220px" },
                 { width: "135px" },
                 { width: "95px" },
-                { width: "170px", orderable: false, searchable: false }
+                { width: "190px", orderable: false, searchable: false }
             ]
         });
 

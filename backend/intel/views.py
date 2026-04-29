@@ -957,6 +957,11 @@ def signal_duplicate_review(request, pk):
         "candidate_count": len(candidates),
     })
 
+def attach_duplicate_warning(signal, days=7, limit=30):
+    candidates = get_duplicate_candidates(signal, days=days, limit=limit)
+    signal.duplicate_count = len(candidates)
+    signal.has_duplicate_warning = signal.duplicate_count > 0
+    return signal
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
@@ -1146,31 +1151,7 @@ def raw_signals_list(request):
     # =========================
     for signal in page_obj.object_list:
         signal.triage_flag = get_signal_triage_flag(signal)
-
-        duplicate_count = 0
-
-        if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = (
-                Signal.objects.filter(
-                    disease_tag__iexact=signal.disease_tag,
-                    raw_location_text__iexact=signal.raw_location_text,
-                )
-                .exclude(id=signal.id)
-                .exclude(status="noise")
-            )
-
-            if signal.published_at:
-                duplicate_qs = duplicate_qs.filter(
-                    published_at__range=(
-                        signal.published_at - timedelta(days=3),
-                        signal.published_at + timedelta(days=3),
-                    )
-                )
-
-            duplicate_count = duplicate_qs.count()
-
-        signal.duplicate_count = duplicate_count
-        signal.has_duplicate_warning = duplicate_count > 0
+        attach_duplicate_warning(signal, days=7, limit=30)
 
     # =========================
     # FILTER CHOICES
@@ -1317,33 +1298,9 @@ def verified_signals_list(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
+
     for signal in page_obj.object_list:
         signal.triage_flag = get_signal_triage_flag(signal)
-
-        duplicate_count = 0
-
-        if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = (
-                Signal.objects.filter(
-                    disease_tag__iexact=signal.disease_tag,
-                    raw_location_text__iexact=signal.raw_location_text,
-                )
-                .exclude(id=signal.id)
-                .exclude(status="noise")
-            )
-
-            if signal.published_at:
-                duplicate_qs = duplicate_qs.filter(
-                    published_at__range=(
-                        signal.published_at - timedelta(days=3),
-                        signal.published_at + timedelta(days=3),
-                    )
-                )
-
-            duplicate_count = duplicate_qs.count()
-
-        signal.duplicate_count = duplicate_count
-        signal.has_duplicate_warning = duplicate_count > 0
 
     disease_choices = (
         Signal.objects.exclude(disease_tag="")
@@ -2340,6 +2297,72 @@ def gazetteer_location_edit(request, pk):
         "location_obj": loc,
     })
 
+# @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+# def gazetteer_alias_manager(request):
+#     qs = LocationAlias.objects.select_related("location").all()
+
+#     q = request.GET.get("q", "").strip()
+#     is_active = request.GET.get("is_active", "").strip()
+#     is_primary = request.GET.get("is_primary", "").strip()
+
+#     if q:
+#         qs = qs.filter(
+#             Q(alias__icontains=q) |
+#             Q(normalized_alias__icontains=q) |
+#             Q(location__display_name__icontains=q) |
+#             Q(location__name__icontains=q)
+#         )
+
+#     if is_active == "yes":
+#         qs = qs.filter(is_active=True)
+#     elif is_active == "no":
+#         qs = qs.filter(is_active=False)
+
+#     if is_primary == "yes":
+#         qs = qs.filter(is_primary=True)
+#     elif is_primary == "no":
+#         qs = qs.filter(is_primary=False)
+
+#     qs = qs.order_by("alias")
+
+#     paginator = Paginator(qs, 25)
+#     page_number = request.GET.get("page")
+#     page_obj = paginator.get_page(page_number)
+#     for signal in page_obj.object_list:
+#         signal.triage_flag = get_signal_triage_flag(signal)
+
+#         duplicate_count = 0
+
+#         if signal.disease_tag and signal.raw_location_text:
+#             duplicate_qs = (
+#                 Signal.objects.filter(
+#                     disease_tag__iexact=signal.disease_tag,
+#                     raw_location_text__iexact=signal.raw_location_text,
+#                 )
+#                 .exclude(id=signal.id)
+#                 .exclude(status="noise")
+#             )
+
+#             if signal.published_at:
+#                 duplicate_qs = duplicate_qs.filter(
+#                     published_at__range=(
+#                         signal.published_at - timedelta(days=3),
+#                         signal.published_at + timedelta(days=3),
+#                     )
+#                 )
+
+#             duplicate_count = duplicate_qs.count()
+
+#         signal.duplicate_count = duplicate_count
+#         signal.has_duplicate_warning = duplicate_count > 0
+
+#     return render(request, "intel/gazetteer_alias_manager.html", {
+#         "page_title": "Location Alias Manager",
+#         "page_obj": page_obj,
+#         "q": q,
+#         "is_active": is_active,
+#         "is_primary": is_primary,
+#     })
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
@@ -2348,36 +2371,13 @@ def gazetteer_alias_manager(request):
     q = request.GET.get("q", "").strip()
     is_active = request.GET.get("is_active", "").strip()
     is_primary = request.GET.get("is_primary", "").strip()
-    if q:
-        qs = qs.filter(Q(alias__icontains=q) | Q(normalized_alias__icontains=q) | Q(location__display_name__icontains=q) | Q(location__name__icontains=q))
-    if is_active == "yes":
-        qs = qs.filter(is_active=True)
-    elif is_active == "no":
-        qs = qs.filter(is_active=False)
-    if is_primary == "yes":
-        qs = qs.filter(is_primary=True)
-    elif is_primary == "no":
-        qs = qs.filter(is_primary=False)
-    qs = qs.order_by("alias")
-    paginator = Paginator(qs, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-    return render(request, "intel/gazetteer_alias_manager.html", {"page_title": "Location Alias Manager", "page_obj": page_obj, "q": q, "is_active": is_active, "is_primary": is_primary})
-
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def gazetteer_alias_manager(request):
-    qs = LocationAlias.objects.select_related("location").all()
-
-    q = request.GET.get("q", "").strip()
-    is_active = request.GET.get("is_active", "").strip()
-    is_primary = request.GET.get("is_primary", "").strip()
 
     if q:
         qs = qs.filter(
-            Q(alias__icontains=q) |
-            Q(normalized_alias__icontains=q) |
-            Q(location__display_name__icontains=q) |
-            Q(location__name__icontains=q)
+            Q(alias__icontains=q)
+            | Q(normalized_alias__icontains=q)
+            | Q(location__display_name__icontains=q)
+            | Q(location__name__icontains=q)
         )
 
     if is_active == "yes":
@@ -2395,33 +2395,6 @@ def gazetteer_alias_manager(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
-    for signal in page_obj.object_list:
-        signal.triage_flag = get_signal_triage_flag(signal)
-
-        duplicate_count = 0
-
-        if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = (
-                Signal.objects.filter(
-                    disease_tag__iexact=signal.disease_tag,
-                    raw_location_text__iexact=signal.raw_location_text,
-                )
-                .exclude(id=signal.id)
-                .exclude(status="noise")
-            )
-
-            if signal.published_at:
-                duplicate_qs = duplicate_qs.filter(
-                    published_at__range=(
-                        signal.published_at - timedelta(days=3),
-                        signal.published_at + timedelta(days=3),
-                    )
-                )
-
-            duplicate_count = duplicate_qs.count()
-
-        signal.duplicate_count = duplicate_count
-        signal.has_duplicate_warning = duplicate_count > 0
 
     return render(request, "intel/gazetteer_alias_manager.html", {
         "page_title": "Location Alias Manager",
@@ -2513,27 +2486,6 @@ def gazetteer_toggle_active(request, pk):
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def scoring_rules_manager(request):
     qs = ScoringRule.objects.all()
-    q = request.GET.get("q", "").strip()
-    rule_type = request.GET.get("rule_type", "").strip()
-    is_active = request.GET.get("is_active", "").strip()
-    if q:
-        qs = qs.filter(Q(name__icontains=q) | Q(keyword__icontains=q) | Q(notes__icontains=q))
-    if rule_type:
-        qs = qs.filter(rule_type=rule_type)
-    if is_active == "yes":
-        qs = qs.filter(is_active=True)
-    elif is_active == "no":
-        qs = qs.filter(is_active=False)
-    qs = qs.order_by("name")
-    paginator = Paginator(qs, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-    settings_qs = SystemSetting.objects.all().order_by("key")
-    return render(request, "intel/scoring_rules_manager.html", {"page_title": "Scoring Rules Manager", "page_obj": page_obj, "q": q, "rule_type": rule_type, "is_active": is_active, "rule_type_choices": ScoringRule.RULE_TYPE_CHOICES, "settings_qs": settings_qs})
-
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def scoring_rules_manager(request):
-    qs = ScoringRule.objects.all()
 
     q = request.GET.get("q", "").strip()
     rule_type = request.GET.get("rule_type", "").strip()
@@ -2541,9 +2493,9 @@ def scoring_rules_manager(request):
 
     if q:
         qs = qs.filter(
-            Q(name__icontains=q) |
-            Q(keyword__icontains=q) |
-            Q(notes__icontains=q)
+            Q(name__icontains=q)
+            | Q(keyword__icontains=q)
+            | Q(notes__icontains=q)
         )
 
     if rule_type:
@@ -2559,33 +2511,6 @@ def scoring_rules_manager(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
-    for signal in page_obj.object_list:
-        signal.triage_flag = get_signal_triage_flag(signal)
-
-        duplicate_count = 0
-
-        if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = (
-                Signal.objects.filter(
-                    disease_tag__iexact=signal.disease_tag,
-                    raw_location_text__iexact=signal.raw_location_text,
-                )
-                .exclude(id=signal.id)
-                .exclude(status="noise")
-            )
-
-            if signal.published_at:
-                duplicate_qs = duplicate_qs.filter(
-                    published_at__range=(
-                        signal.published_at - timedelta(days=3),
-                        signal.published_at + timedelta(days=3),
-                    )
-                )
-
-            duplicate_count = duplicate_qs.count()
-
-        signal.duplicate_count = duplicate_count
-        signal.has_duplicate_warning = duplicate_count > 0
 
     settings_qs = SystemSetting.objects.all().order_by("key")
 
@@ -2784,21 +2709,6 @@ def system_setting_edit(request, pk):
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def alert_center(request):
     qs = Alert.objects.select_related("location").all()
-    status_filter = request.GET.get("status", "").strip()
-    alert_type = request.GET.get("alert_type", "").strip()
-    if status_filter:
-        qs = qs.filter(status=status_filter)
-    if alert_type:
-        qs = qs.filter(alert_type=alert_type)
-    qs = qs.order_by("-created_at")
-    paginator = Paginator(qs, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-    return render(request, "intel/alert_center.html", {"page_title": "Alert Center", "page_obj": page_obj, "status_filter": status_filter, "alert_type": alert_type, "alert_type_choices": Alert.ALERT_TYPE_CHOICES, "status_choices": Alert.STATUS_CHOICES})
-
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
-def alert_center(request):
-    qs = Alert.objects.select_related("location").all()
 
     status_filter = request.GET.get("status", "").strip()
     alert_type = request.GET.get("alert_type", "").strip()
@@ -2814,33 +2724,6 @@ def alert_center(request):
     paginator = Paginator(qs, 25)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
-    for signal in page_obj.object_list:
-        signal.triage_flag = get_signal_triage_flag(signal)
-
-        duplicate_count = 0
-
-        if signal.disease_tag and signal.raw_location_text:
-            duplicate_qs = (
-                Signal.objects.filter(
-                    disease_tag__iexact=signal.disease_tag,
-                    raw_location_text__iexact=signal.raw_location_text,
-                )
-                .exclude(id=signal.id)
-                .exclude(status="noise")
-            )
-
-            if signal.published_at:
-                duplicate_qs = duplicate_qs.filter(
-                    published_at__range=(
-                        signal.published_at - timedelta(days=3),
-                        signal.published_at + timedelta(days=3),
-                    )
-                )
-
-            duplicate_count = duplicate_qs.count()
-
-        signal.duplicate_count = duplicate_count
-        signal.has_duplicate_warning = duplicate_count > 0
 
     return render(request, "intel/alert_center.html", {
         "page_title": "Alert Center",

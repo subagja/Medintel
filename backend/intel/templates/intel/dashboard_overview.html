@@ -1,6 +1,81 @@
 {% extends "intel/base.html" %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    .dashboard-table-card {
+        overflow-x: auto;
+    }
+
+    .dashboard-table {
+        width: 100% !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .dashboard-table th,
+    .dashboard-table td {
+        vertical-align: top;
+        padding: 8px 10px;
+    }
+
+    .dashboard-table thead th {
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .signal-title-cell {
+        min-width: 260px;
+        line-height: 1.35;
+    }
+
+    .source-link {
+        font-size: 11px;
+    }
+
+    .badge-score {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .badge-geocode {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #fff5d6;
+        color: #795500;
+        white-space: nowrap;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input,
+    .dataTables_wrapper .dataTables_length select {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+    }
+</style>
+
 <div class="card">
     <h1>Dashboard Overview Intelligence</h1>
     <p class="small">Ringkasan situasi cepat untuk analis berdasarkan data signal yang sudah masuk ke sistem.</p>
@@ -23,39 +98,57 @@
     </div>
 
     <div class="metric-card">
-        <div class="metric-title">% high risk (skor > 50)</div>
+        <div class="metric-title">% high risk (skor &gt; 50)</div>
         <div class="metric-value">{{ high_risk_rate }}%</div>
     </div>
 </div>
 
 <div class="two-col">
-    <div class="card">
+    <div class="card dashboard-table-card">
         <h2>Top 5 penyakit (7 hari)</h2>
-        <ul class="clean-list">
-            {% for item in top_diseases %}
-                <li><strong>{{ item.disease_tag }}</strong> — {{ item.total }} signal</li>
-            {% empty %}
-                <li>Belum ada data.</li>
-            {% endfor %}
-        </ul>
+        <table id="topDiseasesTable" class="display stripe hover compact dashboard-table">
+            <thead>
+                <tr>
+                    <th>Penyakit</th>
+                    <th>Total Signal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in top_diseases %}
+                <tr>
+                    <td><strong>{{ item.disease_tag|default:"-" }}</strong></td>
+                    <td>{{ item.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 
-    <div class="card">
+    <div class="card dashboard-table-card">
         <h2>Top 5 lokasi (7 hari)</h2>
-        <ul class="clean-list">
-            {% for item in top_locations %}
-                <li><strong>{{ item.location__display_name }}</strong> — {{ item.total }} signal</li>
-            {% empty %}
-                <li>Belum ada data.</li>
-            {% endfor %}
-        </ul>
+        <table id="topLocationsTable" class="display stripe hover compact dashboard-table">
+            <thead>
+                <tr>
+                    <th>Lokasi</th>
+                    <th>Total Signal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in top_locations %}
+                <tr>
+                    <td><strong>{{ item.location__display_name|default:"-" }}</strong></td>
+                    <td>{{ item.total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
 <div class="two-col">
-    <div class="card">
+    <div class="card dashboard-table-card">
         <h2>Recent high-risk signals</h2>
-        <table>
+        <table id="recentHighRiskTable" class="display stripe hover compact dashboard-table">
             <thead>
                 <tr>
                     <th>Judul</th>
@@ -67,28 +160,29 @@
             <tbody>
                 {% for signal in recent_high_risk %}
                 <tr>
-                    <td>
-                        <strong>{{ signal.title }}</strong><br>
-                        <span class="small">
-                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
-                        </span>
+                    <td class="signal-title-cell">
+                        <strong>{{ signal.title|default:"-" }}</strong><br>
+                        {% if signal.source_url %}
+                            <a href="{{ signal.source_url }}" target="_blank" class="source-link">Buka sumber</a>
+                        {% endif %}
+                        {% if signal.source %}
+                            <span class="small"> · {{ signal.source.name|default:"-" }}</span>
+                        {% endif %}
                     </td>
                     <td>{{ signal.disease_tag|default:"-" }}</td>
-                    <td>{{ signal.threat_score }}</td>
-                    <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4">Belum ada signal high-risk.</td>
+                    <td><span class="badge-score">{{ signal.threat_score|default:0 }}</span></td>
+                    <td data-order="{% if signal.published_at %}{{ signal.published_at|date:'U' }}{% endif %}">
+                        {% if signal.published_at %}{{ signal.published_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <div class="card">
+    <div class="card dashboard-table-card">
         <h2>Recent geocode errors</h2>
-        <table>
+        <table id="recentGeocodeErrorsTable" class="display stripe hover compact dashboard-table">
             <thead>
                 <tr>
                     <th>Judul</th>
@@ -100,23 +194,58 @@
             <tbody>
                 {% for signal in recent_errors %}
                 <tr>
-                    <td>
-                        <strong>{{ signal.title }}</strong><br>
-                        <span class="small">
-                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
-                        </span>
+                    <td class="signal-title-cell">
+                        <strong>{{ signal.title|default:"-" }}</strong><br>
+                        {% if signal.source_url %}
+                            <a href="{{ signal.source_url }}" target="_blank" class="source-link">Buka sumber</a>
+                        {% endif %}
+                        {% if signal.source %}
+                            <span class="small"> · {{ signal.source.name|default:"-" }}</span>
+                        {% endif %}
                     </td>
                     <td>{{ signal.raw_location_text|default:"-" }}</td>
-                    <td>{{ signal.geocode_status }}</td>
-                    <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4">Belum ada error geocode.</td>
+                    <td><span class="badge-geocode">{{ signal.geocode_status|default:"-" }}</span></td>
+                    <td data-order="{% if signal.published_at %}{{ signal.published_at|date:'U' }}{% endif %}">
+                        {% if signal.published_at %}{{ signal.published_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        function initSimpleTable(selector, orderConfig) {
+            if ($.fn.DataTable.isDataTable(selector)) {
+                $(selector).DataTable().destroy();
+            }
+
+            $(selector).DataTable({
+                paging: false,
+                info: false,
+                searching: true,
+                ordering: true,
+                order: orderConfig || [],
+                autoWidth: false,
+                responsive: false,
+                destroy: true,
+                language: {
+                    search: "Cari cepat:",
+                    zeroRecords: "Tidak ada data yang cocok",
+                    emptyTable: "Belum ada data"
+                }
+            });
+        }
+
+        initSimpleTable('#topDiseasesTable', [[1, 'desc']]);
+        initSimpleTable('#topLocationsTable', [[1, 'desc']]);
+        initSimpleTable('#recentHighRiskTable', [[2, 'desc']]);
+        initSimpleTable('#recentGeocodeErrorsTable', [[3, 'desc']]);
+    });
+</script>
 {% endblock %}
