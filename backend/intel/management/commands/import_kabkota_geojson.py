@@ -148,8 +148,9 @@ class Command(BaseCommand):
             raw_display_name = (props.get("display_name") or raw_name).strip()
             raw_level = props.get("level")
             province_name = (props.get("province_name") or "").strip()
-            province_code = clean_code(props.get("province_code"))
-            city_regency_code = clean_code(props.get("bps_code") or props.get("city_regency_code"))
+            province_code_raw = clean_code(props.get("province_code"))
+            city_regency_code_raw = clean_code(props.get("city_regency_code"))
+            bps_code = clean_code(props.get("bps_code"))
             country_code = clean_code(props.get("country_code") or "ID").upper()
 
             level = resolve_level(raw_level)
@@ -167,11 +168,17 @@ class Command(BaseCommand):
             display_name = raw_display_name
             normalized_name = normalize_text(raw_name)
             province_norm = normalize_text(province_name)
+            province_code = normalize_text(province_name) if province_name else normalize_text(province_code_raw)
+            city_regency_code = normalize_text(raw_name)
 
+            if city_regency_code_raw and not re.match(r"^\d{2}\.\d{2}$", city_regency_code_raw):
+                city_regency_code = normalize_text(city_regency_code_raw)
             # Cari parent province existing
             parent = None
+
             if province_code:
                 parent = province_by_code.get(province_code.lower())
+
             if not parent and province_norm:
                 parent = province_by_normalized.get(province_norm)
 
@@ -221,22 +228,31 @@ class Command(BaseCommand):
                 "level": level,
                 "parent": parent,
                 "country_code": country_code,
-                "province_code": parent.province_code or province_code.lower() if province_code else "",
+                "province_code": province_code,
                 "city_regency_code": city_regency_code,
                 "lat": lat,
                 "lon": lon,
                 "is_active": True,
             }
 
-            # 1. Prioritas match by city_regency_code
             existing = None
+
+            # 1. Match by slug city_regency_code
             if city_regency_code:
                 existing = Location.objects.filter(
                     level=level,
                     city_regency_code=city_regency_code,
                 ).first()
 
-            # 2. Fallback: normalized_name + parent + level
+            # 2. Match by old BPS code jika database lama masih menyimpan BPS
+            bps_code = clean_code(props.get("bps_code"))
+            if not existing and bps_code:
+                existing = Location.objects.filter(
+                    level=level,
+                    city_regency_code=bps_code,
+                ).first()
+
+            # 3. Fallback: normalized_name + parent + level
             if not existing:
                 existing = Location.objects.filter(
                     level=level,
@@ -244,6 +260,41 @@ class Command(BaseCommand):
                     parent=parent,
                 ).first()
 
+            # 4. Fallback: bare name tanpa awalan Kabupaten/Kota
+            if not existing:
+                bare_name = re.sub(
+                    r"^(kabupaten|kab\.|kab|kota)\s+",
+                    "",
+                    raw_display_name,
+                    flags=re.I,
+                ).strip()
+
+                bare_normalized_name = normalize_text(bare_name)
+
+                if bare_normalized_name:
+                    existing = Location.objects.filter(
+                        level=level,
+                        normalized_name=bare_normalized_name,
+                        parent=parent,
+                    ).first()
+
+            # 5. Fallback terakhir: bare name tanpa parent
+            if not existing:
+                bare_name = re.sub(
+                    r"^(kabupaten|kab\.|kab|kota)\s+",
+                    "",
+                    raw_display_name,
+                    flags=re.I,
+                ).strip()
+
+                bare_normalized_name = normalize_text(bare_name)
+
+                if bare_normalized_name:
+                    existing = Location.objects.filter(
+                        level=level,
+                        normalized_name=bare_normalized_name,
+                    ).first()
+                    
             if existing:
                 if update_existing:
                     if not dry_run:

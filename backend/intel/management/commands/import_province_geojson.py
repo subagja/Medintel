@@ -129,7 +129,11 @@ class Command(BaseCommand):
                 continue
 
             normalized_name = normalize_text(raw_name)
-            province_code = normalize_text(raw_code or raw_name)
+
+            # Jangan pakai bps_code untuk kode sistem.
+            # Jangan percaya province_code GeoJSON kalau ada karakter rusak seperti sulawe_iutara.
+            # Kode sistem dibuat dari nama provinsi agar konsisten dengan thematic key.
+            province_code = normalized_name
 
             lat, lon = compute_centroid(geom)
 
@@ -159,6 +163,20 @@ class Command(BaseCommand):
                 existing = Location.objects.filter(
                     level="province",
                     normalized_name=normalized_name,
+                ).first()
+
+            # Fallback untuk data lama yang province_code-nya masih BPS atau slug rusak dari GeoJSON
+            if not existing and raw_code:
+                existing = Location.objects.filter(
+                    level="province",
+                    province_code=normalize_text(raw_code),
+                ).first()
+
+            bps_code = clean_code(props.get("bps_code"))
+            if not existing and bps_code:
+                existing = Location.objects.filter(
+                    level="province",
+                    province_code=bps_code,
                 ).first()
 
             if existing:

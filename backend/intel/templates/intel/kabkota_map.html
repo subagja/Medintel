@@ -56,7 +56,6 @@
             <tr>
                 <th>Kab/Kota</th>
                 <th>Level</th>
-                <th>Kode</th>
                 <th>Total Signal</th>
                 <th>Rata-rata Skor</th>
                 <th>High Risk</th>
@@ -67,7 +66,6 @@
             <tr>
                 <td>{{ row.kabkota_name }}</td>
                 <td>{{ row.level }}</td>
-                <td>{{ row.city_regency_code|default:"-" }}</td>
                 <td>{{ row.total_signals }}</td>
                 <td>{{ row.avg_score }}</td>
                 <td>{{ row.high_risk_count }}</td>
@@ -221,16 +219,18 @@ function resetHighlight(e) {
 
 function onEachFeature(feature, layer) {
     const rawName = getFeatureName(feature) || "-";
-    const rawCode = getFeatureCode(feature) || "-";
     const matched = findKabkotaStats(feature);
 
-    let popup = `<strong>${rawName}</strong><br>Kode: ${rawCode}<br>Total Signal: 0<br>Avg Score: 0<br>High Risk: 0`;
+    let popup = `
+        <strong>${rawName}</strong><br>
+        Total Signal: 0<br>
+        Avg Score: 0<br>
+        High Risk: 0
+    `;
 
     if (matched) {
         popup = `
             <strong>${rawName}</strong><br>
-            Kode: ${rawCode}<br>
-            Match By: ${matched.matchedBy}<br>
             Total Signal: ${matched.stats.total_signals}<br>
             Avg Score: ${matched.stats.avg_score}<br>
             High Risk: ${matched.stats.high_risk_count}
