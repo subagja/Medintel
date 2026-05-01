@@ -12,6 +12,8 @@ from django.contrib.auth.models import User, Group
 from .permissions import role_required, user_has_role, ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Count, Avg, Min, Max, Prefetch, Q
@@ -878,176 +880,6 @@ def duplicate_locations_are_definitely_different(profile_a, profile_b):
 
     return False
     
-# def get_duplicate_candidates(signal, days=7, limit=30):
-#     """
-#     Cari kandidat duplikat berbasis:
-#     - URL sama / mirip
-#     - disease sama
-#     - lokasi sama
-#     - rentang tanggal dekat
-#     - kemiripan judul
-
-#     Candidate diberi atribut tambahan:
-#     duplicate_score, duplicate_label, title_similarity_score, duplicate_reasons.
-#     """
-
-#     primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
-#         "location",
-#         "location__parent",
-#     )
-
-#     qs = (
-#         Signal.objects.select_related("source")
-#         .prefetch_related(
-#             Prefetch(
-#                 "locations",
-#                 queryset=primary_locations,
-#                 to_attr="primary_locations",
-#             )
-#         )
-#         .exclude(id=signal.id)
-#         .exclude(status="noise")
-#     )
-
-#     if signal.disease_tag:
-#         qs = qs.filter(disease_tag__iexact=signal.disease_tag)
-
-#     if signal.published_at:
-#         qs = qs.filter(
-#             published_at__range=(
-#                 signal.published_at - timedelta(days=days),
-#                 signal.published_at + timedelta(days=days),
-#             )
-#         )
-
-#     loc_q = Q()
-
-#     if signal.raw_location_text:
-#         loc_q |= Q(raw_location_text__iexact=signal.raw_location_text)
-
-#     if getattr(signal, "admin_kabkota", ""):
-#         loc_q |= Q(admin_kabkota__iexact=signal.admin_kabkota)
-
-#     if getattr(signal, "admin_province", ""):
-#         loc_q |= Q(admin_province__iexact=signal.admin_province)
-
-#     primary_location_ids = get_primary_location_ids_for_signal(signal)
-
-#     if primary_location_ids:
-#         loc_q |= Q(
-#             locations__is_primary=True,
-#             locations__location_id__in=primary_location_ids,
-#         )
-
-#     if loc_q:
-#         qs = qs.filter(loc_q).distinct()
-
-#     qs = qs.order_by("-published_at", "-created_at", "-id")[:200]
-
-#     candidates = []
-
-#     signal_title = signal.title or ""
-#     signal_source_url = signal.source_url or ""
-#     signal_resolved_url = getattr(signal, "resolved_url", "") or ""
-
-#     for item in qs:
-#         score = 0
-#         reasons = []
-
-#         title_sim = duplicate_title_similarity(signal_title, item.title)
-
-#         if title_sim >= 85:
-#             score += 35
-#             reasons.append(f"Judul sangat mirip ({title_sim}%).")
-#         elif title_sim >= 60:
-#             score += 20
-#             reasons.append(f"Judul cukup mirip ({title_sim}%).")
-#         elif title_sim >= 40:
-#             score += 10
-#             reasons.append(f"Judul agak mirip ({title_sim}%).")
-
-#         item_source_url = item.source_url or ""
-#         item_resolved_url = getattr(item, "resolved_url", "") or ""
-
-#         if signal_source_url and (
-#             signal_source_url == item_source_url
-#             or signal_source_url == item_resolved_url
-#         ):
-#             score += 50
-#             reasons.append("URL sumber sama dengan signal utama.")
-
-#         if signal_resolved_url and (
-#             signal_resolved_url == item_source_url
-#             or signal_resolved_url == item_resolved_url
-#         ):
-#             score += 50
-#             reasons.append("Resolved URL sama dengan signal utama.")
-
-#         if signal.disease_tag and item.disease_tag and signal.disease_tag.lower() == item.disease_tag.lower():
-#             score += 15
-#             reasons.append("Kategori penyakit sama.")
-
-#         same_location = False
-
-#         if signal.raw_location_text and item.raw_location_text:
-#             if signal.raw_location_text.strip().lower() == item.raw_location_text.strip().lower():
-#                 same_location = True
-
-#         if getattr(signal, "admin_kabkota", "") and getattr(item, "admin_kabkota", ""):
-#             if signal.admin_kabkota.strip().lower() == item.admin_kabkota.strip().lower():
-#                 same_location = True
-
-#         if getattr(signal, "admin_province", "") and getattr(item, "admin_province", ""):
-#             if signal.admin_province.strip().lower() == item.admin_province.strip().lower():
-#                 same_location = True
-
-#         item_primary_location_ids = get_primary_location_ids_for_signal(item)
-
-#         if primary_location_ids and item_primary_location_ids:
-#             if set(primary_location_ids).intersection(set(item_primary_location_ids)):
-#                 same_location = True
-
-#         if same_location:
-#             score += 25
-#             reasons.append("Lokasi sama atau mengarah ke wilayah yang sama.")
-
-#         if signal.published_at and item.published_at:
-#             diff_days = abs((signal.published_at.date() - item.published_at.date()).days)
-
-#             if diff_days <= 1:
-#                 score += 15
-#                 reasons.append("Tanggal publikasi sangat dekat.")
-#             elif diff_days <= 3:
-#                 score += 10
-#                 reasons.append("Tanggal publikasi dekat.")
-#             elif diff_days <= days:
-#                 score += 5
-#                 reasons.append("Tanggal publikasi masih dalam rentang review.")
-
-#         score = min(score, 100)
-
-#         if score >= 80:
-#             label = "Kemungkinan Duplikat Tinggi"
-#             label_class = "dup-high"
-#         elif score >= 55:
-#             label = "Perlu Review"
-#             label_class = "dup-medium"
-#         else:
-#             label = "Kemiripan Rendah"
-#             label_class = "dup-low"
-
-#         item.duplicate_score = score
-#         item.duplicate_label = label
-#         item.duplicate_label_class = label_class
-#         item.title_similarity_score = title_sim
-#         item.duplicate_reasons = reasons
-
-#         if score >= 35:
-#             candidates.append(item)
-
-#     candidates.sort(key=lambda x: x.duplicate_score, reverse=True)
-
-#     return candidates[:limit]
 
 def get_duplicate_candidates(signal, days=7, limit=30):
     """
@@ -1353,6 +1185,7 @@ def signal_duplicate_review(request, pk):
         "signal": signal,
         "candidates": candidates,
         "candidate_count": len(candidates),
+        "current_path": request.get_full_path(),
     })
 
 def attach_duplicate_warning(signal, days=7, limit=30):
@@ -2424,10 +2257,35 @@ def geocode_error_center(request):
 
     return render(request, "intel/geocode_error_center.html", context)
 
+
+
+def get_safe_next_url(request, default_name="intel:raw_signals"):
+    """
+    Return redirect tujuan yang aman untuk workflow edit lokasi.
+    Prioritas: POST next -> GET next -> default route.
+    """
+    default_url = reverse(default_name)
+
+    next_url = (
+        request.POST.get("next")
+        or request.GET.get("next")
+        or ""
+    ).strip()
+
+    if next_url and url_has_allowed_host_and_scheme(
+        url=next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+
+    return default_url
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def geocode_manual_update(request, pk):
     signal = get_object_or_404(Signal, pk=pk)
+    next_url = get_safe_next_url(request)
 
     signal_location = (
         SignalLocation.objects.filter(signal=signal, is_primary=True)
@@ -2498,12 +2356,38 @@ def geocode_manual_update(request, pk):
             signal.validated_by = request.user
             signal.validated_at = timezone.now()
 
+            # Sinkronisasi field admin legacy agar tampilan Raw tidak kosong
+            if kabkota:
+                signal.admin_kabkota = kabkota.display_name or kabkota.name
+
+                if kabkota.parent:
+                    signal.admin_province = kabkota.parent.display_name or kabkota.parent.name
+                elif province:
+                    signal.admin_province = province.display_name or province.name
+                else:
+                    signal.admin_province = ""
+
+                signal.location_level = kabkota.level
+
+            elif province:
+                signal.admin_province = province.display_name or province.name
+                signal.admin_kabkota = ""
+                signal.location_level = province.level
+
+            else:
+                signal.admin_province = ""
+                signal.admin_kabkota = ""
+                signal.location_level = ""
+
             if final_location:
                 signal.approved_for_mapping = True
 
             signal.save(update_fields=[
                 "raw_location_text",
                 "geocode_status",
+                "admin_province",
+                "admin_kabkota",
+                "location_level",
                 "validation_notes",
                 "validated_by",
                 "validated_at",
@@ -2563,7 +2447,7 @@ def geocode_manual_update(request, pk):
                 f'Geocode signal "{signal.title[:60]}" berhasil diperbarui secara manual.'
             )
 
-            return redirect(request.META.get("HTTP_REFERER", "intel:raw_signals"))
+            return redirect(next_url)
 
     else:
         province_code = initial_province.province_code if initial_province else None
@@ -2574,6 +2458,7 @@ def geocode_manual_update(request, pk):
         "signal": signal,
         "form": form,
         "signal_location": signal_location,
+        "next_url": next_url,
     }
 
     return render(request, "intel/geocode_manual_update.html", context)

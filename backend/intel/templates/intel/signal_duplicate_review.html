@@ -21,6 +21,7 @@
         --blue-text: #2451a6;
         --orange-bg: #fff0df;
         --orange-text: #9a4d00;
+        --purple-bg: #f1ecff;
     }
 
     .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
@@ -58,6 +59,158 @@
     .action-cell { text-align: center; vertical-align: middle; }
     .row-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
     .row-actions .btn, .row-actions button { width: 160px; text-align: center; box-sizing: border-box; }
+
+    .assessment-section {
+        margin-top: 14px;
+        border-top: 1px solid var(--soft-border);
+        padding-top: 12px;
+    }
+
+    .assessment-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .assessment-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .assessment-not-generated {
+        background: #f1f1f1;
+        color: #555;
+    }
+
+    .assessment-article_based {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .assessment-article_based_partial {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .assessment-low_fallback,
+    .assessment-fallback {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .assessment-failed {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .assessment-detail {
+        margin-top: 8px;
+        font-size: 12px;
+    }
+
+    .assessment-detail summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+    }
+
+    .assessment-box {
+        margin-top: 6px;
+        padding: 10px;
+        background: var(--bg-soft);
+        border: 1px solid var(--soft-border);
+        border-radius: 6px;
+        color: #333;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .assessment-meta {
+        margin-top: 10px;
+        padding: 8px 9px;
+        background: #fff;
+        border: 1px solid var(--soft-border);
+        border-radius: 6px;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    .assessment-box hr {
+        border: 0;
+        border-top: 1px solid #e1e1e1;
+        margin: 10px 0;
+    }
+
+    .url-warning-box {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .resolved-url-form {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .resolved-url-input {
+        min-width: 280px;
+        max-width: 620px;
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    .btn-assessment,
+    .btn-url-assess {
+        background: var(--purple-bg);
+        color: var(--primary);
+        border: 1px solid #b99be8;
+        padding: 6px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .btn-assessment:hover,
+    .btn-url-assess:hover {
+        background: #e5d7ff;
+    }
+
+    .candidate-assessment-wrap {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px dashed #ddd;
+    }
+
+    .btn-edit-location {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+        font-weight: 700;
+    }
+
+    .btn-edit-location:hover {
+        background: #ffe2bd;
+    }
 </style>
 
 <h1 class="page-title">Duplicate Review</h1>
@@ -82,6 +235,9 @@
 
     <div class="actions-row">
         <a href="{% url 'intel:raw_signals' %}" class="btn">Kembali ke Raw Signals</a>
+        <a href="{% url 'intel:geocode_manual_update' signal.id %}?next={{ current_path|urlencode }}" class="btn btn-edit-location">
+            Edit Lokasi Signal Utama
+        </a>
 
         {% if signal.status != "validated" and signal.status != "approved" and signal.status != "noise" %}
             <form method="post">
@@ -97,6 +253,100 @@
                 <input type="hidden" name="action" value="mark_current_noise">
                 <button type="submit" class="btn-danger">Tandai Signal Utama Noise</button>
             </form>
+        {% endif %}
+    </div>
+
+    <div class="assessment-section">
+        <div class="assessment-toolbar">
+            <form method="post" action="{% url 'intel:signal_generate_assessment' signal.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-assessment">
+                    {% if signal.assessment_summary %}Re-generate 5W+1H{% else %}Generate 5W+1H{% endif %}
+                </button>
+            </form>
+
+            {% if signal.assessment_5w1h.assessment_quality %}
+                <span class="assessment-badge assessment-{{ signal.assessment_5w1h.assessment_quality }}">
+                    {{ signal.assessment_5w1h.assessment_quality }}
+                </span>
+            {% elif signal.assessment_status == "failed" %}
+                <span class="assessment-badge assessment-failed">failed</span>
+            {% elif signal.assessment_status == "fallback" %}
+                <span class="assessment-badge assessment-low_fallback">fallback</span>
+            {% else %}
+                <span class="assessment-badge assessment-not-generated">Belum assessment</span>
+            {% endif %}
+        </div>
+
+        {% if signal.assessment_summary %}
+            <details class="assessment-detail" open>
+                <summary>Hasil assessment signal utama</summary>
+
+                <div class="assessment-box">
+                    <strong>Ringkasan:</strong><br>
+                    {{ signal.assessment_summary|linebreaksbr }}
+
+                    {% if signal.assessment_5w1h %}
+                        <div class="assessment-meta">
+                            <strong>Status:</strong> {{ signal.assessment_status|default:"-" }}<br>
+
+                            {% if signal.assessment_5w1h.assessment_quality == "article_based" %}
+                                <strong>Quality:</strong> Article-based<br>
+                            {% elif signal.assessment_5w1h.assessment_quality == "article_based_partial" %}
+                                <strong>Quality:</strong> Article-based partial<br>
+                                <span class="small-muted">Artikel berhasil dibuka, tetapi teks yang berhasil diekstrak masih terbatas.</span><br>
+                            {% elif signal.assessment_5w1h.assessment_quality == "low_fallback" %}
+                                <strong>Quality:</strong> Low fallback<br>
+                            {% else %}
+                                <strong>Quality:</strong> {{ signal.assessment_5w1h.assessment_quality|default:"-" }}<br>
+                            {% endif %}
+
+                            {% if signal.assessment_5w1h.article_url %}
+                                <strong>Artikel yang dipakai:</strong>
+                                <a href="{{ signal.assessment_5w1h.article_url }}" target="_blank">
+                                    Buka artikel hasil fetch
+                                </a><br>
+                            {% endif %}
+
+                            {% if signal.assessment_5w1h.fetch_mode %}
+                                <strong>Fetch mode:</strong> {{ signal.assessment_5w1h.fetch_mode }}<br>
+                            {% endif %}
+
+                            {% if signal.assessment_5w1h.fetch_warning %}
+                                <strong>Catatan fetch:</strong> {{ signal.assessment_5w1h.fetch_warning }}<br>
+                            {% endif %}
+                        </div>
+
+                        {% if signal.assessment_5w1h.assessment_quality == "low_fallback" or signal.assessment_status == "fallback" or signal.assessment_error %}
+                            <div class="url-warning-box">
+                                <strong>Perlu koreksi URL artikel.</strong><br>
+                                Artikel asli belum berhasil diambil. Paste URL artikel asli, lalu jalankan ulang assessment.
+                            </div>
+
+                            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                                {% csrf_token %}
+                                <input
+                                    type="url"
+                                    name="resolved_url"
+                                    value="{{ signal.resolved_url|default:'' }}"
+                                    placeholder="Paste URL artikel asli"
+                                    class="resolved-url-input"
+                                >
+                                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                                    Simpan & Re-assessment
+                                </button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if signal.assessment_generated_at %}
+                        <hr>
+                        <span class="small-muted">
+                            Dibuat: {{ signal.assessment_generated_at|date:"Y-m-d H:i" }}
+                        </span>
+                    {% endif %}
+                </div>
+            </details>
         {% endif %}
     </div>
 </div>
@@ -201,6 +451,90 @@
                                 {% for reason in item.duplicate_reasons %}<li>{{ reason }}</li>{% endfor %}
                             </ul>
                         {% endif %}
+
+                        <div class="candidate-assessment-wrap">
+                            <div class="assessment-toolbar">
+                                <button
+                                    type="submit"
+                                    formaction="{% url 'intel:signal_generate_assessment' item.id %}"
+                                    formmethod="post"
+                                    class="btn-assessment"
+                                >
+                                    {% if item.assessment_summary %}Re-generate 5W+1H{% else %}Generate 5W+1H{% endif %}
+                                </button>
+
+                                {% if item.assessment_5w1h.assessment_quality %}
+                                    <span class="assessment-badge assessment-{{ item.assessment_5w1h.assessment_quality }}">
+                                        {{ item.assessment_5w1h.assessment_quality }}
+                                    </span>
+                                {% elif item.assessment_status == "failed" %}
+                                    <span class="assessment-badge assessment-failed">failed</span>
+                                {% elif item.assessment_status == "fallback" %}
+                                    <span class="assessment-badge assessment-low_fallback">fallback</span>
+                                {% else %}
+                                    <span class="assessment-badge assessment-not-generated">Belum assessment</span>
+                                {% endif %}
+                            </div>
+
+                            {% if item.assessment_summary %}
+                                <details class="assessment-detail">
+                                    <summary>Hasil assessment kandidat</summary>
+
+                                    <div class="assessment-box">
+                                        <strong>Ringkasan:</strong><br>
+                                        {{ item.assessment_summary|linebreaksbr }}
+
+                                        {% if item.assessment_5w1h %}
+                                            <div class="assessment-meta">
+                                                <strong>Status:</strong> {{ item.assessment_status|default:"-" }}<br>
+
+                                                {% if item.assessment_5w1h.assessment_quality == "article_based" %}
+                                                    <strong>Quality:</strong> Article-based<br>
+                                                {% elif item.assessment_5w1h.assessment_quality == "article_based_partial" %}
+                                                    <strong>Quality:</strong> Article-based partial<br>
+                                                    <span class="small-muted">
+                                                        Artikel berhasil dibuka, tetapi teks yang berhasil diekstrak masih terbatas.
+                                                    </span><br>
+                                                {% elif item.assessment_5w1h.assessment_quality == "low_fallback" %}
+                                                    <strong>Quality:</strong> Low fallback<br>
+                                                {% else %}
+                                                    <strong>Quality:</strong> {{ item.assessment_5w1h.assessment_quality|default:"-" }}<br>
+                                                {% endif %}
+
+                                                {% if item.assessment_5w1h.article_url %}
+                                                    <strong>Artikel yang dipakai:</strong>
+                                                    <a href="{{ item.assessment_5w1h.article_url }}" target="_blank">
+                                                        Buka artikel hasil fetch
+                                                    </a><br>
+                                                {% endif %}
+
+                                                {% if item.assessment_5w1h.fetch_mode %}
+                                                    <strong>Fetch mode:</strong> {{ item.assessment_5w1h.fetch_mode }}<br>
+                                                {% endif %}
+
+                                                {% if item.assessment_5w1h.fetch_warning %}
+                                                    <strong>Catatan fetch:</strong> {{ item.assessment_5w1h.fetch_warning }}<br>
+                                                {% endif %}
+                                            </div>
+
+                                            {% if item.assessment_5w1h.assessment_quality == "low_fallback" or item.assessment_status == "fallback" or item.assessment_error %}
+                                                <div class="url-warning-box">
+                                                    <strong>Perlu koreksi URL artikel.</strong><br>
+                                                    Buka kandidat sebagai review utama jika perlu paste URL artikel asli dan re-assessment.
+                                                </div>
+                                            {% endif %}
+                                        {% endif %}
+
+                                        {% if item.assessment_generated_at %}
+                                            <hr>
+                                            <span class="small-muted">
+                                                Dibuat: {{ item.assessment_generated_at|date:"Y-m-d H:i" }}
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                </details>
+                            {% endif %}
+                        </div>
                     </td>
 
                     <td>
@@ -219,6 +553,9 @@
 
                     <td class="action-cell">
                         <div class="row-actions">
+                            <a href="{% url 'intel:geocode_manual_update' item.id %}?next={{ current_path|urlencode }}" class="btn btn-edit-location">
+                                Edit Lokasi
+                            </a>
                             <a href="{% url 'intel:signal_duplicate_review' item.id %}" class="btn">
                                 Review
                             </a>

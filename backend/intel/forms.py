@@ -2,6 +2,38 @@ from django import forms
 from django.contrib.auth.models import User, Group
 from .models import Location, Signal, SignalLocation, LocationAlias, ScoringRule, SystemSetting, Alert
 
+CLEAN_GEOCODE_STATUS_CHOICES = [
+    ("pending", "Pending"),
+    ("ok", "OK"),
+    ("matched", "Matched"),
+    ("gazetteer_only", "Gazetteer Only"),
+    ("manual", "Manual"),
+    ("empty_loc", "Empty Location"),
+    ("not_found", "Not Found"),
+    ("net_err", "Network Error"),
+    ("skip_noise", "Skip Noise"),
+    ("skip_too_general", "Skip Too General"),
+    ("skip_low_conf", "Skip Low Confidence"),
+]
+
+
+GEOCODE_STATUS_NORMALIZATION = {
+    "OK": "ok",
+    "EMPTY_LOC": "empty_loc",
+    "NOT_FOUND": "not_found",
+    "NET_ERR": "net_err",
+    "SKIP_NOISE": "skip_noise",
+    "SKIP_TOO_GENERAL": "skip_too_general",
+    "SKIP_LOW_CONF": "skip_low_conf",
+    "MANUAL": "manual",
+    "PENDING": "pending",
+}
+
+
+def normalize_geocode_status_value(value):
+    value = value or ""
+    return GEOCODE_STATUS_NORMALIZATION.get(value, value.lower())
+
 class UserRoleAssignmentForm(forms.Form):
     user = forms.ModelChoiceField(
         queryset=User.objects.all().order_by("username"),
@@ -20,7 +52,7 @@ class GeocodeManualUpdateForm(forms.Form):
         widget=forms.TextInput(attrs={"class": "form-control"})
     )
     geocode_status = forms.ChoiceField(
-        choices=Signal.GEOCODE_STATUS_CHOICES,
+        choices=CLEAN_GEOCODE_STATUS_CHOICES,
         widget=forms.Select(attrs={"class": "form-control"})
     )
     province = forms.ModelChoiceField(
@@ -54,6 +86,11 @@ class GeocodeManualUpdateForm(forms.Form):
         province_code = kwargs.pop("province_code", None)
         super().__init__(*args, **kwargs)
 
+        if self.initial.get("geocode_status"):
+            self.initial["geocode_status"] = normalize_geocode_status_value(
+                self.initial["geocode_status"]
+            )
+
         self.fields["kabkota"].queryset = Location.objects.filter(
             level__in=["city", "regency"],
             is_active=True,
@@ -64,6 +101,11 @@ class GeocodeManualUpdateForm(forms.Form):
             self.fields["kabkota"].queryset = self.fields["kabkota"].queryset.filter(
                 province_code=province_code
             )
+
+    def clean_geocode_status(self):
+        return normalize_geocode_status_value(
+            self.cleaned_data.get("geocode_status")
+        )
 
 class LocationForm(forms.ModelForm):
     class Meta:
