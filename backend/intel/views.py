@@ -746,22 +746,60 @@ def get_duplicate_location_profile(signal):
 
     return profile
 
+def duplicate_has_city_level_info(profile):
+    """
+    True jika signal punya informasi lokasi level kabupaten/kota.
+
+    Dipakai agar potensi duplikat tidak berhenti di level provinsi.
+    Contoh: Kota Batu vs Pamekasan sama-sama Jawa Timur, tetapi bukan lokasi sama.
+    """
+
+    return bool(
+        profile.get("location_ids")
+        or profile.get("city_codes")
+        or profile.get("city_names")
+    )
+
+
 def duplicate_location_overlap(profile_a, profile_b):
     """
     True kalau dua signal punya indikasi lokasi sama.
-    Ini dipakai untuk menambah skor lokasi.
+
+    Prinsip:
+    - Jika dua signal sama-sama punya kabupaten/kota, overlap hanya dihitung
+      jika kabupaten/kotanya sama.
+    - Provinsi yang sama tidak otomatis dianggap lokasi sama apabila
+      kabupaten/kota keduanya sudah jelas.
+    - Jika salah satu signal hanya punya provinsi atau lokasi kosong, provinsi
+      masih boleh menjadi indikasi overlap lemah untuk review manual.
     """
 
-    comparable_pairs = [
+    a_has_city = duplicate_has_city_level_info(profile_a)
+    b_has_city = duplicate_has_city_level_info(profile_b)
+
+    city_pairs = [
         ("location_ids", "location_ids"),
         ("city_codes", "city_codes"),
         ("city_names", "city_names"),
-        ("province_codes", "province_codes"),
-        ("province_names", "province_names"),
         ("raw_names", "raw_names"),
     ]
 
-    for left_key, right_key in comparable_pairs:
+    for left_key, right_key in city_pairs:
+        if profile_a[left_key] and profile_b[right_key]:
+            if profile_a[left_key].intersection(profile_b[right_key]):
+                return True
+
+    # Jika keduanya sudah punya kab/kota, jangan pakai provinsi sebagai overlap.
+    # Ini mencegah Kota Batu vs Pamekasan tetap dihitung duplikat hanya karena sama-sama Jawa Timur.
+    if a_has_city and b_has_city:
+        return False
+
+    province_pairs = [
+        ("province_codes", "province_codes"),
+        ("province_names", "province_names"),
+    ]
+
+    for left_key, right_key in province_pairs:
         if profile_a[left_key] and profile_b[right_key]:
             if profile_a[left_key].intersection(profile_b[right_key]):
                 return True
@@ -814,19 +852,28 @@ def duplicate_locations_are_definitely_different(profile_a, profile_b):
     if not profile_b["has_any_location"]:
         return False
 
-    # Kalau ada overlap lokasi, jangan dianggap beda.
+    # Kalau ada overlap lokasi level kab/kota/provinsi yang valid, jangan dianggap beda.
     if duplicate_location_overlap(profile_a, profile_b):
         return False
 
     if duplicate_raw_location_related(profile_a, profile_b):
         return False
 
+    a_has_city = duplicate_has_city_level_info(profile_a)
+    b_has_city = duplicate_has_city_level_info(profile_b)
+
+    # Jika keduanya punya informasi kab/kota tetapi tidak overlap,
+    # anggap beda lokasi meskipun provinsinya sama.
+    # Contoh: Kota Batu vs Pamekasan sama-sama Jawa Timur, tetapi bukan duplikat lokasi.
+    if a_has_city and b_has_city:
+        return True
+
     # Jika keduanya punya kode kab/kota dan tidak beririsan, beda pasti.
     if profile_a["city_codes"] and profile_b["city_codes"]:
         return True
 
     # Jika keduanya punya ID lokasi primary dan tidak beririsan,
-    # cek dulu apakah masih satu provinsi.
+    # cek dulu apakah masih satu provinsi untuk kasus salah satu belum spesifik.
     if profile_a["location_ids"] and profile_b["location_ids"]:
         if profile_a["province_codes"] and profile_b["province_codes"]:
             if profile_a["province_codes"].intersection(profile_b["province_codes"]):
@@ -1094,19 +1141,23 @@ def signal_duplicate_review(request, pk):
 
     if request.method == "POST":
         action = request.POST.get("action", "").strip()
-        selected_ids = [item for item in request.POST.getlist("selected_ids") if str(item).isdigit()]
+
+        # Ambil hanya ID checkbox yang benar-benar dikirim dari form.
+        # Dedupe dilakukan agar satu kandidat tidak diproses dua kali apabila ada input ganda.
+        selected_ids = []
+        for item in request.POST.getlist("selected_ids"):
+            item = str(item).strip()
+            if item.isdigit() and item not in selected_ids:
+                selected_ids.append(item)
+
         target_id = (request.POST.get("target_id") or request.POST.get("single_id") or "").strip()
         single_ids = [target_id] if target_id.isdigit() else []
 
-        bulk_actions = {"mark_selected_noise", "mark_selected_valid", "mark_selected_valid_update", "validate_main_and_noise_selected"}
+        bulk_actions = {"mark_selected_noise", "mark_selected_valid", "mark_selected_valid_update", "validate_main_and_noise_selected", "noise_main_and_noise_selected"}
         single_actions = {"mark_one_noise", "mark_single_noise", "mark_one_valid", "mark_single_valid_update"}
 
         if action in bulk_actions and not selected_ids:
             messages.warning(request, "Pilih minimal 1 kandidat terlebih dahulu.")
-            return redirect("intel:signal_duplicate_review", pk=signal.id)
-
-        if action in {"mark_selected_valid", "mark_selected_valid_update"} and len(selected_ids) > 1:
-            messages.warning(request, "Aksi Valid/Update hanya boleh untuk 1 kandidat sekali proses agar tidak salah validasi massal.")
             return redirect("intel:signal_duplicate_review", pk=signal.id)
 
         if action in single_actions and not single_ids:
@@ -1114,6 +1165,22 @@ def signal_duplicate_review(request, pk):
             return redirect("intel:signal_duplicate_review", pk=signal.id)
 
         target_ids = single_ids if action in single_actions else selected_ids
+
+        # Pengaman khusus duplicate review:
+        # untuk aksi bulk, hanya kandidat yang termasuk potensi duplikat saat halaman ini dibuka
+        # dan ID-nya benar-benar ada di checkbox terpilih yang boleh diproses.
+        # Ini mencegah action "noise utama + kandidat terpilih" mengenai kandidat lain
+        # yang tidak dicentang / ID stray dari form.
+        if action in bulk_actions:
+            allowed_candidate_ids = {
+                str(item.id) for item in get_duplicate_candidates(signal, days=7, limit=30)
+            }
+            target_ids = [item for item in target_ids if item in allowed_candidate_ids]
+
+            if not target_ids:
+                messages.warning(request, "Tidak ada kandidat terpilih yang valid untuk diproses.")
+                return redirect("intel:signal_duplicate_review", pk=signal.id)
+
         candidates_qs = Signal.objects.filter(id__in=target_ids).exclude(id=signal.id)
 
         if action == "mark_selected_noise":
@@ -1125,6 +1192,17 @@ def signal_duplicate_review(request, pk):
                 changed_count += 1
             messages.success(request, f"{changed_count} kandidat duplikat ditandai sebagai noise.")
             return redirect("intel:signal_duplicate_review", pk=signal.id)
+
+        elif action == "noise_main_and_noise_selected":
+            _mark_noise(signal, note="Main signal marked as noise from duplicate review and selected candidates marked as noise.")
+            changed_count = 0
+            for item in candidates_qs:
+                if item.status == "noise":
+                    continue
+                _mark_noise(item, note=f"Marked as noise together with main signal from duplicate review. Main signal id={signal.id}")
+                changed_count += 1
+            messages.success(request, f"Signal utama dan {changed_count} kandidat terpilih ditandai sebagai noise.")
+            return redirect("intel:raw_signals")
 
         elif action in {"mark_selected_valid", "mark_selected_valid_update"}:
             changed_count = 0

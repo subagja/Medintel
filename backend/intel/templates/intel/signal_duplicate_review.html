@@ -211,6 +211,36 @@
     .btn-edit-location:hover {
         background: #ffe2bd;
     }
+
+
+    .resolved-url-detail {
+        margin-top: 10px;
+        font-size: 12px;
+    }
+
+    .resolved-url-detail summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+    }
+
+    .resolved-url-current {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+    }
+
+    .candidate-url-input {
+        width: 100%;
+        min-width: 260px;
+        max-width: 620px;
+        padding: 6px 8px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 12px;
+        box-sizing: border-box;
+    }
 </style>
 
 <h1 class="page-title">Duplicate Review</h1>
@@ -348,6 +378,37 @@
                 </div>
             </details>
         {% endif %}
+
+        <details class="resolved-url-detail">
+            <summary>Koreksi URL artikel & re-assessment signal utama</summary>
+
+            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ current_path }}">
+
+                <input
+                    type="url"
+                    name="resolved_url"
+                    value="{{ signal.resolved_url|default:'' }}"
+                    placeholder="Paste URL artikel asli untuk signal utama"
+                    class="resolved-url-input"
+                >
+
+                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                    Simpan & Re-assessment
+                </button>
+            </form>
+
+            <div class="resolved-url-current">
+                {% if signal.resolved_url %}
+                    Resolved URL saat ini:
+                    <a href="{{ signal.resolved_url }}" target="_blank">Buka artikel asli</a>
+                    · {{ signal.url_resolution_method|default:"-" }}
+                {% else %}
+                    Belum ada resolved URL manual. Paste URL artikel asli bila hasil fetch salah atau perlu re-assessment.
+                {% endif %}
+            </div>
+        </details>
     </div>
 </div>
 
@@ -365,9 +426,19 @@
 <form method="post" id="bulkDuplicateForm">
     {% csrf_token %}
     <input type="hidden" name="target_id" id="targetIdInput" value="">
+    <input type="hidden" name="resolved_url" id="targetResolvedUrlInput" value="">
+    <input type="hidden" name="next" value="{{ current_path }}">
 
     <div class="card">
         <div class="bulk-actions">
+            <button type="button" class="btn" id="selectAllCandidatesBtn">
+                Select All
+            </button>
+
+            <button type="button" class="btn" id="clearSelectedCandidatesBtn">
+                Clear Selection
+            </button>
+
             <button
                 type="submit"
                 name="action"
@@ -383,11 +454,23 @@
             <button
                 type="submit"
                 name="action"
+                value="noise_main_and_noise_selected"
+                class="btn-danger bulk-action-btn"
+                data-min-selected="1"
+                data-max-selected=""
+                data-confirm-message="Tandai signal utama dan kandidat terpilih sebagai noise? Aksi ini akan mengeluarkan semuanya dari Raw Signal."
+            >
+                Noise Utama + Kandidat Terpilih
+            </button>
+
+            <button
+                type="submit"
+                name="action"
                 value="mark_selected_valid_update"
                 class="btn-success bulk-action-btn"
                 data-min-selected="1"
-                data-max-selected="1"
-                data-confirm-message="Tandai kandidat terpilih sebagai valid/update? Untuk keamanan, aksi ini hanya boleh 1 kandidat sekali proses."
+                data-max-selected=""
+                data-confirm-message="Tandai kandidat terpilih sebagai valid/update?"
             >
                 Mark Selected as Valid/Update
             </button>
@@ -406,7 +489,7 @@
         </div>
 
         <div class="bulk-action-note">
-            Pilih minimal 1 kandidat sebelum menjalankan aksi massal. Untuk aksi Valid/Update, pilih maksimal 1 kandidat.
+            Pilih minimal 1 kandidat sebelum menjalankan aksi massal. Gunakan Select All jika seluruh potensi duplikat ingin ikut diproses. Aksi Valid/Update tetap dapat diterapkan ke lebih dari satu kandidat.
         </div>
     </div>
 
@@ -520,7 +603,7 @@
                                             {% if item.assessment_5w1h.assessment_quality == "low_fallback" or item.assessment_status == "fallback" or item.assessment_error %}
                                                 <div class="url-warning-box">
                                                     <strong>Perlu koreksi URL artikel.</strong><br>
-                                                    Buka kandidat sebagai review utama jika perlu paste URL artikel asli dan re-assessment.
+                                                    Artikel asli belum berhasil diambil atau hasil assessment perlu diperbaiki.
                                                 </div>
                                             {% endif %}
                                         {% endif %}
@@ -534,6 +617,42 @@
                                     </div>
                                 </details>
                             {% endif %}
+
+                            <details class="resolved-url-detail">
+                                <summary>Koreksi URL & re-assessment kandidat</summary>
+
+                                <div class="resolved-url-form">
+                                    <input
+                                        type="url"
+                                        id="candidateResolvedUrl{{ item.id }}"
+                                        value="{{ item.resolved_url|default:'' }}"
+                                        placeholder="Paste URL artikel asli untuk kandidat #{{ item.id }}"
+                                        class="candidate-url-input"
+                                    >
+
+                                    <button
+                                        type="submit"
+                                        name="run_assessment"
+                                        value="1"
+                                        formaction="{% url 'intel:signal_update_resolved_url' item.id %}"
+                                        formmethod="post"
+                                        class="btn-url-assess candidate-url-action-btn"
+                                        data-url-input-id="candidateResolvedUrl{{ item.id }}"
+                                    >
+                                        Simpan & Re-assessment
+                                    </button>
+                                </div>
+
+                                <div class="resolved-url-current">
+                                    {% if item.resolved_url %}
+                                        Resolved URL saat ini:
+                                        <a href="{{ item.resolved_url }}" target="_blank">Buka artikel asli</a>
+                                        · {{ item.url_resolution_method|default:"-" }}
+                                    {% else %}
+                                        Belum ada resolved URL manual untuk kandidat ini.
+                                    {% endif %}
+                                </div>
+                            </details>
                         </div>
                     </td>
 
@@ -598,17 +717,45 @@
 <script>
     document.addEventListener("DOMContentLoaded", function () {
         const targetIdInput = document.getElementById("targetIdInput");
+        const targetResolvedUrlInput = document.getElementById("targetResolvedUrlInput");
+        const selectAllCandidatesBtn = document.getElementById("selectAllCandidatesBtn");
+        const clearSelectedCandidatesBtn = document.getElementById("clearSelectedCandidatesBtn");
         const bulkButtons = document.querySelectorAll(".bulk-action-btn");
         const singleButtons = document.querySelectorAll(".single-action-btn");
+        const candidateUrlButtons = document.querySelectorAll(".candidate-url-action-btn");
+
+        function getCandidateCheckboxes() {
+            return Array.from(document.querySelectorAll('input[name="selected_ids"]'));
+        }
 
         function getCheckedCandidates() {
             return Array.from(document.querySelectorAll('input[name="selected_ids"]:checked'));
+        }
+
+        if (selectAllCandidatesBtn) {
+            selectAllCandidatesBtn.addEventListener("click", function () {
+                getCandidateCheckboxes().forEach(function (checkbox) {
+                    checkbox.checked = true;
+                });
+            });
+        }
+
+        if (clearSelectedCandidatesBtn) {
+            clearSelectedCandidatesBtn.addEventListener("click", function () {
+                getCandidateCheckboxes().forEach(function (checkbox) {
+                    checkbox.checked = false;
+                });
+            });
         }
 
         bulkButtons.forEach(function (button) {
             button.addEventListener("click", function (event) {
                 if (targetIdInput) {
                     targetIdInput.value = "";
+                }
+
+                if (targetResolvedUrlInput) {
+                    targetResolvedUrlInput.value = "";
                 }
 
                 const checked = getCheckedCandidates();
@@ -645,6 +792,10 @@
                     targetIdInput.value = button.dataset.targetId || "";
                 }
 
+                if (targetResolvedUrlInput) {
+                    targetResolvedUrlInput.value = "";
+                }
+
                 const confirmMessage = button.dataset.confirmMessage || "Lanjutkan aksi ini?";
                 if (!confirm(confirmMessage)) {
                     event.preventDefault();
@@ -654,6 +805,36 @@
                 return true;
             });
         });
+
+        candidateUrlButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                if (targetIdInput) {
+                    targetIdInput.value = "";
+                }
+
+                const inputId = button.dataset.urlInputId || "";
+                const urlInput = inputId ? document.getElementById(inputId) : null;
+                const resolvedUrl = urlInput ? urlInput.value.trim() : "";
+
+                if (!resolvedUrl) {
+                    event.preventDefault();
+                    alert("Paste URL artikel asli terlebih dahulu sebelum re-assessment.");
+                    return false;
+                }
+
+                if (targetResolvedUrlInput) {
+                    targetResolvedUrlInput.value = resolvedUrl;
+                }
+
+                if (!confirm("Simpan URL artikel asli dan jalankan re-assessment untuk kandidat ini?")) {
+                    event.preventDefault();
+                    return false;
+                }
+
+                return true;
+            });
+        });
+
     });
 </script>
 
