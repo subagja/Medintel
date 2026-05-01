@@ -635,18 +635,434 @@ def get_primary_location_ids_for_signal(signal):
 
     return ids
 
+def normalize_duplicate_location_value(value):
+    value = value or ""
+    value = str(value).lower().strip()
+    value = re.sub(r"[^a-z0-9\s]", " ", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
+def get_duplicate_location_profile(signal):
+    """
+    Profil lokasi untuk duplicate review.
+
+    Prinsip:
+    - Lokasi terstruktur/admin dipakai sebagai pembanding kuat.
+    - raw_location_text juga dianggap lokasi apabila tidak kosong.
+    - Lokasi benar-benar kosong tetap boleh masuk review.
+    - Lokasi mentah yang berbeda tidak boleh otomatis dianggap kosong.
+    """
+
+    profile = {
+        "location_ids": set(),
+        "city_codes": set(),
+        "city_names": set(),
+        "province_codes": set(),
+        "province_names": set(),
+        "raw_names": set(),
+        "has_structured_location": False,
+        "has_any_location": False,
+    }
+
+    primary_locations = list(getattr(signal, "primary_locations", []) or [])
+
+    if not primary_locations:
+        primary_locations = list(
+            SignalLocation.objects.filter(
+                signal=signal,
+                is_primary=True,
+                location__isnull=False,
+            ).select_related("location", "location__parent")
+        )
+
+    for item in primary_locations:
+        loc = getattr(item, "location", None)
+
+        if not loc:
+            continue
+
+        profile["has_structured_location"] = True
+        profile["has_any_location"] = True
+        profile["location_ids"].add(loc.id)
+
+        loc_name = normalize_duplicate_location_value(
+            loc.display_name or loc.name
+        )
+
+        if loc.level in ["city", "regency"]:
+            if loc.city_regency_code:
+                profile["city_codes"].add(loc.city_regency_code)
+
+            if loc_name:
+                profile["city_names"].add(loc_name)
+
+            if loc.province_code:
+                profile["province_codes"].add(loc.province_code)
+
+            if loc.parent:
+                parent_name = normalize_duplicate_location_value(
+                    loc.parent.display_name or loc.parent.name
+                )
+
+                if parent_name:
+                    profile["province_names"].add(parent_name)
+
+                if loc.parent.province_code:
+                    profile["province_codes"].add(loc.parent.province_code)
+
+        elif loc.level == "province":
+            if loc.province_code:
+                profile["province_codes"].add(loc.province_code)
+
+            if loc_name:
+                profile["province_names"].add(loc_name)
+
+    admin_kabkota = normalize_duplicate_location_value(
+        getattr(signal, "admin_kabkota", "") or ""
+    )
+    admin_province = normalize_duplicate_location_value(
+        getattr(signal, "admin_province", "") or ""
+    )
+    raw_location = normalize_duplicate_location_value(
+        getattr(signal, "raw_location_text", "") or ""
+    )
+
+    if admin_kabkota:
+        profile["city_names"].add(admin_kabkota)
+        profile["has_structured_location"] = True
+        profile["has_any_location"] = True
+
+    if admin_province:
+        profile["province_names"].add(admin_province)
+        profile["has_structured_location"] = True
+        profile["has_any_location"] = True
+
+    if raw_location:
+        profile["raw_names"].add(raw_location)
+        profile["has_any_location"] = True
+
+    return profile
+
+def duplicate_location_overlap(profile_a, profile_b):
+    """
+    True kalau dua signal punya indikasi lokasi sama.
+    Ini dipakai untuk menambah skor lokasi.
+    """
+
+    comparable_pairs = [
+        ("location_ids", "location_ids"),
+        ("city_codes", "city_codes"),
+        ("city_names", "city_names"),
+        ("province_codes", "province_codes"),
+        ("province_names", "province_names"),
+        ("raw_names", "raw_names"),
+    ]
+
+    for left_key, right_key in comparable_pairs:
+        if profile_a[left_key] and profile_b[right_key]:
+            if profile_a[left_key].intersection(profile_b[right_key]):
+                return True
+
+    return False
+
+
+def duplicate_raw_location_related(profile_a, profile_b):
+    """
+    Mengecek apakah raw location masih mungkin saling terkait.
+
+    Contoh terkait:
+    - "bangka tengah" vs "bangka tengah kepulauan bangka belitung"
+    - "kota kupang" vs "kupang"
+
+    Contoh tidak terkait:
+    - "bangka tengah" vs "dusun randualas"
+    - "riau" vs "nusa tenggara timur"
+    """
+
+    if not profile_a["raw_names"] or not profile_b["raw_names"]:
+        return False
+
+    for raw_a in profile_a["raw_names"]:
+        for raw_b in profile_b["raw_names"]:
+            if raw_a == raw_b:
+                return True
+
+            if raw_a in raw_b or raw_b in raw_a:
+                return True
+
+    return False
+
+def duplicate_locations_are_definitely_different(profile_a, profile_b):
+    """
+    True hanya kalau dua signal sama-sama punya informasi lokasi,
+    tetapi wilayahnya berbeda.
+
+    Penting:
+    - Lokasi benar-benar kosong tetap boleh masuk kandidat.
+    - Lokasi mentah yang tidak kosong tidak dianggap kosong.
+    - Jadi Bangka Tengah vs Dusun Randualas tidak masuk potensi duplikat.
+    """
+
+    # Kalau salah satu benar-benar tidak punya lokasi sama sekali,
+    # jangan dibuang. Ini memenuhi syarat: lokasi kosong tetap masuk review.
+    if not profile_a["has_any_location"]:
+        return False
+
+    if not profile_b["has_any_location"]:
+        return False
+
+    # Kalau ada overlap lokasi, jangan dianggap beda.
+    if duplicate_location_overlap(profile_a, profile_b):
+        return False
+
+    if duplicate_raw_location_related(profile_a, profile_b):
+        return False
+
+    # Jika keduanya punya kode kab/kota dan tidak beririsan, beda pasti.
+    if profile_a["city_codes"] and profile_b["city_codes"]:
+        return True
+
+    # Jika keduanya punya ID lokasi primary dan tidak beririsan,
+    # cek dulu apakah masih satu provinsi.
+    if profile_a["location_ids"] and profile_b["location_ids"]:
+        if profile_a["province_codes"] and profile_b["province_codes"]:
+            if profile_a["province_codes"].intersection(profile_b["province_codes"]):
+                return False
+        return True
+
+    # Jika keduanya punya provinsi jelas dan provinsinya berbeda, beda pasti.
+    if profile_a["province_codes"] and profile_b["province_codes"]:
+        return True
+
+    if profile_a["province_names"] and profile_b["province_names"]:
+        return True
+
+    # Kasus penting:
+    # satu signal punya lokasi struktur/admin, kandidat hanya punya raw location,
+    # dan raw tersebut tidak related dengan lokasi utama.
+    # Contoh: Bangka Tengah vs Dusun Randualas.
+    structured_keys = [
+        "city_names",
+        "province_names",
+    ]
+
+    if profile_a["has_structured_location"] and profile_b["raw_names"]:
+        known_names = set()
+        for key in structured_keys:
+            known_names.update(profile_a[key])
+
+        for known in known_names:
+            for raw_b in profile_b["raw_names"]:
+                if known and raw_b and (known in raw_b or raw_b in known):
+                    return False
+
+        return True
+
+    if profile_b["has_structured_location"] and profile_a["raw_names"]:
+        known_names = set()
+        for key in structured_keys:
+            known_names.update(profile_b[key])
+
+        for known in known_names:
+            for raw_a in profile_a["raw_names"]:
+                if known and raw_a and (known in raw_a or raw_a in known):
+                    return False
+
+        return True
+
+    # Kalau keduanya hanya punya raw location dan raw berbeda,
+    # anggap beda lokasi, bukan lokasi kosong.
+    if profile_a["raw_names"] and profile_b["raw_names"]:
+        return True
+
+    return False
+    
+# def get_duplicate_candidates(signal, days=7, limit=30):
+#     """
+#     Cari kandidat duplikat berbasis:
+#     - URL sama / mirip
+#     - disease sama
+#     - lokasi sama
+#     - rentang tanggal dekat
+#     - kemiripan judul
+
+#     Candidate diberi atribut tambahan:
+#     duplicate_score, duplicate_label, title_similarity_score, duplicate_reasons.
+#     """
+
+#     primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+#         "location",
+#         "location__parent",
+#     )
+
+#     qs = (
+#         Signal.objects.select_related("source")
+#         .prefetch_related(
+#             Prefetch(
+#                 "locations",
+#                 queryset=primary_locations,
+#                 to_attr="primary_locations",
+#             )
+#         )
+#         .exclude(id=signal.id)
+#         .exclude(status="noise")
+#     )
+
+#     if signal.disease_tag:
+#         qs = qs.filter(disease_tag__iexact=signal.disease_tag)
+
+#     if signal.published_at:
+#         qs = qs.filter(
+#             published_at__range=(
+#                 signal.published_at - timedelta(days=days),
+#                 signal.published_at + timedelta(days=days),
+#             )
+#         )
+
+#     loc_q = Q()
+
+#     if signal.raw_location_text:
+#         loc_q |= Q(raw_location_text__iexact=signal.raw_location_text)
+
+#     if getattr(signal, "admin_kabkota", ""):
+#         loc_q |= Q(admin_kabkota__iexact=signal.admin_kabkota)
+
+#     if getattr(signal, "admin_province", ""):
+#         loc_q |= Q(admin_province__iexact=signal.admin_province)
+
+#     primary_location_ids = get_primary_location_ids_for_signal(signal)
+
+#     if primary_location_ids:
+#         loc_q |= Q(
+#             locations__is_primary=True,
+#             locations__location_id__in=primary_location_ids,
+#         )
+
+#     if loc_q:
+#         qs = qs.filter(loc_q).distinct()
+
+#     qs = qs.order_by("-published_at", "-created_at", "-id")[:200]
+
+#     candidates = []
+
+#     signal_title = signal.title or ""
+#     signal_source_url = signal.source_url or ""
+#     signal_resolved_url = getattr(signal, "resolved_url", "") or ""
+
+#     for item in qs:
+#         score = 0
+#         reasons = []
+
+#         title_sim = duplicate_title_similarity(signal_title, item.title)
+
+#         if title_sim >= 85:
+#             score += 35
+#             reasons.append(f"Judul sangat mirip ({title_sim}%).")
+#         elif title_sim >= 60:
+#             score += 20
+#             reasons.append(f"Judul cukup mirip ({title_sim}%).")
+#         elif title_sim >= 40:
+#             score += 10
+#             reasons.append(f"Judul agak mirip ({title_sim}%).")
+
+#         item_source_url = item.source_url or ""
+#         item_resolved_url = getattr(item, "resolved_url", "") or ""
+
+#         if signal_source_url and (
+#             signal_source_url == item_source_url
+#             or signal_source_url == item_resolved_url
+#         ):
+#             score += 50
+#             reasons.append("URL sumber sama dengan signal utama.")
+
+#         if signal_resolved_url and (
+#             signal_resolved_url == item_source_url
+#             or signal_resolved_url == item_resolved_url
+#         ):
+#             score += 50
+#             reasons.append("Resolved URL sama dengan signal utama.")
+
+#         if signal.disease_tag and item.disease_tag and signal.disease_tag.lower() == item.disease_tag.lower():
+#             score += 15
+#             reasons.append("Kategori penyakit sama.")
+
+#         same_location = False
+
+#         if signal.raw_location_text and item.raw_location_text:
+#             if signal.raw_location_text.strip().lower() == item.raw_location_text.strip().lower():
+#                 same_location = True
+
+#         if getattr(signal, "admin_kabkota", "") and getattr(item, "admin_kabkota", ""):
+#             if signal.admin_kabkota.strip().lower() == item.admin_kabkota.strip().lower():
+#                 same_location = True
+
+#         if getattr(signal, "admin_province", "") and getattr(item, "admin_province", ""):
+#             if signal.admin_province.strip().lower() == item.admin_province.strip().lower():
+#                 same_location = True
+
+#         item_primary_location_ids = get_primary_location_ids_for_signal(item)
+
+#         if primary_location_ids and item_primary_location_ids:
+#             if set(primary_location_ids).intersection(set(item_primary_location_ids)):
+#                 same_location = True
+
+#         if same_location:
+#             score += 25
+#             reasons.append("Lokasi sama atau mengarah ke wilayah yang sama.")
+
+#         if signal.published_at and item.published_at:
+#             diff_days = abs((signal.published_at.date() - item.published_at.date()).days)
+
+#             if diff_days <= 1:
+#                 score += 15
+#                 reasons.append("Tanggal publikasi sangat dekat.")
+#             elif diff_days <= 3:
+#                 score += 10
+#                 reasons.append("Tanggal publikasi dekat.")
+#             elif diff_days <= days:
+#                 score += 5
+#                 reasons.append("Tanggal publikasi masih dalam rentang review.")
+
+#         score = min(score, 100)
+
+#         if score >= 80:
+#             label = "Kemungkinan Duplikat Tinggi"
+#             label_class = "dup-high"
+#         elif score >= 55:
+#             label = "Perlu Review"
+#             label_class = "dup-medium"
+#         else:
+#             label = "Kemiripan Rendah"
+#             label_class = "dup-low"
+
+#         item.duplicate_score = score
+#         item.duplicate_label = label
+#         item.duplicate_label_class = label_class
+#         item.title_similarity_score = title_sim
+#         item.duplicate_reasons = reasons
+
+#         if score >= 35:
+#             candidates.append(item)
+
+#     candidates.sort(key=lambda x: x.duplicate_score, reverse=True)
+
+#     return candidates[:limit]
 
 def get_duplicate_candidates(signal, days=7, limit=30):
     """
     Cari kandidat duplikat berbasis:
     - URL sama / mirip
     - disease sama
-    - lokasi sama
+    - lokasi sama atau lokasi belum jelas
     - rentang tanggal dekat
     - kemiripan judul
 
-    Candidate diberi atribut tambahan:
-    duplicate_score, duplicate_label, title_similarity_score, duplicate_reasons.
+    Perbaikan logic lokasi:
+    - Jika dua signal sama-sama punya lokasi jelas dan lokasinya berbeda pasti,
+      kandidat dibuang dari potensi duplikat.
+    - Jika salah satu lokasi kosong / belum jelas, kandidat tetap boleh masuk.
+    - Ini mencegah kasus DBD NTT vs DBD Riau ikut dihitung sebagai potensi duplikat.
     """
 
     primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
@@ -678,29 +1094,7 @@ def get_duplicate_candidates(signal, days=7, limit=30):
             )
         )
 
-    loc_q = Q()
-
-    if signal.raw_location_text:
-        loc_q |= Q(raw_location_text__iexact=signal.raw_location_text)
-
-    if getattr(signal, "admin_kabkota", ""):
-        loc_q |= Q(admin_kabkota__iexact=signal.admin_kabkota)
-
-    if getattr(signal, "admin_province", ""):
-        loc_q |= Q(admin_province__iexact=signal.admin_province)
-
-    primary_location_ids = get_primary_location_ids_for_signal(signal)
-
-    if primary_location_ids:
-        loc_q |= Q(
-            locations__is_primary=True,
-            locations__location_id__in=primary_location_ids,
-        )
-
-    if loc_q:
-        qs = qs.filter(loc_q).distinct()
-
-    qs = qs.order_by("-published_at", "-created_at", "-id")[:200]
+    qs = qs.distinct().order_by("-published_at", "-created_at", "-id")[:300]
 
     candidates = []
 
@@ -708,7 +1102,17 @@ def get_duplicate_candidates(signal, days=7, limit=30):
     signal_source_url = signal.source_url or ""
     signal_resolved_url = getattr(signal, "resolved_url", "") or ""
 
+    signal_location_profile = get_duplicate_location_profile(signal)
+
     for item in qs:
+        item_location_profile = get_duplicate_location_profile(item)
+
+        if duplicate_locations_are_definitely_different(
+            signal_location_profile,
+            item_location_profile,
+        ):
+            continue
+
         score = 0
         reasons = []
 
@@ -741,33 +1145,28 @@ def get_duplicate_candidates(signal, days=7, limit=30):
             score += 50
             reasons.append("Resolved URL sama dengan signal utama.")
 
-        if signal.disease_tag and item.disease_tag and signal.disease_tag.lower() == item.disease_tag.lower():
+        if (
+            signal.disease_tag
+            and item.disease_tag
+            and signal.disease_tag.lower() == item.disease_tag.lower()
+        ):
             score += 15
             reasons.append("Kategori penyakit sama.")
 
-        same_location = False
-
-        if signal.raw_location_text and item.raw_location_text:
-            if signal.raw_location_text.strip().lower() == item.raw_location_text.strip().lower():
-                same_location = True
-
-        if getattr(signal, "admin_kabkota", "") and getattr(item, "admin_kabkota", ""):
-            if signal.admin_kabkota.strip().lower() == item.admin_kabkota.strip().lower():
-                same_location = True
-
-        if getattr(signal, "admin_province", "") and getattr(item, "admin_province", ""):
-            if signal.admin_province.strip().lower() == item.admin_province.strip().lower():
-                same_location = True
-
-        item_primary_location_ids = get_primary_location_ids_for_signal(item)
-
-        if primary_location_ids and item_primary_location_ids:
-            if set(primary_location_ids).intersection(set(item_primary_location_ids)):
-                same_location = True
+        same_location = duplicate_location_overlap(
+            signal_location_profile,
+            item_location_profile,
+        )
 
         if same_location:
             score += 25
             reasons.append("Lokasi sama atau mengarah ke wilayah yang sama.")
+        else:
+            if (
+                not signal_location_profile["has_structured_location"]
+                or not item_location_profile["has_structured_location"]
+            ):
+                reasons.append("Lokasi salah satu signal belum jelas, tetap perlu review manual.")
 
         if signal.published_at and item.published_at:
             diff_days = abs((signal.published_at.date() - item.published_at.date()).days)
@@ -806,7 +1205,6 @@ def get_duplicate_candidates(signal, days=7, limit=30):
     candidates.sort(key=lambda x: x.duplicate_score, reverse=True)
 
     return candidates[:limit]
-
 
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
