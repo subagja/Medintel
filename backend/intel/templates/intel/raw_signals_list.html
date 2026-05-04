@@ -1150,17 +1150,50 @@
 <script>
     $(document).ready(function () {
         const tableSelector = '#rawSignalsTable';
+        const currentSort = "{{ sort|default:'-published_at'|escapejs }}";
+
+        // Mapping kolom DataTables ke parameter sort backend.
+        // Sorting tetap global karena dieksekusi oleh queryset Django,
+        // bukan hanya sorting 25 data yang sedang tampil di halaman.
+        const sortMap = {
+            0: { asc: "id", desc: "-id" },
+            1: { asc: "title", desc: "-title" },
+            2: { asc: "disease_tag", desc: "-disease_tag" },
+            3: { asc: "threat_score", desc: "-threat_score" },
+            4: { asc: "raw_location_text", desc: "-raw_location_text" },
+            5: { asc: "geocode_status", desc: "-geocode_status" },
+            6: { asc: "status", desc: "-status" }
+        };
+
+        const initialOrderMap = {
+            "id": [0, "asc"],
+            "-id": [0, "desc"],
+            "title": [1, "asc"],
+            "-title": [1, "desc"],
+            "disease_tag": [2, "asc"],
+            "-disease_tag": [2, "desc"],
+            "threat_score": [3, "asc"],
+            "-threat_score": [3, "desc"],
+            "raw_location_text": [4, "asc"],
+            "-raw_location_text": [4, "desc"],
+            "geocode_status": [5, "asc"],
+            "-geocode_status": [5, "desc"],
+            "status": [6, "asc"],
+            "-status": [6, "desc"]
+        };
 
         if ($.fn.DataTable.isDataTable(tableSelector)) {
             $(tableSelector).DataTable().destroy();
         }
+
+        let allowRedirect = false;
 
         const table = $(tableSelector).DataTable({
             paging: false,
             info: false,
             searching: true,
             ordering: true,
-            order: [],
+            order: initialOrderMap[currentSort] ? [initialOrderMap[currentSort]] : [],
             autoWidth: false,
             scrollX: false,
             fixedHeader: false,
@@ -1180,7 +1213,35 @@
                 { width: "135px" },
                 { width: "95px" },
                 { width: "190px", orderable: false, searchable: false }
-            ]
+            ],
+            initComplete: function () {
+                allowRedirect = true;
+            }
+        });
+
+        table.on("order.dt", function () {
+            if (!allowRedirect) {
+                return;
+            }
+
+            const order = table.order();
+            if (!order || !order.length) {
+                return;
+            }
+
+            const columnIndex = order[0][0];
+            const direction = order[0][1];
+            const mappedSort = sortMap[columnIndex] ? sortMap[columnIndex][direction] : null;
+
+            if (!mappedSort || mappedSort === currentSort) {
+                return;
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            params.set("sort", mappedSort);
+            params.delete("page");
+
+            window.location.search = params.toString();
         });
 
         setTimeout(function () {
