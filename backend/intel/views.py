@@ -1435,6 +1435,8 @@ def raw_signals_list(request):
     # SORTING
     # =========================
     allowed_sort_fields = {
+        "id": "id",
+        "-id": "-id",
         "published_at": "published_at",
         "-published_at": "-published_at",
         "threat_score": "threat_score",
@@ -1443,6 +1445,14 @@ def raw_signals_list(request):
         "-created_at": "-created_at",
         "title": "title",
         "-title": "-title",
+        "disease_tag": "disease_tag",
+        "-disease_tag": "-disease_tag",
+        "raw_location_text": "raw_location_text",
+        "-raw_location_text": "-raw_location_text",
+        "geocode_status": "geocode_status",
+        "-geocode_status": "-geocode_status",
+        "status": "status",
+        "-status": "-status",
     }
 
     sort_field = allowed_sort_fields.get(sort, "-published_at")
