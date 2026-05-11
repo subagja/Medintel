@@ -210,7 +210,8 @@ class MedIntelCrawler:
             "Rubela", "Diare", "Kolera", "Demam Tifoid", "Chikungunya", "Superflu",
             "Avian Influenza", "Nipah", "TBC", "HIV", "AIDS", "IMS",
             "Infeksi Menular Seksual", "Polio", "Difteri", "Batuk Renjan",
-            "Pertusis", "Rabies", "Leptospirosis", "Antraks"
+            "Pertusis", "Rabies", "Leptospirosis", "Antraks",
+            "Hantavirus","hanta"
         ]
         self.rss_url = "https://news.google.com/rss/search?q={query}+when:7d&hl=id&gl=ID&ceid=ID:id"
 
