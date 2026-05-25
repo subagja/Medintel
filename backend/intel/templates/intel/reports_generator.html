@@ -2,235 +2,873 @@
 
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
-    .table-card {
+    :root {
+        --report-primary: #4b0082;
+        --report-primary-soft: #f6effc;
+        --report-border: #e4e4ea;
+        --report-muted: #667085;
+        --report-ink: #101828;
+        --report-card: #ffffff;
+        --report-bg: #f6f7fb;
+    }
+
+    .page-shell:has(.report-shell) {
+        padding: 14px 18px 28px;
+        background: var(--report-bg);
+    }
+
+    .report-shell {
+        width: 100%;
+        max-width: none;
+        margin: 0;
+    }
+
+    .report-hero,
+    .report-section,
+    .chart-card,
+    .kpi-card,
+    .focus-card,
+    .rec-card {
+        background: var(--report-card);
+        border: 1px solid var(--report-border);
+        border-radius: 16px;
+        box-shadow: 0 8px 20px rgba(16, 24, 40, 0.035);
+    }
+
+    .report-hero {
+        padding: 20px 22px;
+        margin-bottom: 14px;
+    }
+
+    .hero-topline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .badge,
+    .focus-risk,
+    .status-badge {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid var(--report-border);
         background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 10px;
-        overflow-x: auto;
-        margin-bottom: 16px;
+        color: var(--report-primary);
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        line-height: 1.2;
+    }
+
+    .badge-primary {
+        background: var(--report-primary);
+        color: #fff;
+        border-color: var(--report-primary);
+        letter-spacing: .3px;
+    }
+
+    .report-hero h1 {
+        margin: 0 0 6px;
+        color: var(--report-ink);
+        font-size: 30px;
+        line-height: 1.15;
+    }
+
+    .report-subtitle,
+    .small-muted {
+        color: var(--report-muted);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .report-toolbar {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--report-border);
+    }
+
+    .filters {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(150px, 1fr));
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .filter-field label {
+        color: var(--report-muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .3px;
+    }
+
+    .filters select,
+    .filters input {
+        width: 100%;
+        min-height: 38px;
+        border: 1px solid #d8d8df;
+        border-radius: 10px;
+        padding: 7px 10px;
+        background: #fff;
+    }
+
+    .filter-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 4px;
+    }
+
+    .btn-report {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        border-radius: 10px;
+        border: 1px solid var(--report-primary);
+        padding: 8px 14px;
+        background: var(--report-primary);
+        color: #fff;
+        font-weight: 800;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .btn-report-secondary {
+        background: #fff;
+        color: var(--report-primary);
+    }
+
+    .report-section {
+        padding: 16px;
+        margin-bottom: 14px;
+    }
+
+    .section-eyebrow {
+        color: var(--report-primary);
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: .6px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    }
+
+    .report-section h2,
+    .chart-card h2 {
+        margin: 0 0 6px;
+        font-size: 20px;
+        color: var(--report-ink);
+    }
+
+    .summary-panel {
+        padding: 18px;
+    }
+
+    .summary-text {
+        margin: 8px 0 0;
+        max-width: 1500px;
+        font-size: 14px;
+        line-height: 1.7;
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .kpi-card {
+        padding: 14px 16px;
+    }
+
+    .kpi-label {
+        color: var(--report-muted);
+        font-size: 12px;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
+
+    .kpi-value {
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 900;
+        color: var(--report-ink);
+    }
+
+    .kpi-sub {
+        color: var(--report-muted);
+        font-size: 12px;
+        margin-top: 5px;
+    }
+
+    .focus-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(210px, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .focus-card {
+        padding: 13px;
+        min-height: 128px;
+    }
+
+    .focus-card h3 {
+        margin: 8px 0 6px;
+        font-size: 17px;
+    }
+
+    .focus-card p {
+        margin: 0;
+        color: var(--report-muted);
+        font-size: 12px;
+        line-height: 1.55;
+    }
+
+    .visual-stack {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .chart-card {
+        padding: 16px;
+        overflow: hidden;
+    }
+
+    .chart-box {
+        height: 300px;
+        width: 100%;
+        margin-top: 8px;
+    }
+
+    .chart-box-large {
+        height: 330px;
+    }
+
+    .chart-pair {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .map-section {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .map-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 16px 12px;
+        border-bottom: 1px solid var(--report-border);
+    }
+
+    .map-shell {
+        width: 100%;
+        height: clamp(480px, 62vh, 720px);
+        min-height: 480px;
+        position: relative;
+        background: #edf2f7;
+    }
+
+    #reportMap {
+        width: 100%;
+        height: 100%;
+        min-height: 480px;
+        display: block;
+        z-index: 1;
+    }
+
+    .map-empty-note {
+        position: absolute;
+        top: 14px;
+        left: 14px;
+        right: 14px;
+        z-index: 400;
+        padding: 12px 14px;
+        border: 1px dashed #bdbdc8;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .94);
+        color: var(--report-muted);
+        font-size: 13px;
+    }
+
+    .leaflet-container {
+        font-family: Arial, sans-serif;
+    }
+
+    .map-popup-title {
+        font-weight: 900;
+        margin-bottom: 5px;
+        color: var(--report-ink);
+    }
+
+    .table-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
     }
 
     .datatable-table {
         width: 100% !important;
-        border-collapse: collapse;
-        font-size: 13px;
+        font-size: 12px;
     }
 
     .datatable-table th,
     .datatable-table td {
         vertical-align: top;
-        border-bottom: 1px solid #e6e6e6;
-        padding: 8px 10px;
+        padding: 7px 8px;
         overflow-wrap: anywhere;
     }
 
     .datatable-table thead th {
-        background: #f5f5f5;
-        font-weight: 700;
+        background: #f5f5f8;
         white-space: nowrap;
     }
 
-    .dataTables_wrapper {
-        width: 100%;
+    .recommendation-grid,
+    .disease-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
     }
 
-    .dataTables_wrapper .dataTables_filter {
-        margin-bottom: 8px;
+    .rec-card {
+        padding: 14px;
     }
 
-    .dataTables_wrapper .dataTables_filter input {
-        border: 1px solid #bbb;
-        border-radius: 4px;
-        padding: 5px 8px;
+    .rec-card h3 {
+        margin: 8px 0;
+        font-size: 17px;
     }
 
-    table.dataTable {
-        margin-top: 8px !important;
-        margin-bottom: 8px !important;
+    .rec-card p {
+        margin: 7px 0;
+        color: var(--report-muted);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .mode-note {
+        padding: 16px;
+        border: 1px dashed #bdbdc8;
+        border-radius: 14px;
+        background: #fff;
+        color: var(--report-muted);
+        margin-bottom: 14px;
+    }
+
+    .single-col-section {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    @media (max-width: 1280px) {
+        .filters { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+        .kpi-grid { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+        .focus-grid { grid-template-columns: repeat(2, minmax(210px, 1fr)); }
+        .chart-pair,
+        .table-grid,
+        .recommendation-grid,
+        .disease-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 760px) {
+        .filters,
+        .kpi-grid,
+        .focus-grid { grid-template-columns: 1fr; }
+        .report-hero h1 { font-size: 24px; }
+        .map-shell, #reportMap { min-height: 420px; height: 420px; }
+    }
+
+    @media print {
+        .topbar,
+        .report-toolbar,
+        .dataTables_filter { display: none !important; }
+        .page-shell:has(.report-shell) { padding: 0; background: #fff; }
+        .report-hero,
+        .report-section,
+        .chart-card,
+        .kpi-card,
+        .focus-card,
+        .rec-card { box-shadow: none; break-inside: avoid; }
+        .map-shell, #reportMap { height: 420px !important; min-height: 420px !important; }
     }
 </style>
-<div class="card">
-    <h1>Reports Generator</h1>
-    <p class="small">Generate rekap operasional berdasarkan Verified Signals yang sudah approved untuk mapping.</p>
 
-    <form method="get" class="filters">
-        <select name="report_type">
-            <option value="daily" {% if report_type == "daily" %}selected{% endif %}>Laporan Harian</option>
-            <option value="weekly" {% if report_type == "weekly" %}selected{% endif %}>Laporan Mingguan</option>
-        </select>
+<div class="report-shell">
+    <div class="report-hero">
+        <div class="hero-topline">
+            <span class="badge badge-primary">
+                {% if report_scope == "general" %}GENERAL REPORT{% elif report_scope == "disease" %}DISEASE REPORT{% elif report_scope == "region" %}REGION REPORT{% else %}DISEASE + REGION REPORT{% endif %}
+            </span>
+            <span class="badge">{{ status_label }}</span>
+            <span class="badge">{{ date_from }} s.d. {{ date_to }}</span>
+        </div>
 
-        <input type="date" name="date_from" value="{{ date_from }}">
-        <input type="date" name="date_to" value="{{ date_to }}">
+        <h1>{{ report_title }}</h1>
+        <div class="report-subtitle">
+            Buletin Intelijen Medik berbasis OSINT untuk mendukung pemantauan penyakit menular, prioritas verifikasi, dan rekomendasi kebijakan awal. Data bersifat indikatif dan tetap memerlukan validasi lapangan atau pembandingan dengan sumber resmi.
+        </div>
 
-        <button type="submit">Generate</button>
-        <a href="{% url 'intel:export_signals_csv' %}?report_type={{ report_type }}&date_from={{ date_from }}&date_to={{ date_to }}">Export CSV</a>
-    </form>
-</div>
-
-<div class="metric-grid">
-    <div class="metric-card">
-        <div class="metric-title">Total signal</div>
-        <div class="metric-value">{{ total_signals }}</div>
+        <div class="report-toolbar">
+            <form method="get" class="filters">
+                <div class="filter-field">
+                    <label>Periode</label>
+                    <select name="report_type">
+                        <option value="daily" {% if report_type == "daily" %}selected{% endif %}>Laporan Harian</option>
+                        <option value="weekly" {% if report_type == "weekly" %}selected{% endif %}>Laporan Mingguan</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Jenis Report</label>
+                    <select name="report_scope">
+                        <option value="general" {% if report_scope == "general" %}selected{% endif %}>General</option>
+                        <option value="disease" {% if report_scope == "disease" %}selected{% endif %}>Spesifik Penyakit</option>
+                        <option value="region" {% if report_scope == "region" %}selected{% endif %}>Spesifik Wilayah</option>
+                        <option value="disease_region" {% if report_scope == "disease_region" %}selected{% endif %}>Penyakit + Wilayah</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Status Data</label>
+                    <select name="status_filter">
+                        <option value="operational" {% if status_filter == "operational" %}selected{% endif %}>Data Operasional Crawling</option>
+                        <option value="raw" {% if status_filter == "raw" %}selected{% endif %}>Raw Crawling</option>
+                        <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated + Approved</option>
+                        <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved Mapping</option>
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Penyakit</label>
+                    <select name="disease">
+                        <option value="">Semua Penyakit</option>
+                        {% for item in disease_choices %}
+                        <option value="{{ item }}" {% if selected_disease == item %}selected{% endif %}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Provinsi</label>
+                    <select name="province">
+                        <option value="">Semua Provinsi</option>
+                        {% for province in provinces %}
+                        <option value="{{ province.id }}" {% if province_id == province.id|stringformat:"s" %}selected{% endif %}>{{ province.display_name|default:province.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Kab/Kota</label>
+                    <select name="city">
+                        <option value="">Semua Kab/Kota</option>
+                        {% for city in cities %}
+                        <option value="{{ city.id }}" {% if city_id == city.id|stringformat:"s" %}selected{% endif %}>{{ city.display_name|default:city.name }}{% if city.parent %} — {{ city.parent.display_name|default:city.parent.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-field">
+                    <label>Dari</label>
+                    <input type="date" name="date_from" value="{{ date_from }}">
+                </div>
+                <div class="filter-field">
+                    <label>Sampai</label>
+                    <input type="date" name="date_to" value="{{ date_to }}">
+                </div>
+                <div class="filter-actions">
+                    <button class="btn-report" type="submit">Generate Report</button>
+                    <a class="btn-report btn-report-secondary" href="{% url 'intel:export_signals_csv' %}?report_type={{ report_type }}&status_filter={{ status_filter }}&report_scope={{ report_scope }}&disease={{ selected_disease|urlencode }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}">Export CSV</a>
+                    <a class="btn-report btn-report-secondary" href="javascript:window.print()">Print / PDF</a>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <div class="metric-card">
-        <div class="metric-title">High-risk count</div>
-        <div class="metric-value">{{ high_risk_count }}</div>
+    {% if report_scope == "disease" and not selected_disease %}
+    <div class="mode-note"><strong>Disease Report membutuhkan pilihan penyakit.</strong><br>Pilih salah satu penyakit, lalu klik <strong>Generate Report</strong>.</div>
+    {% elif report_scope == "region" and not province_id and not city_id %}
+    <div class="mode-note"><strong>Region Report membutuhkan pilihan wilayah.</strong><br>Pilih provinsi atau kabupaten/kota, lalu klik <strong>Generate Report</strong>.</div>
+    {% elif report_scope == "disease_region" and not selected_disease %}
+    <div class="mode-note"><strong>Disease + Region Report membutuhkan pilihan penyakit dan wilayah.</strong><br>Minimal pilih penyakit dan provinsi/kabupaten/kota agar laporan menjadi spesifik.</div>
+    {% elif report_scope == "disease_region" and not province_id and not city_id %}
+    <div class="mode-note"><strong>Disease + Region Report membutuhkan pilihan wilayah.</strong><br>Pilih provinsi atau kabupaten/kota agar laporan penyakit pada wilayah tertentu dapat dibentuk.</div>
+    {% endif %}
+
+    <div class="report-section summary-panel">
+        <div class="section-eyebrow">
+            {% if report_scope == "general" %}Ringkasan Umum{% elif report_scope == "disease" %}Ringkasan Penyakit{% elif report_scope == "region" %}Ringkasan Wilayah{% else %}Ringkasan Spesifik{% endif %}
+        </div>
+        <h2>{{ report_title }}</h2>
+        <p class="summary-text">{{ executive_summary }}</p>
     </div>
 
-    <div class="metric-card">
-        <div class="metric-title">Geocode OK count</div>
-        <div class="metric-value">{{ geocode_ok_count }}</div>
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-label">Total signal</div><div class="kpi-value">{{ total_signals }}</div><div class="kpi-sub">Sinyal OSINT periode ini</div></div>
+        <div class="kpi-card"><div class="kpi-label">High-risk</div><div class="kpi-value">{{ high_risk_count }}</div><div class="kpi-sub">Prioritas verifikasi</div></div>
+        <div class="kpi-card"><div class="kpi-label">Average score</div><div class="kpi-value">{{ avg_score }}</div><div class="kpi-sub">Rata-rata skor risiko</div></div>
+        <div class="kpi-card"><div class="kpi-label">Geocode success</div><div class="kpi-value">{{ geocode_success_rate }}%</div><div class="kpi-sub">Lokasi berhasil dipetakan</div></div>
+        <div class="kpi-card"><div class="kpi-label">Assessment ready</div><div class="kpi-value">{{ assessment_rate }}%</div><div class="kpi-sub">Kesiapan 5W+1H</div></div>
     </div>
 
-    <div class="metric-card">
-        <div class="metric-title">High-risk rate</div>
-        <div class="metric-value">{{ high_risk_rate }}%</div>
+    {% if report_scope == "general" %}
+    <div class="report-section">
+        <div class="section-eyebrow">Fokus Periode Ini</div>
+        <h2>Prioritas Atensi</h2>
+        <div class="small-muted">Disusun dari penyakit dominan, skor risiko, konsentrasi lokasi, high-risk signal, dan kelengkapan assessment.</div>
+        <div class="focus-grid">
+            {% for item in focus_items %}
+            <div class="focus-card">
+                <span class="focus-risk">{{ item.risk_level }}</span>
+                <h3>{{ item.title }}</h3>
+                <p>{{ item.note }}</p>
+            </div>
+            {% empty %}
+            <p class="small-muted">Belum ada fokus periode.</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="visual-stack">
+        <div class="chart-card">
+            <div class="section-eyebrow">Visualisasi Tren</div>
+            <h2>{% if report_scope == "general" %}Tren Signal Periode Laporan{% elif report_scope == "disease" %}Tren Signal {{ selected_disease }}{% elif report_scope == "region" %}Tren Signal {{ region_label }}{% else %}Tren {{ selected_disease }} di {{ region_label }}{% endif %}</h2>
+            <p class="small-muted">Jumlah signal dan high-risk signal berdasarkan tanggal publikasi.</p>
+            <div class="chart-box chart-box-large"><canvas id="trendChart"></canvas></div>
+        </div>
+
+        <div class="chart-pair">
+            <div class="chart-card">
+                <h2>{% if report_scope == "disease" %}Top Wilayah {{ selected_disease }}{% elif report_scope == "region" %}Top Penyakit di {{ region_label }}{% else %}Top Penyakit{% endif %}</h2>
+                <p class="small-muted">Grafik horizontal agar label panjang tetap terbaca.</p>
+                <div class="chart-box"><canvas id="diseaseChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h2>{% if report_scope == "region" %}Top Lokasi Wilayah{% else %}Top Lokasi{% endif %}</h2>
+                <p class="small-muted">Lokasi dengan konsentrasi signal tertinggi.</p>
+                <div class="chart-box"><canvas id="locationChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="report-section map-section">
+            <div class="map-header">
+                <div>
+                    <div class="section-eyebrow">Peta Dinamis</div>
+                    <h2>{% if report_scope == "general" %}Peta Sebaran Signal{% elif report_scope == "disease" %}Peta Sebaran {{ selected_disease }}{% elif report_scope == "region" %}Peta Sebaran {{ region_label }}{% else %}Peta Sebaran {{ selected_disease }} di {{ region_label }}{% endif %}</h2>
+                    <div class="small-muted">Marker diagregasikan per lokasi yang sudah memiliki koordinat dan mengikuti filter report.</div>
+                </div>
+                <span class="badge" id="mapCountBadge">0 titik</span>
+            </div>
+            <div class="map-shell">
+                <div id="mapEmptyNote" class="map-empty-note" style="display:none;">Belum ada titik peta untuk filter ini. Data tetap dapat muncul di tabel apabila lokasi belum memiliki koordinat lat/lon.</div>
+                <div id="reportMap"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="metric-card">
-        <div class="metric-title">Geocode success rate</div>
-        <div class="metric-value">{{ geocode_success_rate }}%</div>
+    <div class="table-grid">
+        <div class="report-section">
+            <h2>Rekap per Penyakit</h2>
+            <table id="diseaseRecapTable" class="display stripe hover compact datatable-table">
+                <thead><tr><th>Penyakit</th><th>Total</th><th>High Risk</th><th>Avg Score</th></tr></thead>
+                <tbody>{% for item in disease_recap %}<tr><td>{{ item.disease_tag|default:"-" }}</td><td>{{ item.total }}</td><td>{{ item.high_risk_total }}</td><td>{{ item.avg_score|floatformat:2 }}</td></tr>{% empty %}{% endfor %}</tbody>
+            </table>
+        </div>
+        <div class="report-section">
+            <h2>Rekap per Provinsi</h2>
+            <table id="provinceRecapTable" class="display stripe hover compact datatable-table">
+                <thead><tr><th>Provinsi</th><th>Kode</th><th>Total</th><th>High Risk</th><th>Avg Score</th></tr></thead>
+                <tbody>{% for item in province_recap %}<tr><td>{{ item.province_name|default:"-" }}</td><td>{{ item.province_code|default:"-" }}</td><td>{{ item.total }}</td><td>{{ item.high_risk_total }}</td><td>{{ item.avg_score|floatformat:2 }}</td></tr>{% empty %}{% endfor %}</tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="metric-card">
-        <div class="metric-title">Average score</div>
-        <div class="metric-value">{{ avg_score }}</div>
+    <div class="report-section">
+        <h2>Top Lokasi</h2>
+        <table id="locationRecapTable" class="display stripe hover compact datatable-table">
+            <thead><tr><th>Lokasi</th><th>Provinsi</th><th>Level</th><th>Total</th><th>High Risk</th><th>Avg Score</th></tr></thead>
+            <tbody>{% for item in location_recap %}<tr><td>{{ item.location_name|default:"-" }}</td><td>{{ item.province_name|default:"-" }}</td><td>{{ item.level|default:"-" }}</td><td>{{ item.total }}</td><td>{{ item.high_risk_total }}</td><td>{{ item.avg_score|floatformat:2 }}</td></tr>{% empty %}{% endfor %}</tbody>
+        </table>
     </div>
-</div>
 
-<div class="two-col">
-    <div class="card">
-        <h2>Rekap per penyakit</h2>
-        <table id="diseaseRecapTable" class="display stripe hover compact datatable-table">
-            <thead>
-                <tr>
-                    <th>Penyakit</th>
-                    <th>Total</th>
-                    <th>Avg Score</th>
-                </tr>
-            </thead>
+    <div class="report-section">
+        <div class="section-eyebrow">Rekomendasi Kebijakan</div>
+        <h2>Saran Tindak</h2>
+        <div class="recommendation-grid">
+            {% for item in policy_recommendations %}
+            <div class="rec-card">
+                <span class="focus-risk">{{ item.priority }}</span>
+                <h3>{{ item.basis }}</h3>
+                <p><strong>Judgement:</strong> {{ item.judgement }}</p>
+                <p><strong>Dampak:</strong> {{ item.impact }}</p>
+                <p><strong>Saran tindak:</strong> {{ item.action }}</p>
+            </div>
+            {% empty %}
+            <p class="small-muted">Belum ada rekomendasi.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if disease_analysis %}
+    <div class="report-section">
+        <div class="section-eyebrow">Analisis Penyakit Prioritas</div>
+        <h2>Judgement Penyakit</h2>
+        <div class="disease-grid">
+            {% for item in disease_analysis %}
+            <div class="rec-card">
+                <span class="focus-risk">{{ item.risk_level }}</span>
+                <h3>{{ item.disease }}</h3>
+                <p><strong>Signal:</strong> {{ item.total }} | <strong>High-risk:</strong> {{ item.high_risk_total }} | <strong>Avg score:</strong> {{ item.avg_score }}</p>
+                <p><strong>Sebaran utama:</strong> {% for loc in item.locations %}{{ loc }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>
+                <p><strong>Judgement:</strong> {{ item.judgement }}</p>
+                <p><strong>Dampak:</strong> {{ item.impact }}</p>
+                <p><strong>Saran tindak:</strong> {{ item.action }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="report-section">
+        <h2>Signal Prioritas</h2>
+        <table id="prioritySignalsTable" class="display stripe hover compact datatable-table">
+            <thead><tr><th>Judul</th><th>Penyakit</th><th>Skor</th><th>Status</th><th>Lokasi Mentah</th><th>Geocode</th><th>Tanggal</th></tr></thead>
             <tbody>
-                {% for item in disease_recap %}
+                {% for signal in priority_signals %}
                 <tr>
-                    <td>{{ item.disease_tag }}</td>
-                    <td>{{ item.total }}</td>
-                    <td>{{ item.avg_score|floatformat:2 }}</td>
+                    <td><strong>{{ signal.title }}</strong><br><span class="small-muted"><a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>{% if signal.resolved_url %} · <a href="{{ signal.resolved_url }}" target="_blank">Resolved URL</a>{% endif %}</span></td>
+                    <td>{{ signal.disease_tag|default:"-" }}</td><td>{{ signal.threat_score }}</td><td><span class="status-badge">{{ signal.status }}</span></td><td>{{ signal.raw_location_text|default:"-" }}</td><td>{{ signal.geocode_status|default:"-" }}</td><td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
                 </tr>
-                {% empty %}
-                {% endfor %}
+                {% empty %}{% endfor %}
             </tbody>
         </table>
     </div>
 
-    <div class="card">
-        <h2>Rekap per provinsi</h2>
-        <table id="provinceRecapTable" class="display stripe hover compact datatable-table">
-            <thead>
-                <tr>
-                    <th>Provinsi Code</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in province_recap %}
-                <tr>
-                    <td>{{ item.location__province_code|default:"-" }}</td>
-                    <td>{{ item.total }}</td>
-                </tr>
-                {% empty %}
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="report-section">
+        <div class="section-eyebrow">Kesimpulan</div>
+        <h2>Kesimpulan Laporan</h2>
+        <ol>
+            {% for item in report_conclusions %}<li>{{ item }}</li>{% empty %}<li>Belum ada kesimpulan yang dapat dihasilkan.</li>{% endfor %}
+        </ol>
     </div>
-</div>
-
-<div class="card">
-    <h2>Top lokasi</h2>
-    <table id="locationRecapTable" class="display stripe hover compact datatable-table">
-        <thead>
-            <tr>
-                <th>Lokasi</th>
-                <th>Level</th>
-                <th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in location_recap %}
-            <tr>
-                <td>{{ item.location__display_name }}</td>
-                <td>{{ item.location__level }}</td>
-                <td>{{ item.total }}</td>
-            </tr>
-            {% empty %}
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<div class="card">
-    <h2>Recent verified signals</h2>
-    <table id="recentSignalsTable" class="display stripe hover compact datatable-table">
-        <thead>
-            <tr>
-                <th>Judul</th>
-                <th>Penyakit</th>
-                <th>Skor</th>
-                <th>Status</th>
-                <th>Geocode</th>
-                <th>Tanggal</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for signal in recent_signals %}
-            <tr>
-                <td>
-                    <strong>{{ signal.title }}</strong><br>
-                    <span class="small">
-                        <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
-                    </span>
-                </td>
-                <td>{{ signal.disease_tag|default:"-" }}</td>
-                <td>{{ signal.threat_score }}</td>
-                <td>{{ signal.status }}</td>
-                <td>{{ signal.geocode_status }}</td>
-                <td>{{ signal.published_at|date:"Y-m-d H:i" }}</td>
-            </tr>
-            {% empty %}
-            {% endfor %}
-        </tbody>
-    </table>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    $(document).ready(function () {
-        $('.datatable-table').each(function () {
-            if ($.fn.DataTable.isDataTable(this)) {
-                $(this).DataTable().destroy();
-            }
+(function () {
+    let chartData = {};
+    let mapPayload = {};
 
-            $(this).DataTable({
-                paging: false,
-                info: false,
-                searching: true,
-                ordering: true,
-                order: [],
-                autoWidth: false,
-                scrollX: false,
-                responsive: false,
-                destroy: true,
-                language: {
-                    search: "Cari cepat:",
-                    zeroRecords: "Tidak ada data yang cocok",
-                    emptyTable: "Belum ada data"
+    try {
+        chartData = JSON.parse('{{ chart_data_json|default:"{}"|escapejs }}');
+    } catch (err) {
+        chartData = {};
+        console.warn('Chart data tidak dapat dibaca:', err);
+    }
+
+    try {
+        mapPayload = JSON.parse('{{ map_data_json|default:"{}"|escapejs }}');
+    } catch (err) {
+        mapPayload = {};
+        console.warn('Map data tidak dapat dibaca:', err);
+    }
+
+    const mapPoints = Array.isArray(mapPayload) ? mapPayload : (mapPayload.points || mapPayload.results || []);
+    const mapCountBadge = document.getElementById('mapCountBadge');
+    if (mapCountBadge) mapCountBadge.textContent = `${mapPoints.length} titik`;
+
+    function normalizeSeries(series) {
+        if (!series) return { labels: [], total: [], high_risk: [], avg_score: [] };
+        if (Array.isArray(series)) {
+            return {
+                labels: series.map(x => x.label || x.date || x.name || x.disease_tag || x.location_name || '-'),
+                total: series.map(x => x.total || x.total_signal || x.signal_count || 0),
+                high_risk: series.map(x => x.high_risk || x.high_risk_total || x.high_risk_count || 0),
+                avg_score: series.map(x => x.avg_score || 0)
+            };
+        }
+        return {
+            labels: series.labels || [],
+            total: series.total || series.signal_count || [],
+            high_risk: series.high_risk || series.high_risk_total || series.high_risk_count || [],
+            avg_score: series.avg_score || []
+        };
+    }
+
+    const trendSeries = normalizeSeries(chartData.trend || chartData.trend_series);
+    const diseaseSeries = normalizeSeries(chartData.disease || chartData.disease_series || chartData.top_disease);
+    const locationSeries = normalizeSeries(chartData.location || chartData.location_series || chartData.top_location);
+
+    function makeBarChart(canvasId, series, horizontal) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (!series.labels.length) return;
+        new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: series.labels,
+                datasets: [
+                    { label: 'Total signal', data: series.total },
+                    { label: 'High-risk', data: series.high_risk }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: horizontal ? 'y' : 'x',
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
                 }
-            });
+            }
         });
+    }
+
+    function makeTrendChart() {
+        const canvas = document.getElementById('trendChart');
+        if (!canvas) return;
+        if (!trendSeries.labels.length) return;
+        new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: trendSeries.labels,
+                datasets: [
+                    { label: 'Total signal', data: trendSeries.total, tension: 0.25 },
+                    { label: 'High-risk', data: trendSeries.high_risk, tension: 0.25 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    function initReportMap() {
+        const mapElement = document.getElementById('reportMap');
+        if (!mapElement || typeof L === 'undefined') return;
+
+        const note = document.getElementById('mapEmptyNote');
+        const map = L.map(mapElement, {
+            zoomControl: true,
+            scrollWheelZoom: true,
+            preferCanvas: true
+        }).setView([-2.5, 118], 5);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const bounds = [];
+        let rendered = 0;
+
+        mapPoints.forEach(function (item) {
+            const lat = parseFloat(item.lat);
+            const lon = parseFloat(item.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+            const total = Number(item.total || item.total_signals || item.signal_count || 1);
+            const highRisk = Number(item.high_risk_total || item.high_risk_count || item.high_risk || 0);
+            const radius = Math.max(8, Math.min(30, 7 + Math.sqrt(total) * 5));
+
+            const marker = L.circleMarker([lat, lon], {
+                radius: radius,
+                color: '#4b0082',
+                weight: 2,
+                opacity: 0.95,
+                fillColor: highRisk > 0 ? '#d92d20' : '#4b0082',
+                fillOpacity: 0.55
+            }).addTo(map);
+
+            marker.bindPopup(`
+                <div class="map-popup-title">${item.location_name || item.name || '-'}</div>
+                <div>Provinsi: <strong>${item.province_name || '-'}</strong></div>
+                <div>Level: <strong>${item.level || item.location_level || '-'}</strong></div>
+                <div>Total signal: <strong>${total}</strong></div>
+                <div>High-risk: <strong>${highRisk}</strong></div>
+                <div>Avg score: <strong>${item.avg_score || 0}</strong></div>
+                <div>Penyakit dominan: <strong>${item.dominant_disease || item.top_disease || '-'}</strong></div>
+                ${item.top_signal_url ? `<div style="margin-top:6px;"><a href="${item.top_signal_url}" target="_blank">Buka signal prioritas</a></div>` : ''}
+            `);
+
+            bounds.push([lat, lon]);
+            rendered += 1;
+        });
+
+        if (mapCountBadge) mapCountBadge.textContent = `${rendered} titik`;
+
+        if (rendered === 0) {
+            if (note) note.style.display = 'block';
+            map.setView([-2.5, 118], 5);
+        } else {
+            if (note) note.style.display = 'none';
+            if (bounds.length === 1) {
+                map.setView(bounds[0], 8);
+            } else {
+                map.fitBounds(bounds, { padding: [28, 28], maxZoom: 9 });
+            }
+        }
+
+        setTimeout(function () { map.invalidateSize(true); }, 120);
+        setTimeout(function () { map.invalidateSize(true); }, 450);
+        setTimeout(function () { map.invalidateSize(true); }, 900);
+        window.addEventListener('resize', function () { map.invalidateSize(true); });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        makeTrendChart();
+        makeBarChart('diseaseChart', diseaseSeries, true);
+        makeBarChart('locationChart', locationSeries, true);
+        initReportMap();
+
+        if (window.jQuery && $.fn.DataTable) {
+            $('.datatable-table').each(function () {
+                if ($.fn.DataTable.isDataTable(this)) {
+                    $(this).DataTable().destroy();
+                }
+                $(this).DataTable({
+                    paging: false,
+                    info: false,
+                    searching: true,
+                    ordering: true,
+                    order: [],
+                    autoWidth: false,
+                    scrollX: false,
+                    responsive: false,
+                    destroy: true,
+                    language: {
+                        search: 'Cari cepat:',
+                        zeroRecords: 'Tidak ada data yang cocok',
+                        emptyTable: 'Belum ada data'
+                    }
+                });
+            });
+        }
     });
+})();
 </script>
 {% endblock %}

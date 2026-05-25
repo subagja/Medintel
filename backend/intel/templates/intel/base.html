@@ -367,7 +367,15 @@
                 </div>
             </div>
 
-            <a class="nav-main-link" href="{% url 'intel:reports_generator' %}">Reports</a>
+            <div class="nav-dropdown">
+                <button class="nav-dropbtn" type="button">Reports ▾</button>
+                <div class="nav-dropdown-content">
+                    <a href="{% url 'intel:reports_generator' %}?report_scope=general">General Report</a>
+                    <a href="{% url 'intel:reports_generator' %}?report_scope=disease">Disease Report</a>
+                    <a href="{% url 'intel:reports_generator' %}?report_scope=region">Region Report</a>
+                    <a href="{% url 'intel:reports_generator' %}?report_scope=disease_region">Disease + Region Report</a>
+                </div>
+            </div>
             <a class="nav-main-link" href="{% url 'intel:alert_center' %}">Alerts</a>
 
             <div class="nav-dropdown">
