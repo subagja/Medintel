@@ -180,6 +180,56 @@ class Signal(TimeStampedModel):
         ("PENDING", "PENDING"),
     ]
 
+    TRIAGE_PRIORITY_CHOICES = [
+        ("urgent", "Urgent"),
+        ("high", "High"),
+        ("medium", "Medium"),
+        ("low", "Low"),
+        ("noise_candidate", "Noise Candidate"),
+    ]
+
+    APPROVAL_RECOMMENDATION_CHOICES = [
+        ("approve", "Recommended to Approve"),
+        ("review", "Needs Manual Review"),
+        ("fix_location", "Needs Location Fix"),
+        ("noise", "Recommended as Noise"),
+        ("duplicate", "Duplicate Candidate"),
+    ]
+
+    triage_priority = models.CharField(
+        max_length=32,
+        choices=TRIAGE_PRIORITY_CHOICES,
+        default="medium",
+        db_index=True,
+    )
+
+    approval_recommendation = models.CharField(
+        max_length=32,
+        choices=APPROVAL_RECOMMENDATION_CHOICES,
+        default="review",
+        db_index=True,
+    )
+
+    triage_reason = models.TextField(blank=True, default="")
+
+    confidence_score = models.PositiveSmallIntegerField(
+        default=0,
+        db_index=True,
+    )
+
+    triaged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    cluster = models.ForeignKey(
+        "SignalCluster",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signals",
+    )
+
     title = models.CharField(max_length=500, db_index=True)
     content = models.TextField(blank=True, default="")
     source = models.ForeignKey(Source, null=True, blank=True, on_delete=models.SET_NULL, related_name="signals")
@@ -250,6 +300,93 @@ class Signal(TimeStampedModel):
 
     def __str__(self):
         return self.title[:100]
+        
+class SignalCluster(TimeStampedModel):
+    CLUSTER_STATUS_CHOICES = [
+        ("open", "Open"),
+        ("reviewed", "Reviewed"),
+        ("ready_for_approval", "Ready for Approval"),
+        ("approved", "Approved"),
+        ("noise", "Noise"),
+        ("archived", "Archived"),
+    ]
+
+    PRIORITY_CHOICES = [
+        ("urgent", "Urgent"),
+        ("high", "High"),
+        ("medium", "Medium"),
+        ("low", "Low"),
+    ]
+
+    cluster_key = models.CharField(
+        max_length=255,
+        unique=True,
+        db_index=True,
+    )
+
+    disease_tag = models.CharField(
+        max_length=128,
+        blank=True,
+        db_index=True,
+    )
+
+    location_name = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+
+    location_level = models.CharField(
+        max_length=32,
+        blank=True,
+    )
+
+    date_start = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    date_end = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    signal_count = models.PositiveIntegerField(default=0)
+    raw_count = models.PositiveIntegerField(default=0)
+    validated_count = models.PositiveIntegerField(default=0)
+    verified_count = models.PositiveIntegerField(default=0)
+    noise_count = models.PositiveIntegerField(default=0)
+
+    avg_score = models.FloatField(default=0)
+    max_score = models.FloatField(default=0)
+    avg_confidence = models.FloatField(default=0)
+
+    priority = models.CharField(
+        max_length=32,
+        choices=PRIORITY_CHOICES,
+        default="medium",
+        db_index=True,
+    )
+
+    status = models.CharField(
+        max_length=32,
+        choices=CLUSTER_STATUS_CHOICES,
+        default="open",
+        db_index=True,
+    )
+
+    summary = models.TextField(blank=True, default="")
+    recommendation = models.TextField(blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-max_score", "-signal_count", "-created_at"]
+
+    def __str__(self):
+        return self.cluster_key
 
 class ResolvedSourceURL(models.Model):
     original_url = models.URLField(max_length=1000, unique=True)

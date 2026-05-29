@@ -1,1 +1,3 @@
 python manage.py run_legacy_crawler
+python manage.py triage_signals
+python manage.py build_signal_clusters --reset
