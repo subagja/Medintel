@@ -1,0 +1,77 @@
+{% extends "intel/reports/report_base.html" %}
+{% block report_badge %}General Situation Bulletin{% endblock %}
+{% block report_heading %}Buletin Intelijen Medik OSINT{% endblock %}
+{% block report_description %}Laporan umum untuk membaca situasi nasional/operasional: penyakit dominan, wilayah konsentrasi, signal risiko tinggi, kualitas data, serta rekomendasi pemantauan awal. Bagian ini berfungsi sebagai halaman pembuka seperti buletin SKDR, bukan laporan detail penyakit atau wilayah.{% endblock %}
+{% block scoped_filters %}
+<div class="field"><label>Penyakit Opsional</label><select name="disease"><option value="">Semua Penyakit</option>{% for item in disease_choices %}<option value="{{ item }}" {% if selected_disease == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
+<div class="field"><label>Provinsi Opsional</label><select name="province"><option value="">Semua Provinsi</option>{% for province in provinces %}<option value="{{ province.id }}" {% if province_id == province.id|stringformat:"s" %}selected{% endif %}>{{ province.display_name|default:province.name }}</option>{% endfor %}</select></div>
+{% endblock %}
+{% block hero_extra_badges %}<span class="badge badge-blue">{{ affected_disease_count }} penyakit</span><span class="badge badge-blue">{{ affected_province_count }} provinsi</span>{% endblock %}
+{% block report_body %}
+<div class="grid-3 section">
+  <div class="brief-panel" style="grid-column:span 2;">
+    <div class="eyebrow">Situational Awareness</div>
+    <h2>Gambaran Umum Periode</h2>
+    <p class="summary-text">{{ executive_summary }}</p>
+  </div>
+  <div class="signal-spotlight">
+    <div class="eyebrow">Yang Paling Perlu Dilihat</div>
+    <h3>{{ top_priority_signal.disease_tag|default:"Signal Prioritas" }}</h3>
+    {% if top_priority_signal %}
+      <p class="muted"><strong>{{ top_priority_signal.title }}</strong></p>
+      <p><span class="badge badge-red">Skor {{ top_priority_signal.threat_score }}</span> <span class="badge">{{ top_priority_signal.status }}</span></p>
+      <p class="muted"><a href="{{ top_priority_signal.source_url }}" target="_blank">Buka sumber</a></p>
+    {% else %}
+      <p class="muted">Belum ada signal prioritas pada parameter laporan ini.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi"><div class="kpi-label">Total signal</div><div class="kpi-value">{{ total_signals }}</div><div class="kpi-sub">Seluruh signal periode ini</div></div>
+  <div class="kpi"><div class="kpi-label">High-risk</div><div class="kpi-value">{{ high_risk_count }}</div><div class="kpi-sub">Perlu prioritas verifikasi</div></div>
+  <div class="kpi"><div class="kpi-label">Avg score</div><div class="kpi-value">{{ avg_score }}</div><div class="kpi-sub">Rata-rata ancaman</div></div>
+  <div class="kpi"><div class="kpi-label">Penyakit terdeteksi</div><div class="kpi-value">{{ affected_disease_count }}</div><div class="kpi-sub">Ragam isu penyakit</div></div>
+  <div class="kpi"><div class="kpi-label">Provinsi terpetakan</div><div class="kpi-value">{{ affected_province_count }}</div><div class="kpi-sub">Sebaran administratif</div></div>
+</div>
+
+<div class="r-card section">
+  <div class="eyebrow">Fokus Periode Ini</div>
+  <h2>Prioritas Pemantauan Umum</h2>
+  <div class="grid-4">
+    {% for item in focus_items %}
+    <div class="focus-card"><span class="badge {% if item.risk_level == 'Tinggi' %}badge-red{% elif item.risk_level == 'Sedang-Tinggi' %}badge-amber{% endif %}">{{ item.risk_level }}</span><h3>{{ item.title }}</h3><p>{{ item.note }}</p></div>
+    {% empty %}<p class="muted">Belum ada fokus periode.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="grid-2 section">
+  <div class="chart-card"><div class="eyebrow">Trend Watch</div><h2>Tren Signal dan High-risk</h2><p class="muted">Memperlihatkan intensitas signal per hari pada periode laporan.</p><div class="chart-box large"><canvas id="trendChart"></canvas></div></div>
+  <div class="chart-card"><div class="eyebrow">Disease Mix</div><h2>Top Penyakit</h2><p class="muted">Menonjolkan penyakit dominan, bukan detail penyakit.</p><div class="chart-box large"><canvas id="diseaseChart"></canvas></div></div>
+</div>
+
+<div class="grid-2 section">
+  <div class="chart-card"><div class="eyebrow">Geographic Concentration</div><h2>Top Lokasi</h2><p class="muted">Wilayah dengan konsentrasi signal tertinggi.</p><div class="chart-box large"><canvas id="locationChart"></canvas></div></div>
+  <div class="r-card">
+    <div class="eyebrow">Interpretasi Cepat</div>
+    <h2>Apa yang Ditonjolkan General Report?</h2>
+    <ul class="check-list">
+      <li><strong>Isu dominan:</strong> penyakit dengan signal terbanyak dan/atau skor tinggi.</li>
+      <li><strong>Area konsentrasi:</strong> lokasi yang berulang muncul sebagai prioritas pemantauan.</li>
+      <li><strong>Kualitas data:</strong> geocode {{ geocode_success_rate }}% dan assessment {{ assessment_rate }}%.</li>
+      <li><strong>Escalation trigger:</strong> {{ high_risk_count }} signal high-risk untuk verifikasi cepat.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="map-card section"><div class="map-header"><div><div class="eyebrow">Sebaran Umum</div><h2>Peta Sebaran Signal</h2><div class="muted">Marker menunjukkan agregasi lokasi dari seluruh signal sesuai filter.</div></div><span class="badge" id="mapCountBadge">0 titik</span></div><div class="map-shell"><div id="mapEmptyNote" class="map-empty-note" style="display:none;">Belum ada titik peta. Biasanya karena lokasi belum memiliki lat/lon di gazetteer.</div><div id="reportMap"></div></div></div>
+
+<div class="grid-2 section">
+  <div class="table-card"><h2>Rekap Penyakit</h2><table id="diseaseRecapTable" class="display stripe hover compact datatable-table"><thead><tr><th>Penyakit</th><th>Total</th><th>High Risk</th><th>Avg Score</th></tr></thead><tbody>{% for item in disease_recap %}<tr><td>{{ item.disease_tag|default:"-" }}</td><td>{{ item.total }}</td><td>{{ item.high_risk_total }}</td><td>{{ item.avg_score|floatformat:2 }}</td></tr>{% empty %}{% endfor %}</tbody></table></div>
+  <div class="table-card"><h2>Rekap Provinsi</h2><table id="provinceRecapTable" class="display stripe hover compact datatable-table"><thead><tr><th>Provinsi</th><th>Kode</th><th>Total</th><th>High Risk</th><th>Avg Score</th></tr></thead><tbody>{% for item in province_recap %}<tr><td>{{ item.province_name|default:"-" }}</td><td>{{ item.province_code|default:"-" }}</td><td>{{ item.total }}</td><td>{{ item.high_risk_total }}</td><td>{{ item.avg_score|floatformat:2 }}</td></tr>{% empty %}{% endfor %}</tbody></table></div>
+</div>
+
+<div class="r-card section"><div class="eyebrow">Rekomendasi Umum</div><h2>Saran Tindak Tingkat Pemantauan</h2><div class="grid-2">{% for item in policy_recommendations %}<div class="mini-card"><span class="badge {% if item.priority == 'Tinggi' %}badge-red{% elif item.priority == 'Sedang-Tinggi' %}badge-amber{% endif %}">{{ item.priority }}</span><h3>{{ item.basis }}</h3><p><strong>Judgement:</strong> {{ item.judgement }}</p><p><strong>Dampak:</strong> {{ item.impact }}</p><p><strong>Saran tindak:</strong> {{ item.action }}</p></div>{% empty %}<p class="muted">Belum ada rekomendasi.</p>{% endfor %}</div></div>
+
+<div class="r-card section"><div class="eyebrow">Kesimpulan</div><h2>Kesimpulan Laporan</h2><ol>{% for item in report_conclusions %}<li>{{ item }}</li>{% empty %}<li>Belum ada kesimpulan.</li>{% endfor %}</ol></div>
+{% endblock %}

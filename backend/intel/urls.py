@@ -43,6 +43,10 @@ urlpatterns = [
 
     path("reports/", views.reports_generator, name="reports_generator"),
     path("reports/export-csv/", views.export_signals_csv, name="export_signals_csv"),
+    path("reports/general/", views.report_general, name="report_general"),
+    path("reports/disease/", views.report_disease, name="report_disease"),
+    path("reports/region/", views.report_region, name="report_region"),
+    path("reports/disease-region/", views.report_disease_region, name="report_disease_region"),
 
     path("alerts/", views.alert_center, name="alert_center"),
     path("alerts/generate/", views.generate_alerts, name="generate_alerts"),

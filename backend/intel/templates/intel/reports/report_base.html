@@ -1,0 +1,120 @@
+{% extends "intel/base.html" %}
+{% block content %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{--r-primary:#4b0082;--r-soft:#f7f0ff;--r-bg:#f5f6fa;--r-card:#fff;--r-border:#e2e4ea;--r-ink:#111827;--r-muted:#667085;--r-red:#b42318;--r-green:#067647;--r-blue:#175cd3;--r-amber:#b54708}
+.page-shell{max-width:none!important;width:100%!important;padding:14px 18px 34px!important;background:var(--r-bg)}
+.report-page{width:100%;max-width:none;margin:0;color:var(--r-ink)}
+.report-hero,.r-card,.kpi,.chart-card,.map-card,.table-card,.notice-card,.signal-spotlight,.brief-panel{background:var(--r-card);border:1px solid var(--r-border);border-radius:16px;box-shadow:0 8px 24px rgba(17,24,39,.045)}
+.report-hero{padding:20px 22px;margin-bottom:14px;background:linear-gradient(135deg,#fff 0%,#fbf7ff 100%)}
+.hero-line{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.badge{display:inline-flex;align-items:center;width:fit-content;padding:4px 10px;border-radius:999px;border:1px solid var(--r-border);color:var(--r-primary);background:#fff;font-weight:850;font-size:12px;line-height:1.2}.badge-main{background:var(--r-primary);color:#fff;border-color:var(--r-primary);letter-spacing:.35px;text-transform:uppercase}.badge-red{color:var(--r-red);border-color:#fecdca;background:#fff5f5}.badge-green{color:var(--r-green);border-color:#abefc6;background:#f6fef9}.badge-blue{color:var(--r-blue);border-color:#b2ddff;background:#eff8ff}.badge-amber{color:var(--r-amber);border-color:#fedf89;background:#fffaeb}
+.report-hero h1{margin:0 0 6px;font-size:30px;line-height:1.15}.hero-desc{color:var(--r-muted);font-size:13px;line-height:1.65;max-width:1500px}.report-toolbar{margin-top:16px;padding-top:16px;border-top:1px solid var(--r-border)}
+.filters{display:grid;grid-template-columns:repeat(6,minmax(155px,1fr));gap:10px;align-items:end}.field{display:flex;flex-direction:column;gap:5px}.field label{color:var(--r-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.35px}.field select,.field input{width:100%;min-height:39px;border:1px solid #d7dae2;border-radius:10px;padding:7px 10px;background:#fff}.actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}.btn{min-height:38px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--r-primary);border-radius:10px;padding:8px 14px;font-weight:900;text-decoration:none;cursor:pointer;background:var(--r-primary);color:#fff}.btn.secondary{background:#fff;color:var(--r-primary)}
+.section{margin-bottom:14px}.r-card,.brief-panel{padding:16px}.eyebrow{color:var(--r-primary);font-size:11px;font-weight:950;letter-spacing:.65px;text-transform:uppercase;margin-bottom:6px}.r-card h2,.chart-card h2,.map-card h2,.table-card h2,.brief-panel h2{margin:0 0 6px;font-size:20px}.muted{color:var(--r-muted);font-size:13px;line-height:1.55}.summary-text{font-size:14px;line-height:1.75;margin:8px 0 0;max-width:1550px}.kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-bottom:14px}.kpi{padding:14px 16px}.kpi-label{color:var(--r-muted);font-size:12px;font-weight:900;margin-bottom:5px}.kpi-value{font-size:30px;line-height:1;font-weight:950}.kpi-sub{color:var(--r-muted);font-size:12px;margin-top:5px}.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.focus-card,.mini-card{border:1px solid var(--r-border);border-radius:14px;padding:13px;background:#fff}.focus-card h3,.mini-card h3{margin:8px 0 6px;font-size:17px}.focus-card p,.mini-card p{margin:0;color:var(--r-muted);font-size:12.5px;line-height:1.55}.chart-card,.map-card,.table-card{padding:16px;overflow:hidden}.chart-box{height:310px;width:100%;margin-top:8px}.chart-box.large{height:360px}.chart-box.slim{height:230px}.map-card{padding:0}.map-header{display:flex;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--r-border)}.map-shell{height:clamp(500px,62vh,760px);min-height:500px;position:relative;background:#edf2f7}#reportMap{height:100%;width:100%;display:block;z-index:1}.map-empty-note{position:absolute;z-index:400;top:14px;left:14px;right:14px;background:rgba(255,255,255,.95);border:1px dashed #bdc2ce;border-radius:12px;padding:12px 14px;color:var(--r-muted);font-size:13px}.leaflet-container{font-family:Arial,sans-serif}.popup-title{font-weight:900;margin-bottom:5px}.table-card{overflow-x:auto}.datatable-table{width:100%!important;font-size:12px}.datatable-table th,.datatable-table td{vertical-align:top;padding:7px 8px;overflow-wrap:anywhere}.datatable-table thead th{background:#f5f6f8;white-space:nowrap}.notice-card{padding:16px;border-style:dashed;color:var(--r-muted);margin-bottom:14px}.action-plan{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.action-step{border-left:4px solid var(--r-primary);padding:14px;background:#fff;border-radius:12px;border-top:1px solid var(--r-border);border-right:1px solid var(--r-border);border-bottom:1px solid var(--r-border)}.action-step h3{margin:0 0 8px;font-size:16px}.action-step p{margin:0;color:var(--r-muted);font-size:13px;line-height:1.55}.signal-spotlight{padding:14px 16px;border-left:5px solid var(--r-primary)}.signal-spotlight h3{margin:4px 0 8px}.brief-panel{border-top:4px solid var(--r-primary)}.check-list{margin:8px 0 0;padding-left:18px}.check-list li{margin-bottom:7px;line-height:1.55}.no-bottom{margin-bottom:0!important}.scope-gate{border-left:5px solid var(--r-primary);background:#fff}.scope-gate h2{margin:0 0 8px}.selection-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.selector-list{margin:10px 0 0;padding:0;list-style:none}.selector-list li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--r-border);font-size:13px}.selector-list li:last-child{border-bottom:0}.pill-link{font-weight:900;color:var(--r-primary);text-decoration:none}.scope-only{border:1px solid var(--r-border);border-radius:14px;padding:14px;background:#fff}.scope-only h3{margin:0 0 8px}.insight-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.insight-card{border:1px solid var(--r-border);border-radius:14px;padding:14px;background:#fff}.insight-card h3{margin:4px 0 8px;font-size:17px}.insight-card p{margin:0;color:var(--r-muted);font-size:13px;line-height:1.55}
+@media(max-width:1280px){.filters{grid-template-columns:repeat(3,minmax(155px,1fr))}.kpi-grid{grid-template-columns:repeat(3,minmax(150px,1fr))}.grid-2,.grid-3,.grid-4,.action-plan,.selection-grid,.insight-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.filters,.kpi-grid{grid-template-columns:1fr}.report-hero h1{font-size:24px}.map-shell,#reportMap{height:430px;min-height:430px}}
+@media print{.topbar,.report-toolbar,.dataTables_filter{display:none!important}.page-shell{padding:0!important;background:#fff}.report-hero,.r-card,.kpi,.chart-card,.map-card,.table-card,.notice-card,.brief-panel,.signal-spotlight{box-shadow:none;break-inside:avoid}.map-shell,#reportMap{height:430px!important;min-height:430px!important}}
+</style>
+
+<div class="report-page">
+  <div class="report-hero">
+    <div class="hero-line">
+      <span class="badge badge-main">{% block report_badge %}REPORT{% endblock %}</span>
+      <span class="badge">{{ status_label }}</span>
+      <span class="badge">{{ date_from }} s.d. {{ date_to }}</span>
+      {% block hero_extra_badges %}{% endblock %}
+    </div>
+    <h1>{% block report_heading %}{{ report_title }}{% endblock %}</h1>
+    <div class="hero-desc">{% block report_description %}Buletin Intelijen Medik berbasis OSINT untuk mendukung pemantauan penyakit menular, prioritas verifikasi, dan rekomendasi kebijakan awal. Data bersifat indikatif dan tetap memerlukan validasi lapangan atau pembandingan dengan sumber resmi.{% endblock %}</div>
+
+    <div class="report-toolbar">
+      <form method="get" class="filters">
+        <div class="field">
+          <label>Periode</label>
+          <select name="report_type">
+            <option value="daily" {% if report_type == "daily" %}selected{% endif %}>Laporan Harian</option>
+            <option value="weekly" {% if report_type == "weekly" %}selected{% endif %}>Laporan Mingguan</option>
+            <option value="monthly" {% if report_type == "monthly" %}selected{% endif %}>Laporan 30 Hari</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Status Data</label>
+          <select name="status_filter">
+            <option value="operational" {% if status_filter == "operational" %}selected{% endif %}>Data Operasional Crawling</option>
+            <option value="raw" {% if status_filter == "raw" %}selected{% endif %}>Raw Crawling</option>
+            <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated + Approved</option>
+            <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved Mapping</option>
+          </select>
+        </div>
+        {% block scoped_filters %}{% endblock %}
+        <div class="field"><label>Dari</label><input type="date" name="date_from" value="{{ date_from }}"></div>
+        <div class="field"><label>Sampai</label><input type="date" name="date_to" value="{{ date_to }}"></div>
+        <div class="actions">
+          <button class="btn" type="submit">Generate Report</button>
+          {% if report_ready or report_scope == "general" %}
+          <a class="btn secondary" href="{% url 'intel:export_signals_csv' %}?report_scope={{ report_scope }}&report_type={{ report_type }}&status_filter={{ status_filter }}&disease={{ selected_disease|urlencode }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}">Export CSV</a>
+          {% else %}
+          <span class="btn secondary" style="opacity:.45; cursor:not-allowed;">Export CSV</span>
+          {% endif %}
+          <a class="btn secondary" href="javascript:window.print()">Print / PDF</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% block mode_notice %}{% endblock %}
+  {% block report_body %}{% endblock %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  let chartData = {}, mapPayload = {};
+  try { chartData = JSON.parse('{{ chart_data_json|default:"{}"|escapejs }}'); } catch(e) { console.warn(e); }
+  try { mapPayload = JSON.parse('{{ map_data_json|default:"{}"|escapejs }}'); } catch(e) { console.warn(e); }
+  const mapPoints = Array.isArray(mapPayload) ? mapPayload : (mapPayload.points || mapPayload.results || []);
+  function normalizeSeries(series){
+    if(!series) return {labels:[], total:[], high_risk:[], avg_score:[]};
+    if(Array.isArray(series)) return {labels:series.map(x=>x.label||x.date||x.name||x.disease_tag||x.location_name||'-'), total:series.map(x=>x.total||x.total_signal||x.signal_count||0), high_risk:series.map(x=>x.high_risk||x.high_risk_total||x.high_risk_count||0), avg_score:series.map(x=>x.avg_score||0)};
+    return {labels:series.labels||[], total:series.total||series.signal_count||[], high_risk:series.high_risk||series.high_risk_total||series.high_risk_count||[], avg_score:series.avg_score||[]};
+  }
+  const trendSeries = normalizeSeries(chartData.trend || chartData.trend_series);
+  const diseaseSeries = normalizeSeries(chartData.disease || chartData.disease_series || chartData.top_disease);
+  const locationSeries = normalizeSeries(chartData.location || chartData.location_series || chartData.top_location);
+  function makeChart(canvasId, series, type, horizontal, useAvg){
+    const canvas=document.getElementById(canvasId); if(!canvas||!series.labels.length) return;
+    const datasets = type==='line' ? [{label:'Total signal',data:series.total,tension:.25,borderWidth:2},{label:'High-risk',data:series.high_risk,tension:.25,borderWidth:2}] : [{label:'Total signal',data:series.total},{label:'High-risk',data:series.high_risk}];
+    if(useAvg && series.avg_score && series.avg_score.length) datasets.push({label:'Avg score',data:series.avg_score});
+    new Chart(canvas,{type:type,data:{labels:series.labels,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',plugins:{legend:{position:'bottom'}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+  }
+  function initMap(){
+    const el=document.getElementById('reportMap'); if(!el||typeof L==='undefined') return;
+    const badge=document.getElementById('mapCountBadge'), note=document.getElementById('mapEmptyNote');
+    const map=L.map(el,{zoomControl:true,scrollWheelZoom:true,preferCanvas:true}).setView([-2.5,118],5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+    const bounds=[]; let rendered=0;
+    mapPoints.forEach(function(item){
+      const lat=parseFloat(item.lat), lon=parseFloat(item.lon); if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+      const total=Number(item.total||item.total_signals||item.signal_count||1), highRisk=Number(item.high_risk_total||item.high_risk_count||item.high_risk||0);
+      const radius=Math.max(8,Math.min(30,7+Math.sqrt(total)*5));
+      const marker=L.circleMarker([lat,lon],{radius:radius,color:'#4b0082',weight:2,opacity:.95,fillColor:highRisk>0?'#d92d20':'#4b0082',fillOpacity:.55}).addTo(map);
+      marker.bindPopup(`<div class="popup-title">${item.location_name||item.name||'-'}</div><div>Provinsi: <strong>${item.province_name||'-'}</strong></div><div>Level: <strong>${item.level||item.location_level||'-'}</strong></div><div>Total signal: <strong>${total}</strong></div><div>High-risk: <strong>${highRisk}</strong></div><div>Avg score: <strong>${item.avg_score||0}</strong></div><div>Penyakit dominan: <strong>${item.dominant_disease||item.top_disease||'-'}</strong></div>`);
+      bounds.push([lat,lon]); rendered += 1;
+    });
+    if(badge) badge.textContent=`${rendered} titik`;
+    if(rendered===0){ if(note) note.style.display='block'; map.setView([-2.5,118],5); }
+    else { if(note) note.style.display='none'; if(bounds.length===1) map.setView(bounds[0],8); else map.fitBounds(bounds,{padding:[28,28],maxZoom:9}); }
+    setTimeout(()=>map.invalidateSize(true),150); setTimeout(()=>map.invalidateSize(true),600); setTimeout(()=>map.invalidateSize(true),1200); window.addEventListener('resize',()=>map.invalidateSize(true));
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    makeChart('trendChart',trendSeries,'line',false,false); makeChart('diseaseChart',diseaseSeries,'bar',true,false); makeChart('locationChart',locationSeries,'bar',true,false); makeChart('scoreChart',trendSeries,'line',false,true); initMap();
+    if(window.jQuery && $.fn.DataTable){ $('.datatable-table').each(function(){ if($.fn.DataTable.isDataTable(this)) $(this).DataTable().destroy(); $(this).DataTable({paging:false,info:false,searching:true,ordering:true,order:[],autoWidth:false,scrollX:false,responsive:false,destroy:true,language:{search:'Cari cepat:',zeroRecords:'Tidak ada data yang cocok',emptyTable:'Belum ada data'}}); }); }
+  });
+})();
+</script>
+{% endblock %}
