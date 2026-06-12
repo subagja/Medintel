@@ -34,6 +34,7 @@ from .forms import (
 )
 from .models import (
     Signal,
+    SignalCluster,
     SignalLocation,
     AuditLog,
     Location,
@@ -1653,7 +1654,7 @@ def get_duplicate_candidates(signal, days=7, limit=30):
     )
 
     qs = (
-        Signal.objects.select_related("source")
+        Signal.objects.select_related("source", "cluster")
         .prefetch_related(
             Prefetch(
                 "locations",
@@ -2019,6 +2020,9 @@ def raw_signals_list(request):
     city_id = request.GET.get("city", "").strip()
     assessment = request.GET.get("assessment", "").strip()
     triage = request.GET.get("triage", "").strip()
+    triage_priority = request.GET.get("triage_priority", "").strip()
+    approval_recommendation = request.GET.get("approval_recommendation", "").strip()
+    min_confidence = request.GET.get("min_confidence", "").strip()
 
     primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
         "location",
@@ -2026,7 +2030,7 @@ def raw_signals_list(request):
     )
 
     qs = (
-        Signal.objects.select_related("source")
+        Signal.objects.select_related("source", "cluster")
         .prefetch_related(
             Prefetch(
                 "locations",
@@ -2081,6 +2085,21 @@ def raw_signals_list(request):
                 ~Q(assessment_error="")
             )
         )
+
+    # =========================
+    # DATABASE TRIAGE FILTER
+    # =========================
+    if triage_priority:
+        qs = qs.filter(triage_priority=triage_priority)
+
+    if approval_recommendation:
+        qs = qs.filter(approval_recommendation=approval_recommendation)
+
+    if min_confidence:
+        try:
+            qs = qs.filter(confidence_score__gte=int(min_confidence))
+        except ValueError:
+            pass
 
     # =========================
     # SEARCH FILTER
@@ -2187,6 +2206,10 @@ def raw_signals_list(request):
         "-geocode_status": "-geocode_status",
         "status": "status",
         "-status": "-status",
+        "confidence_score": "confidence_score",
+        "-confidence_score": "-confidence_score",
+        "triage_priority": "triage_priority",
+        "-triage_priority": "-triage_priority",
     }
 
     sort_field = allowed_sort_fields.get(sort, "-published_at")
@@ -2250,6 +2273,11 @@ def raw_signals_list(request):
         "geocode_status": geocode_status,
         "assessment": assessment,
         "triage": triage,
+        "triage_priority": triage_priority,
+        "approval_recommendation": approval_recommendation,
+        "min_confidence": min_confidence,
+        "triage_priority_choices": Signal.TRIAGE_PRIORITY_CHOICES,
+        "approval_recommendation_choices": Signal.APPROVAL_RECOMMENDATION_CHOICES,
         "sort": sort,
         "province_id": province_id,
         "city_id": city_id,
@@ -2258,7 +2286,456 @@ def raw_signals_list(request):
         "provinces": provinces,
         "cities": cities,
     })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def cluster_triage_queue(request):
+    q = request.GET.get("q", "").strip()
+    priority = request.GET.get("priority", "").strip()
+    status = request.GET.get("status", "").strip()
+    disease = request.GET.get("disease", "").strip()
+    location = request.GET.get("location", "").strip()
+    min_signals = request.GET.get("min_signals", "").strip()
+
+    clusters = SignalCluster.objects.all().order_by(
+        "-max_score",
+        "-signal_count",
+        "-avg_confidence",
+        "-created_at",
+    )
+
+    if q:
+        clusters = clusters.filter(
+            Q(cluster_key__icontains=q)
+            | Q(disease_tag__icontains=q)
+            | Q(location_name__icontains=q)
+            | Q(summary__icontains=q)
+            | Q(recommendation__icontains=q)
+            | Q(reason__icontains=q)
+        )
+
+    if priority:
+        clusters = clusters.filter(priority=priority)
+
+    if status:
+        clusters = clusters.filter(status=status)
+
+    if disease:
+        clusters = clusters.filter(disease_tag__icontains=disease)
+
+    if location:
+        clusters = clusters.filter(location_name__icontains=location)
+
+    if min_signals:
+        try:
+            clusters = clusters.filter(signal_count__gte=int(min_signals))
+        except ValueError:
+            pass
+
+    stats = {
+        "total_clusters": clusters.count(),
+        "urgent_clusters": clusters.filter(priority="urgent").count(),
+        "high_clusters": clusters.filter(priority="high").count(),
+        "ready_clusters": clusters.filter(status="ready_for_approval").count(),
+        "unknown_location_clusters": clusters.filter(location_name="unknown_location").count(),
+    }
+
+    paginator = Paginator(clusters, 50)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "intel/cluster_triage_queue.html", {
+        "page_title": "Cluster Triage Queue",
+        "page_obj": page_obj,
+        "q": q,
+        "priority": priority,
+        "status": status,
+        "disease": disease,
+        "location": location,
+        "min_signals": min_signals,
+        "priority_choices": SignalCluster.PRIORITY_CHOICES,
+        "status_choices": SignalCluster.CLUSTER_STATUS_CHOICES,
+        "stats": stats,
+    })
     
+
+def _cluster_validate_signal(signal, user, cluster):
+    """Validate raw signal from cluster detail. Keeps the existing raw -> validated logic."""
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
+    signal.status = "validated"
+    signal.validated_by = user
+    signal.validated_at = timezone.now()
+    signal.save(update_fields=["status", "validated_by", "validated_at", "updated_at"])
+
+    AuditLog.objects.create(
+        user=user,
+        action="mark_validated",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes=f"Signal validated from cluster detail. Cluster id={cluster.id}",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+            "cluster_id": cluster.id,
+        },
+    )
+
+
+def _cluster_approve_signal(signal, user, cluster):
+    """Approve validated signal for mapping from cluster detail."""
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
+    signal.status = "approved"
+    signal.approved_for_mapping = True
+    signal.validated_by = user
+    signal.validated_at = timezone.now()
+    signal.save(update_fields=[
+        "status",
+        "approved_for_mapping",
+        "validated_by",
+        "validated_at",
+        "updated_at",
+    ])
+
+    AuditLog.objects.create(
+        user=user,
+        action="approve_mapping",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes=f"Signal approved for mapping from cluster detail. Cluster id={cluster.id}",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+            "cluster_id": cluster.id,
+        },
+    )
+
+
+def _cluster_mark_signal_noise(signal, user, cluster):
+    """Mark selected signal as noise from cluster detail."""
+    before_data = {
+        "status": signal.status,
+        "approved_for_mapping": signal.approved_for_mapping,
+    }
+
+    signal.status = "noise"
+    signal.approved_for_mapping = False
+    signal.validated_by = user
+    signal.validated_at = timezone.now()
+    signal.save(update_fields=[
+        "status",
+        "approved_for_mapping",
+        "validated_by",
+        "validated_at",
+        "updated_at",
+    ])
+
+    AuditLog.objects.create(
+        user=user,
+        action="mark_noise",
+        model_name="Signal",
+        object_id=str(signal.id),
+        notes=f"Signal marked as noise from cluster detail. Cluster id={cluster.id}",
+        before_data=before_data,
+        after_data={
+            "status": signal.status,
+            "approved_for_mapping": signal.approved_for_mapping,
+            "cluster_id": cluster.id,
+        },
+    )
+
+
+def _refresh_cluster_counts(cluster):
+    """Refresh operational counts after selected-signal actions."""
+    signals = cluster.signals.all()
+    cluster.signal_count = signals.count()
+    cluster.raw_count = signals.filter(status="raw").count()
+    cluster.validated_count = signals.filter(status="validated").count()
+    cluster.verified_count = signals.filter(status="approved").count()
+    cluster.noise_count = signals.filter(status="noise").count()
+    cluster.save(update_fields=[
+        "signal_count",
+        "raw_count",
+        "validated_count",
+        "verified_count",
+        "noise_count",
+        "updated_at",
+    ])
+
+
+
+def _safe_assessment_value(assessment, key):
+    """Read value from assessment dict/object safely."""
+    if not assessment:
+        return ""
+    if isinstance(assessment, dict):
+        return assessment.get(key) or ""
+    return getattr(assessment, key, "") or ""
+
+
+def _short_join(items, limit=5, fallback="Belum cukup data dari signal dalam cluster."):
+    cleaned = []
+    for item in items:
+        item = str(item or "").strip()
+        if item and item not in cleaned:
+            cleaned.append(item)
+    if not cleaned:
+        return fallback
+    return "; ".join(cleaned[:limit])
+
+
+def build_cluster_assessment_snapshot(cluster, signals):
+    """
+    Build a cluster-level 5W+1H snapshot from existing signal-level assessments.
+    This does not write to DB and does not replace Signal 5W+1H.
+    """
+    total = len(signals)
+    assessed = 0
+    partial_or_fallback = 0
+
+    what_items = []
+    where_items = []
+    when_items = []
+    who_items = []
+    why_items = []
+    how_items = []
+    source_items = []
+
+    for signal in signals:
+        assessment = getattr(signal, "assessment_5w1h", None)
+        summary = (getattr(signal, "assessment_summary", "") or "").strip()
+        quality = _safe_assessment_value(assessment, "assessment_quality")
+
+        if summary or assessment:
+            assessed += 1
+
+        if quality in ["low_fallback", "article_based_partial"] or getattr(signal, "assessment_status", "") in ["fallback", "failed"]:
+            partial_or_fallback += 1
+
+        what_items.append(_safe_assessment_value(assessment, "what") or summary or getattr(signal, "title", ""))
+        who_items.append(_safe_assessment_value(assessment, "who"))
+        why_items.append(_safe_assessment_value(assessment, "why"))
+        how_items.append(_safe_assessment_value(assessment, "how"))
+
+        when_value = _safe_assessment_value(assessment, "when")
+        if not when_value and getattr(signal, "published_at", None):
+            when_value = signal.published_at.strftime("%Y-%m-%d %H:%M")
+        when_items.append(when_value)
+
+        loc_name = ""
+        primary_locations = getattr(signal, "primary_locations", []) or []
+        if primary_locations:
+            loc = getattr(primary_locations[0], "location", None)
+            if loc:
+                loc_name = getattr(loc, "display_name", None) or getattr(loc, "name", "") or ""
+                if getattr(loc, "parent", None):
+                    parent_name = getattr(loc.parent, "display_name", None) or getattr(loc.parent, "name", "") or ""
+                    if parent_name and parent_name != loc_name:
+                        loc_name = f"{loc_name}, {parent_name}"
+        if not loc_name:
+            loc_name = getattr(signal, "raw_location_text", "") or getattr(signal, "admin_kabkota", "") or getattr(signal, "admin_province", "") or ""
+        where_items.append(_safe_assessment_value(assessment, "where") or loc_name)
+
+        if getattr(signal, "source", None):
+            source_items.append(signal.source.name)
+
+    if total == 0:
+        quality = "empty"
+    elif assessed == total:
+        quality = "complete"
+    elif assessed > 0:
+        quality = "partial"
+    else:
+        quality = "metadata_based"
+
+    period = "-"
+    if cluster.date_start and cluster.date_end:
+        period = f"{cluster.date_start} s.d. {cluster.date_end}"
+    elif cluster.date_start:
+        period = str(cluster.date_start)
+
+    summary = (
+        f"Cluster ini menghimpun {total} signal terkait {cluster.disease_tag or 'penyakit belum jelas'} "
+        f"di {cluster.location_name or 'lokasi belum jelas'} pada periode {period}. "
+        f"Sebanyak {assessed} signal sudah memiliki assessment 5W+1H."
+    )
+
+    if partial_or_fallback:
+        summary += f" Terdapat {partial_or_fallback} assessment yang masih partial/fallback sehingga perlu verifikasi tambahan."
+
+    return {
+        "quality": quality,
+        "total": total,
+        "assessed": assessed,
+        "pending": max(total - assessed, 0),
+        "partial_or_fallback": partial_or_fallback,
+        "summary": summary,
+        "what": _short_join(what_items, limit=4),
+        "where": _short_join(where_items, limit=6),
+        "when": period if period != "-" else _short_join(when_items, limit=4),
+        "who": _short_join(who_items, limit=4),
+        "why": _short_join(why_items, limit=4),
+        "how": _short_join(how_items, limit=4),
+        "sources": _short_join(source_items, limit=6, fallback="Sumber belum teridentifikasi."),
+    }
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def cluster_detail(request, pk):
+    cluster = get_object_or_404(SignalCluster, pk=pk)
+
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location",
+        "location__parent",
+    )
+
+    signals_qs = (
+        cluster.signals.select_related("source", "validated_by")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        )
+        .order_by("-threat_score", "-published_at", "-created_at", "-id")
+    )
+
+    signals = list(signals_qs)
+    cluster_signal_ids = {signal.id for signal in signals}
+
+    duplicate_total = 0
+    duplicate_outside_cluster_total = 0
+    signals_with_duplicates = 0
+
+    for signal in signals:
+        signal.triage_flag = get_signal_triage_flag(signal)
+
+        # Duplicate count can be broader than the current cluster because duplicate review
+        # searches candidates within a review window and not only this cluster_key.
+        duplicate_candidates = get_duplicate_candidates(signal, days=7, limit=30)
+        signal.duplicate_count = len(duplicate_candidates)
+        signal.has_duplicate_warning = signal.duplicate_count > 0
+        signal.duplicate_in_cluster_count = sum(1 for item in duplicate_candidates if item.id in cluster_signal_ids)
+        signal.duplicate_outside_cluster_count = max(signal.duplicate_count - signal.duplicate_in_cluster_count, 0)
+
+        duplicate_total += signal.duplicate_count
+        duplicate_outside_cluster_total += signal.duplicate_outside_cluster_count
+        if signal.duplicate_count:
+            signals_with_duplicates += 1
+
+    cluster_assessment = build_cluster_assessment_snapshot(cluster, signals)
+    duplicate_context = {
+        "duplicate_total": duplicate_total,
+        "duplicate_outside_cluster_total": duplicate_outside_cluster_total,
+        "signals_with_duplicates": signals_with_duplicates,
+    }
+
+    return render(request, "intel/cluster_detail.html", {
+        "page_title": "Cluster Detail",
+        "cluster": cluster,
+        "signals": signals,
+        "cluster_assessment": cluster_assessment,
+        "duplicate_context": duplicate_context,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
+def cluster_signal_action(request, pk):
+    cluster = get_object_or_404(SignalCluster, pk=pk)
+
+    if request.method != "POST":
+        return redirect("intel:cluster_detail", pk=cluster.id)
+
+    action = (request.POST.get("action") or "").strip()
+    selected_ids = []
+    for item in request.POST.getlist("selected_ids"):
+        item = str(item).strip()
+        if item.isdigit() and item not in selected_ids:
+            selected_ids.append(item)
+
+    if action == "mark_cluster_reviewed":
+        before_data = {"status": cluster.status}
+        cluster.status = "reviewed"
+        cluster.reviewed_at = timezone.now()
+        cluster.save(update_fields=["status", "reviewed_at", "updated_at"])
+        AuditLog.objects.create(
+            user=request.user,
+            action="manual_edit",
+            model_name="SignalCluster",
+            object_id=str(cluster.id),
+            notes="Cluster marked as reviewed from cluster detail.",
+            before_data=before_data,
+            after_data={"status": cluster.status},
+        )
+        messages.success(request, "Cluster ditandai sebagai reviewed.")
+        return redirect("intel:cluster_detail", pk=cluster.id)
+
+    if action == "validate_all_raw":
+        target_qs = cluster.signals.filter(status="raw")
+    elif action == "approve_all_validated":
+        target_qs = cluster.signals.filter(status="validated")
+    else:
+        if not selected_ids:
+            messages.warning(request, "Pilih minimal satu signal terlebih dahulu.")
+            return redirect("intel:cluster_detail", pk=cluster.id)
+        target_qs = cluster.signals.filter(id__in=selected_ids)
+
+    changed_count = 0
+    skipped_count = 0
+
+    for signal in target_qs:
+        if action in ["validate_selected", "validate_all_raw"]:
+            if signal.status != "raw":
+                skipped_count += 1
+                continue
+            _cluster_validate_signal(signal, request.user, cluster)
+            changed_count += 1
+
+        elif action in ["approve_selected", "approve_all_validated"]:
+            if signal.status != "validated":
+                skipped_count += 1
+                continue
+            _cluster_approve_signal(signal, request.user, cluster)
+            changed_count += 1
+
+        elif action == "noise_selected":
+            # Pengaman: jangan noisekan signal yang sudah approved lewat cluster batch.
+            # Jika perlu membatalkan approved signal, lakukan dari workflow terpisah/manual.
+            if signal.status not in ["raw", "validated"]:
+                skipped_count += 1
+                continue
+            _cluster_mark_signal_noise(signal, request.user, cluster)
+            changed_count += 1
+
+        else:
+            messages.warning(request, "Aksi cluster tidak dikenal.")
+            return redirect("intel:cluster_detail", pk=cluster.id)
+
+    _refresh_cluster_counts(cluster)
+
+    if skipped_count:
+        messages.warning(
+            request,
+            f"Aksi selesai: {changed_count} signal diproses, {skipped_count} signal dilewati karena status tidak sesuai."
+        )
+    else:
+        messages.success(request, f"Aksi selesai: {changed_count} signal diproses.")
+
+    return redirect("intel:cluster_detail", pk=cluster.id)
+
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def verified_signals_list(request):

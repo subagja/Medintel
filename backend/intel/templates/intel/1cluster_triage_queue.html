@@ -1,0 +1,448 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e6e6e6;
+        --text: #111;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .page-subtitle {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .metric-card-small {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+    }
+
+    .metric-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+    }
+
+    .metric-value {
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--text);
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filters input,
+    .filters select {
+        min-width: 150px;
+        padding: 7px 9px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    .filters input[name="q"] {
+        min-width: 260px;
+    }
+
+    .btn,
+    button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: var(--text);
+        display: inline-block;
+    }
+
+    .filters button[type="submit"] {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+    }
+
+    .table-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .cluster-table {
+        width: 100% !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .cluster-table th,
+    .cluster-table td {
+        vertical-align: top;
+        border-bottom: 1px solid var(--soft-border);
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+    }
+
+    .cluster-table thead th {
+        background: #f5f5f5;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .priority-urgent {
+        background: var(--red-bg);
+        color: var(--red-text);
+        border: 1px solid #e5aaaa;
+    }
+
+    .priority-high {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+    }
+
+    .priority-medium {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+        border: 1px solid #aebff0;
+    }
+
+    .priority-low {
+        background: #f1f1f1;
+        color: #555;
+        border: 1px solid #d5d5d5;
+    }
+
+    .status-open {
+        background: #f1f1f1;
+        color: #555;
+        border: 1px solid #d5d5d5;
+    }
+
+    .status-reviewed {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+        border: 1px solid #aebff0;
+    }
+
+    .status-ready_for_approval {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+    }
+
+    .status-approved {
+        background: var(--green-bg);
+        color: var(--green-text);
+        border: 1px solid #7acb8a;
+    }
+
+    .status-noise,
+    .status-archived {
+        background: #333;
+        color: #fff;
+        border: 1px solid #333;
+    }
+
+    .small-muted,
+    .small {
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .summary-text {
+        max-width: 520px;
+        line-height: 1.45;
+    }
+
+    details {
+        margin-top: 6px;
+        font-size: 11px;
+    }
+
+    details summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+    }
+
+    .detail-box {
+        margin-top: 4px;
+        padding: 8px;
+        background: var(--bg-soft);
+        border: 1px solid var(--soft-border);
+        border-radius: 5px;
+        color: #333;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    .pagination {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-decoration: none;
+        color: var(--text);
+        background: #fff;
+    }
+
+    .pagination span {
+        background: #f5f5f5;
+        font-weight: 700;
+    }
+
+    @media (max-width: 1000px) {
+        .metric-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+
+<h1 class="page-title">Cluster Triage Queue</h1>
+<p class="page-subtitle">
+    Halaman ini mengelompokkan signal berdasarkan penyakit, lokasi, dan periode untuk mempercepat review analis.
+    Cluster hanya layer analisis; status signal tetap mengikuti proses existing: raw → validated → approved/noise.
+</p>
+
+<div class="metric-grid">
+    <div class="metric-card-small">
+        <div class="metric-label">Total Cluster</div>
+        <div class="metric-value">{{ stats.total_clusters }}</div>
+    </div>
+    <div class="metric-card-small">
+        <div class="metric-label">Urgent</div>
+        <div class="metric-value">{{ stats.urgent_clusters }}</div>
+    </div>
+    <div class="metric-card-small">
+        <div class="metric-label">High</div>
+        <div class="metric-value">{{ stats.high_clusters }}</div>
+    </div>
+    <div class="metric-card-small">
+        <div class="metric-label">Ready Approval</div>
+        <div class="metric-value">{{ stats.ready_clusters }}</div>
+    </div>
+    <div class="metric-card-small">
+        <div class="metric-label">Unknown Location</div>
+        <div class="metric-value">{{ stats.unknown_location_clusters }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <form method="get" class="filters">
+        <input type="text" name="q" placeholder="Cari cluster / penyakit / lokasi" value="{{ q }}">
+
+        <select name="priority">
+            <option value="">Semua priority</option>
+            {% for value, label in priority_choices %}
+                <option value="{{ value }}" {% if priority == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="status">
+            <option value="">Semua status</option>
+            {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="text" name="disease" placeholder="Penyakit" value="{{ disease }}">
+        <input type="text" name="location" placeholder="Lokasi" value="{{ location }}">
+        <input type="number" name="min_signals" min="1" placeholder="Min signal" value="{{ min_signals }}">
+
+        <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:cluster_triage_queue' %}">Reset</a>
+    </form>
+</div>
+
+<div class="table-card">
+    <table id="clusterTable" class="display stripe hover compact cluster-table">
+        <thead>
+            <tr>
+                <th>Priority</th>
+                <th>Cluster</th>
+                <th>Periode</th>
+                <th>Signal</th>
+                <th>Score</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Summary</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cluster in page_obj %}
+                <tr>
+                    <td>
+                        <span class="badge priority-{{ cluster.priority|default:'low' }}">
+                            {{ cluster.get_priority_display|default:cluster.priority }}
+                        </span>
+                    </td>
+                    <td>
+                        <strong>{{ cluster.disease_tag|default:"-" }}</strong><br>
+                        <span>{{ cluster.location_name|default:"unknown_location" }}</span><br>
+                        <span class="small-muted">{{ cluster.cluster_key }}</span>
+                    </td>
+                    <td>
+                        {{ cluster.date_start|default:"-" }}<br>
+                        <span class="small-muted">s.d. {{ cluster.date_end|default:"-" }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ cluster.signal_count }}</strong>
+                        <div class="small-muted">
+                            Raw {{ cluster.raw_count }} · Validated {{ cluster.validated_count }}<br>
+                            Approved {{ cluster.verified_count }} · Noise {{ cluster.noise_count }}
+                        </div>
+                    </td>
+                    <td>
+                        Avg: <strong>{{ cluster.avg_score|floatformat:1 }}</strong><br>
+                        <span class="small-muted">Max: {{ cluster.max_score|floatformat:1 }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ cluster.avg_confidence|floatformat:1 }}%</strong>
+                    </td>
+                    <td>
+                        <span class="badge status-{{ cluster.status|default:'open' }}">
+                            {{ cluster.get_status_display|default:cluster.status }}
+                        </span>
+                    </td>
+                    <td class="summary-text">
+                        {{ cluster.summary|default:"Belum ada ringkasan cluster." }}
+                        <details>
+                            <summary>Recommendation & reason</summary>
+                            <div class="detail-box">
+                                <strong>Recommendation:</strong><br>
+                                {{ cluster.recommendation|default:"-"|linebreaksbr }}
+                                <hr>
+                                <strong>Reason:</strong><br>
+                                {{ cluster.reason|default:"-"|linebreaksbr }}
+                            </div>
+                        </details>
+                    </td>
+                    <td>
+                        <a class="btn" href="{% url 'intel:cluster_detail' cluster.id %}">
+                            Review Signal
+                        </a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="9" class="small-muted">Belum ada cluster.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&priority={{ priority }}&status={{ status }}&disease={{ disease }}&location={{ location }}&min_signals={{ min_signals }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&priority={{ priority }}&status={{ status }}&disease={{ disease }}&location={{ location }}&min_signals={{ min_signals }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&priority={{ priority }}&status={{ status }}&disease={{ disease }}&location={{ location }}&min_signals={{ min_signals }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&priority={{ priority }}&status={{ status }}&disease={{ disease }}&location={{ location }}&min_signals={{ min_signals }}">Akhir</a>
+    {% endif %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        const tableSelector = '#clusterTable';
+
+        if ($.fn.DataTable.isDataTable(tableSelector)) {
+            $(tableSelector).DataTable().destroy();
+        }
+
+        $(tableSelector).DataTable({
+            paging: false,
+            info: false,
+            searching: true,
+            ordering: true,
+            autoWidth: false,
+            scrollX: false,
+            destroy: true,
+            language: {
+                search: "Cari cepat:",
+                zeroRecords: "Tidak ada cluster yang cocok",
+                emptyTable: "Belum ada cluster"
+            },
+            columnDefs: [
+                { targets: [7, 8], orderable: false }
+            ]
+        });
+    });
+</script>
+
+{% endblock %}

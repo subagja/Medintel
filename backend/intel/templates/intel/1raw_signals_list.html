@@ -1,0 +1,1405 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e6e6e6;
+        --text: #111;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title {
+        margin: 0 0 16px;
+        font-size: 24px;
+        font-weight: 700;
+    }
+
+    .card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .filters input,
+    .filters select {
+        min-width: 150px;
+        padding: 7px 9px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    .filters input[name="search"] {
+        min-width: 260px;
+    }
+
+    .btn,
+    button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: var(--text);
+        display: inline-block;
+    }
+
+    .btn:hover,
+    button:hover {
+        background: #e8e8e8;
+    }
+
+    .filters button[type="submit"] {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+    }
+
+    .filters button[type="submit"]:hover {
+        background: #36005e;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .summary-row p {
+        margin: 0;
+    }
+
+    .small-muted,
+    .small {
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .table-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .raw-signals-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .raw-signals-table th,
+    .raw-signals-table td {
+        vertical-align: top;
+        border-bottom: 1px solid var(--soft-border);
+        padding: 8px 10px;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .raw-signals-table thead th {
+        background: #f5f5f5;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .id-cell {
+        text-align: center;
+        font-weight: 700;
+    }
+
+    .signal-cell,
+    .location-main-cell,
+    .score-cell {
+        white-space: normal;
+        line-height: 1.35;
+    }
+
+    .signal-title,
+    .location-title {
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+
+    .signal-meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+
+    .signal-meta a {
+        font-size: 11px;
+    }
+
+    details {
+        margin-top: 5px;
+        font-size: 11px;
+    }
+
+    details summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .detail-box {
+        margin-top: 4px;
+        padding: 7px;
+        background: var(--bg-soft);
+        border: 1px solid var(--soft-border);
+        border-radius: 5px;
+        color: #333;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .pill {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .pill-disease {
+        background: var(--purple-bg);
+        color: var(--primary);
+    }
+
+    .score-edit-row {
+        margin-bottom: 6px;
+    }
+
+    .score-box {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+        margin: 0;
+    }
+
+    .score-box input {
+        width: 68px;
+        min-width: 68px;
+        padding: 5px 6px;
+        font-size: 12px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .score-box button {
+        min-width: 58px;
+        padding: 5px 10px;
+        font-size: 12px;
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        cursor: pointer;
+        white-space: nowrap;
+        line-height: 1.1;
+    }
+
+    .risk-label {
+        margin-top: 4px;
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .risk-low {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .risk-medium {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .risk-high {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .scoring-reason {
+        max-width: 260px;
+    }
+
+    .location-sub,
+    .location-method {
+        color: var(--muted);
+    }
+
+    .location-sub {
+        font-size: 12px;
+    }
+
+    .location-method {
+        font-size: 11px;
+        margin-top: 3px;
+    }
+
+    .muted {
+        color: #999;
+    }
+
+    .geo-badge,
+    .status-badge {
+        display: inline-block;
+        padding: 4px 7px;
+        border-radius: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .geo-ok,
+    .geo-matched,
+    .geo-gazetteer_only,
+    .geo-manual {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .geo-empty,
+    .geo-empty_loc,
+    .geo-unmatched,
+    .geo-skip_low_conf,
+    .geo-not_found,
+    .geo-net_err,
+    .geo-skip_noise,
+    .geo-skip_too_general {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .geo-pending {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .status-raw {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .status-validated,
+    .status-valid,
+    .status-verified,
+    .status-approved {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .status-noise {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    td.actions {
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+    }
+
+    .actions {
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .actions form {
+        margin: 0;
+        padding: 0;
+    }
+
+    .action-stack {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        min-height: 112px;
+    }
+
+    .action-stack .btn,
+    .action-stack button {
+        width: 150px;
+        min-height: 34px;
+        padding: 7px 10px;
+        box-sizing: border-box;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .btn-valid {
+        background: var(--green-bg);
+        border: 1px solid #7acb8a;
+    }
+
+    .btn-noise {
+        background: #fff1f1;
+        border: 1px solid #d88;
+    }
+
+    .btn-approve {
+        background: var(--blue-bg);
+        border: 1px solid #7d95d8;
+    }
+
+    .dataTables_wrapper {
+        width: 100%;
+    }
+
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+    }
+
+    table.dataTable thead th,
+    table.dataTable thead td,
+    table.dataTable tbody th,
+    table.dataTable tbody td {
+        padding: 8px 10px !important;
+    }
+
+    .pagination {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .pagination a,
+    .pagination span {
+        padding: 6px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        text-decoration: none;
+        color: var(--text);
+        background: #fff;
+    }
+
+    .pagination span {
+        background: #f5f5f5;
+        font-weight: 700;
+    }
+
+    .assessment-form {
+        margin-top: 6px;
+    }
+
+    .btn-assessment {
+        background: #f1ecff;
+        color: #4b0082;
+        border: 1px solid #b99be8;
+        padding: 5px 8px;
+        font-size: 11px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-assessment:hover {
+        background: #e5d7ff;
+    }
+
+    .assessment-detail {
+        margin-top: 6px;
+    }
+
+    .assessment-box {
+        max-width: 620px;
+    }
+
+    .assessment-box hr {
+        border: 0;
+        border-top: 1px solid #e1e1e1;
+        margin: 8px 0;
+    }
+
+    .assessment-box ul {
+        margin: 4px 0 0 16px;
+        padding: 0;
+    }
+
+    .resolved-url-detail {
+        margin-top: 6px;
+        font-size: 11px;
+    }
+
+    .resolved-url-form {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .resolved-url-input {
+        min-width: 320px;
+        max-width: 520px;
+        flex: 1;
+        padding: 5px 7px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .url-warning-box {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin: 8px 0;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .assessment-meta {
+        margin-top: 8px;
+        padding: 7px 8px;
+        border: 1px solid var(--soft-border);
+        background: #fff;
+        border-radius: 5px;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    .resolved-url-detail {
+        margin-top: 8px;
+        font-size: 12px;
+    }
+
+    .resolved-url-form {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .resolved-url-input {
+        min-width: 360px;
+        max-width: 620px;
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    .btn-url-assess {
+        background: var(--purple-bg);
+        color: var(--primary);
+        border: 1px solid #b99be8;
+        padding: 6px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .btn-url-assess:hover {
+        background: #e5d7ff;
+    }
+
+    .assessment-badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .assessment-not-generated {
+        background: #f1f1f1;
+        color: #555;
+    }
+
+    .assessment-article_based {
+        background: var(--green-bg);
+        color: var(--green-text);
+    }
+
+    .assessment-article_based_partial {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+    }
+
+    .assessment-low_fallback {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+    }
+
+    .assessment-failed {
+        background: var(--red-bg);
+        color: var(--red-text);
+    }
+
+    .triage-row {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+    }
+
+    .triage-badge,
+    .duplicate-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .triage-high {
+        background: #fde8e8;
+        color: #b00020;
+        border: 1px solid #e5aaaa;
+    }
+
+    .triage-red {
+        background: #fde8e8;
+        color: #b00020;
+    }
+
+    .triage-orange {
+        background: #fff0df;
+        color: #9a4d00;
+    }
+
+    .triage-yellow {
+        background: #fff5d6;
+        color: #795500;
+    }
+
+    .triage-normal {
+        background: #e8f7ec;
+        color: #08762a;
+    }
+
+    .duplicate-badge {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+    }
+
+    .duplicate-badge-link {
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .duplicate-badge-link:hover {
+        background: #ffe2bd;
+        color: #7a3d00;
+        border-color: #d99b51;
+    }
+
+    .duplicate-mini-action {
+        display: inline-block;
+        margin-left: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #7a3d00;
+    }
+
+    .triage-db-badge,
+    .recommendation-badge,
+    .confidence-badge,
+    .cluster-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .triage-db-urgent {
+        background: #fde8e8;
+        color: #b00020;
+        border: 1px solid #e5aaaa;
+    }
+
+    .triage-db-high {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+    }
+
+    .triage-db-medium {
+        background: #eef3ff;
+        color: #2451a6;
+        border: 1px solid #aebff0;
+    }
+
+    .triage-db-low {
+        background: #f1f1f1;
+        color: #555;
+        border: 1px solid #d5d5d5;
+    }
+
+    .triage-db-noise_candidate {
+        background: #333;
+        color: #fff;
+        border: 1px solid #333;
+    }
+
+    .recommendation-approve {
+        background: var(--green-bg);
+        color: var(--green-text);
+        border: 1px solid #7acb8a;
+    }
+
+    .recommendation-review {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+        border: 1px solid #aebff0;
+    }
+
+    .recommendation-fix_location {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+    }
+
+    .recommendation-noise,
+    .recommendation-duplicate {
+        background: #333;
+        color: #fff;
+        border: 1px solid #333;
+    }
+
+    .confidence-badge {
+        background: #f7f7f7;
+        color: #333;
+        border: 1px solid #ccc;
+        margin-top: 6px;
+    }
+
+    .cluster-badge {
+        background: #f1ecff;
+        color: var(--primary);
+        border: 1px solid #b99be8;
+        margin-top: 6px;
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    .triage-db-reason {
+        max-width: 560px;
+    }
+    .btn-edit-location {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+        text-align: center;
+        font-weight: 700;
+    }
+
+    .btn-edit-location:hover {
+        background: #ffe2bd;
+    }
+</style>
+
+<h1 class="page-title">Raw Signals</h1>
+
+<div class="card">
+    <form method="get" class="filters">
+        <input type="text" name="search" placeholder="Search judul / URL / lokasi" value="{{ search }}">
+
+        <select name="disease">
+            <option value="">Semua penyakit</option>
+            {% for item in disease_choices %}
+                <option value="{{ item }}" {% if disease == item %}selected{% endif %}>
+                    {{ item }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="geocode_status">
+            <option value="">Semua geocode status</option>
+            {% for item in geocode_choices %}
+                <option value="{{ item }}" {% if geocode_status == item %}selected{% endif %}>
+                    {{ item }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="assessment">
+            <option value="">Semua assessment</option>
+
+            <option value="not_generated" {% if assessment == "not_generated" %}selected{% endif %}>
+                Belum assessment
+            </option>
+
+            <option value="article_based" {% if assessment == "article_based" %}selected{% endif %}>
+                Article-based
+            </option>
+
+            <option value="article_based_partial" {% if assessment == "article_based_partial" %}selected{% endif %}>
+                Article-based partial
+            </option>
+
+            <option value="low_fallback" {% if assessment == "low_fallback" %}selected{% endif %}>
+                Low fallback
+            </option>
+
+            <option value="failed" {% if assessment == "failed" %}selected{% endif %}>
+                Failed
+            </option>
+        </select>
+
+        <select name="triage">
+            <option value="">Semua tindak lanjut</option>
+
+            <option value="high_risk" {% if triage == "high_risk" %}selected{% endif %}>
+                High Risk
+            </option>
+
+            <option value="needs_assessment" {% if triage == "needs_assessment" %}selected{% endif %}>
+                Belum Assessment
+            </option>
+
+            <option value="assessment_failed" {% if triage == "assessment_failed" %}selected{% endif %}>
+                Perlu Re-assessment
+            </option>
+
+            <option value="needs_location" {% if triage == "needs_location" %}selected{% endif %}>
+                Perlu Koreksi Lokasi
+            </option>
+
+            <option value="url_problem" {% if triage == "url_problem" %}selected{% endif %}>
+                URL / Fetch Bermasalah
+            </option>
+        </select>
+
+        <select name="triage_priority">
+            <option value="">Semua priority sistem</option>
+            {% for value, label in triage_priority_choices %}
+                <option value="{{ value }}" {% if triage_priority == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="approval_recommendation">
+            <option value="">Semua rekomendasi approval</option>
+            {% for value, label in approval_recommendation_choices %}
+                <option value="{{ value }}" {% if approval_recommendation == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <input type="number" name="min_confidence" min="0" max="100" placeholder="Min confidence" value="{{ min_confidence }}">
+
+        <select name="province">
+            <option value="">Semua provinsi</option>
+            {% for item in provinces %}
+                <option value="{{ item.id }}" {% if province_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="city">
+            <option value="">Semua kab/kota</option>
+            {% for item in cities %}
+                <option value="{{ item.id }}" {% if city_id == item.id|stringformat:"s" %}selected{% endif %}>
+                    {{ item.display_name|default:item.name }}
+                    {% if item.parent %} - {{ item.parent.display_name|default:item.parent.name }}{% endif %}
+                </option>
+            {% endfor %}
+        </select>
+
+        <input type="date" name="date_from" value="{{ date_from }}">
+        <input type="date" name="date_to" value="{{ date_to }}">
+
+        <select name="sort">
+            <option value="-published_at" {% if sort == "-published_at" %}selected{% endif %}>Tanggal terbaru</option>
+            <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
+            <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
+            <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+            <option value="-confidence_score" {% if sort == "-confidence_score" %}selected{% endif %}>Confidence tertinggi</option>
+            <option value="confidence_score" {% if sort == "confidence_score" %}selected{% endif %}>Confidence terendah</option>
+            <option value="title" {% if sort == "title" %}selected{% endif %}>Judul A-Z</option>
+            <option value="-title" {% if sort == "-title" %}selected{% endif %}>Judul Z-A</option>
+        </select>
+
+        <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:raw_signals' %}">Reset</a>
+    </form>
+</div>
+
+<div class="card">
+    <div class="summary-row">
+        <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
+        <p class="small-muted">
+            Filter server-side tetap aktif. Pencarian cepat DataTables hanya mencari data pada halaman ini.
+        </p>
+    </div>
+</div>
+
+<div class="table-card">
+    <table id="rawSignalsTable" class="display stripe hover compact raw-signals-table">
+        <colgroup>
+            <col style="width: 60px;">
+            <col style="width: 46%;">
+            <col style="width: 110px;">
+            <col style="width: 170px;">
+            <col style="width: 220px;">
+            <col style="width: 135px;">
+            <col style="width: 95px;">
+            <col style="width: 190px;">
+        </colgroup>
+
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Signal</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Lokasi</th>
+                <th>Geocode</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for signal in page_obj %}
+            <tr>
+                <td class="id-cell">{{ signal.id }}</td>
+
+                <td class="signal-cell">
+                    <div class="signal-title">
+                        {{ signal.title|default:"-" }}
+                    </div>
+
+                    <div class="triage-row">
+                        {% if signal.triage_flag %}
+                            <span class="triage-badge {{ signal.triage_flag.class }}" title="{{ signal.triage_flag.reason }}">
+                                {{ signal.triage_flag.label }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.triage_priority %}
+                            <span class="triage-db-badge triage-db-{{ signal.triage_priority }}" title="Priority hasil triage bertingkat">
+                                Priority: {{ signal.get_triage_priority_display|default:signal.triage_priority }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.approval_recommendation %}
+                            <span class="recommendation-badge recommendation-{{ signal.approval_recommendation }}" title="Rekomendasi approval sistem">
+                                {{ signal.get_approval_recommendation_display|default:signal.approval_recommendation }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.confidence_score is not None %}
+                            <span class="confidence-badge" title="Confidence score = keyakinan kualitas data, bukan skor risiko">
+                                Confidence {{ signal.confidence_score }}%
+                            </span>
+                        {% endif %}
+
+                        {% if signal.has_duplicate_warning or signal.duplicate_count %}
+                            <a
+                                href="{% url 'intel:signal_duplicate_review' signal.id %}"
+                                class="duplicate-badge duplicate-badge-link"
+                                title="Ada {{ signal.duplicate_count|default:0 }} kandidat duplikat. Klik untuk review kandidat duplikat."
+                            >
+                                Potensi Duplikat: {{ signal.duplicate_count|default:0 }}
+                                <span class="duplicate-mini-action">Review</span>
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    {% if signal.triage_reason %}
+                        <details>
+                            <summary>Alasan triage</summary>
+                            <div class="detail-box triage-db-reason">
+                                {{ signal.triage_reason|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
+
+                    <div class="signal-meta">
+                        {% if signal.source_url %}
+                            <a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>
+                        {% endif %}
+
+                        {% if signal.source %}
+                            <span> · {{ signal.source.name|default:"-" }}</span>
+                        {% endif %}
+
+                        {% if signal.published_at %}
+                            <span> · {{ signal.published_at|date:"Y-m-d H:i" }}</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {% if signal.assessment_5w1h.assessment_quality %}
+                            <span class="assessment-badge assessment-{{ signal.assessment_5w1h.assessment_quality }}">
+                                {{ signal.assessment_5w1h.assessment_quality }}
+                            </span>
+                        {% elif signal.assessment_status == "failed" %}
+                            <span class="assessment-badge assessment-failed">
+                                failed
+                            </span>
+                        {% elif signal.assessment_status == "fallback" %}
+                            <span class="assessment-badge assessment-low_fallback">
+                                fallback
+                            </span>
+                        {% endif %}
+                    </div>
+
+                     <form method="post" action="{% url 'intel:signal_generate_assessment' signal.id %}" class="assessment-form">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-assessment">
+                            Generate 5W+1H
+                        </button>
+                    </form>
+
+                    {% if signal.assessment_summary %}
+                        <details class="assessment-detail" open>
+                            <summary>Hasil assessment</summary>
+
+                            <div class="detail-box assessment-box">
+                                <strong>Ringkasan:</strong><br>
+                                {{ signal.assessment_summary|linebreaksbr }}
+
+                                {% if signal.assessment_5w1h %}
+                                    <div class="assessment-meta">
+                                        <strong>Status:</strong> {{ signal.assessment_status|default:"-" }}<br>
+                                        {% if signal.assessment_5w1h.assessment_quality == "article_based" %}
+                                            <strong>Quality:</strong> Article-based<br>
+                                        {% elif signal.assessment_5w1h.assessment_quality == "article_based_partial" %}
+                                            <strong>Quality:</strong> Article-based partial<br>
+                                            <span class="small-muted">
+                                                Artikel berhasil dibuka, tetapi teks yang berhasil diekstrak masih terbatas.
+                                            </span><br>
+                                        {% elif signal.assessment_5w1h.assessment_quality == "low_fallback" %}
+                                            <strong>Quality:</strong> Low fallback<br>
+                                        {% else %}
+                                            <strong>Quality:</strong> {{ signal.assessment_5w1h.assessment_quality|default:"-" }}<br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.article_url %}
+                                            <strong>Artikel yang dipakai:</strong>
+                                            <a href="{{ signal.assessment_5w1h.article_url }}" target="_blank">
+                                                Buka artikel hasil fetch
+                                            </a><br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.fetch_mode %}
+                                            <strong>Fetch mode:</strong> {{ signal.assessment_5w1h.fetch_mode }}<br>
+                                        {% endif %}
+
+                                        {% if signal.assessment_5w1h.fetch_warning %}
+                                            <strong>Catatan fetch:</strong> {{ signal.assessment_5w1h.fetch_warning }}<br>
+                                        {% endif %}
+                                    </div>
+
+                                    <hr>
+
+                                    {% if signal.assessment_5w1h.assessment_quality == "low_fallback" or signal.assessment_status == "fallback" or signal.assessment_error %}
+                                        <hr>
+
+                                        <div class="url-warning-box">
+                                            <strong>Perlu koreksi URL artikel.</strong><br>
+                                            Artikel asli belum berhasil diambil. Paste URL artikel asli, lalu jalankan ulang assessment.
+                                        </div>
+
+                                        <details class="resolved-url-detail" open>
+                                            <summary>Update URL artikel asli</summary>
+
+                                            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                                                {% csrf_token %}
+
+                                                <input
+                                                    type="url"
+                                                    name="resolved_url"
+                                                    value="{{ signal.resolved_url|default:'' }}"
+                                                    placeholder="Paste URL artikel asli"
+                                                    class="resolved-url-input"
+                                                >
+
+                                                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                                                    Simpan & Re-assessment
+                                                </button>
+                                            </form>
+
+                                            {% if signal.resolved_url %}
+                                                <div class="small-muted" style="margin-top: 4px;">
+                                                    Resolved URL:
+                                                    <a href="{{ signal.resolved_url }}" target="_blank">Buka artikel asli</a>
+                                                    · {{ signal.url_resolution_method|default:"-" }}
+                                                </div>
+                                            {% endif %}
+                                        </details>
+                                    {% else %}
+                                        <details class="resolved-url-detail">
+                                            <summary>Perlu koreksi URL?</summary>
+
+                                            <form method="post" action="{% url 'intel:signal_update_resolved_url' signal.id %}" class="resolved-url-form">
+                                                {% csrf_token %}
+
+                                                <input
+                                                    type="url"
+                                                    name="resolved_url"
+                                                    value="{{ signal.resolved_url|default:'' }}"
+                                                    placeholder="Paste URL artikel asli jika hasil fetch salah"
+                                                    class="resolved-url-input"
+                                                >
+
+                                                <button type="submit" name="run_assessment" value="1" class="btn-url-assess">
+                                                    Simpan & Re-assessment
+                                                </button>
+                                            </form>
+
+                                            {% if signal.resolved_url %}
+                                                <div class="small-muted" style="margin-top: 4px;">
+                                                    Resolved URL:
+                                                    <a href="{{ signal.resolved_url }}" target="_blank">Buka artikel asli</a>
+                                                    · {{ signal.url_resolution_method|default:"-" }}
+                                                </div>
+                                            {% endif %}
+                                        </details>
+                                    {% endif %}
+                                {% endif %}
+
+                                {% if signal.assessment_generated_at %}
+                                    <hr>
+                                    <span class="small-muted">
+                                        Dibuat: {{ signal.assessment_generated_at|date:"Y-m-d H:i" }}
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
+
+                <td>
+                    <span class="pill pill-disease">
+                        {{ signal.disease_tag|default:"-" }}
+                    </span>
+                </td>
+
+                <td class="score-cell">
+                    <div class="score-edit-row">
+                        <form method="post" action="{% url 'intel:signal_quick_score' signal.id %}" class="score-box">
+                            {% csrf_token %}
+                            <input type="number" name="threat_score" value="{{  signal.threat_score|default:0 }}" min="0" max="100">
+                            <button type="submit">Ubah</button>
+                        </form>
+                    </div>
+
+                    <div class="confidence-badge" title="Confidence score hasil triage bertingkat">
+                        Confidence: {{ signal.confidence_score|default:0 }}%
+                    </div>
+
+                    {% if signal.risk_level %}
+                        <div class="risk-label risk-{{ signal.risk_level }}">
+                            {{ signal.risk_level }}
+                        </div>
+                    {% endif %}
+
+                    {% if signal.scoring_reason %}
+                        <details>
+                            <summary>Reasoning</summary>
+                            <div class="detail-box scoring-reason">
+                                {{ signal.scoring_reason|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
+                </td>
+
+                <td class="location-main-cell">
+                    {% if signal.primary_locations %}
+                        {% with pl=signal.primary_locations.0 %}
+                            <div class="location-title">
+                               {{ pl.location.display_name|default:pl.location.name|default:"-" }}
+                            </div>
+
+                            {% if pl.location.parent %}
+                                <div class="location-sub">
+                                    {{ pl.location.parent.display_name|default:pl.location.parent.name|default:"-" }}
+                                </div>
+                            {% endif %}
+
+                            <div class="location-method">
+                                {% if pl.method == "manual" %}
+                                    Manual correction
+                                {% elif pl.method == "alias" %}
+                                    Alias match
+                                {% elif pl.method == "gazetteer" %}
+                                    Gazetteer match
+                                {% else %}
+                                    {{ pl.method|default:"-" }}
+                                {% endif %}
+                                · Confidence: {{ pl.confidence|default:"-" }}
+                            </div>
+                        {% endwith %}
+                    {% else %}
+                        <div class="location-title muted">Belum match</div>
+                    {% endif %}
+
+                    {% if signal.cluster %}
+                        <div class="cluster-badge" title="Cluster tidak mengubah status signal; hanya membantu review analis">
+                            Cluster: {{ signal.cluster.disease_tag|default:"-" }} /
+                            {{ signal.cluster.location_name|default:"unknown_location" }}<br>
+                            {{ signal.cluster.date_start|default:"-" }} · {{ signal.cluster.signal_count }} signal
+                        </div>
+                    {% else %}
+                        <div class="small-muted" style="margin-top: 6px;">Belum masuk cluster</div>
+                    {% endif %}
+
+                    <details>
+                        <summary>Raw</summary>
+                        <div class="detail-box">
+                            <strong>Lokasi mentah:</strong>
+                            {{ signal.raw_location_text|default:"-" }}<br>
+
+                            <strong>Provinsi:</strong>
+                            {{ signal.admin_province|default:"-" }}<br>
+
+                            <strong>Kab/Kota:</strong>
+                            {{ signal.admin_kabkota|default:"-" }}
+                        </div>
+                    </details>
+                </td>
+
+                <td>
+                    <span class="geo-badge geo-{{ signal.geocode_status|default:'empty' }}">
+                        {{ signal.geocode_status|default:"-" }}
+                    </span>
+                </td>
+
+                <td>
+                    <span class="status-badge status-{{ signal.status|default:'raw' }}">
+                        {{ signal.status|default:"raw" }}
+                    </span>
+                </td>
+
+                <td class="actions">
+                    <div class="action-stack">
+                        <a href="{% url 'intel:geocode_manual_update' signal.id %}" class="btn btn-edit-location">
+                            Edit Lokasi
+                        </a>
+
+                        {% if signal.status == "raw" %}
+                            <form method="post" action="{% url 'intel:signal_validate' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-valid">Valid</button>
+                            </form>
+
+                            <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-noise">Noise</button>
+                            </form>
+                        {% elif signal.status == "validated" %}
+                            <form method="post" action="{% url 'intel:signal_approve' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-approve">Approve Mapping</button>
+                            </form>
+
+                            <form method="post" action="{% url 'intel:signal_noise' signal.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-noise">Noise</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <!-- <tr>
+                <td colspan="8">Belum ada data raw signal.</td>
+            </tr> -->
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+    {% endif %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
+<script>
+    $(document).ready(function () {
+        const tableSelector = '#rawSignalsTable';
+        const currentSort = "{{ sort|default:'-published_at'|escapejs }}";
+
+        // Mapping kolom DataTables ke parameter sort backend.
+        // Sorting tetap global karena dieksekusi oleh queryset Django,
+        // bukan hanya sorting 25 data yang sedang tampil di halaman.
+        const sortMap = {
+            0: { asc: "id", desc: "-id" },
+            1: { asc: "title", desc: "-title" },
+            2: { asc: "disease_tag", desc: "-disease_tag" },
+            3: { asc: "threat_score", desc: "-threat_score" },
+            4: { asc: "raw_location_text", desc: "-raw_location_text" },
+            5: { asc: "geocode_status", desc: "-geocode_status" },
+            6: { asc: "status", desc: "-status" }
+        };
+
+        const initialOrderMap = {
+            "id": [0, "asc"],
+            "-id": [0, "desc"],
+            "title": [1, "asc"],
+            "-title": [1, "desc"],
+            "disease_tag": [2, "asc"],
+            "-disease_tag": [2, "desc"],
+            "threat_score": [3, "asc"],
+            "-threat_score": [3, "desc"],
+            "confidence_score": [3, "asc"],
+            "-confidence_score": [3, "desc"],
+            "raw_location_text": [4, "asc"],
+            "-raw_location_text": [4, "desc"],
+            "geocode_status": [5, "asc"],
+            "-geocode_status": [5, "desc"],
+            "status": [6, "asc"],
+            "-status": [6, "desc"]
+        };
+
+        if ($.fn.DataTable.isDataTable(tableSelector)) {
+            $(tableSelector).DataTable().destroy();
+        }
+
+        let allowRedirect = false;
+
+        const table = $(tableSelector).DataTable({
+            paging: false,
+            info: false,
+            searching: true,
+            ordering: true,
+            order: initialOrderMap[currentSort] ? [initialOrderMap[currentSort]] : [],
+            autoWidth: false,
+            scrollX: false,
+            fixedHeader: false,
+            responsive: false,
+            destroy: true,
+            language: {
+                search: "Cari cepat:",
+                zeroRecords: "Tidak ada data yang cocok",
+                emptyTable: "Belum ada data raw signal"
+            },
+            columns: [
+                { width: "60px" },
+                { width: "46%" },
+                { width: "110px" },
+                { width: "170px" },
+                { width: "220px" },
+                { width: "135px" },
+                { width: "95px" },
+                { width: "190px", orderable: false, searchable: false }
+            ],
+            initComplete: function () {
+                allowRedirect = true;
+            }
+        });
+
+        table.on("order.dt", function () {
+            if (!allowRedirect) {
+                return;
+            }
+
+            const order = table.order();
+            if (!order || !order.length) {
+                return;
+            }
+
+            const columnIndex = order[0][0];
+            const direction = order[0][1];
+            const mappedSort = sortMap[columnIndex] ? sortMap[columnIndex][direction] : null;
+
+            if (!mappedSort || mappedSort === currentSort) {
+                return;
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            params.set("sort", mappedSort);
+            params.delete("page");
+
+            window.location.search = params.toString();
+        });
+
+        setTimeout(function () {
+            table.columns.adjust();
+        }, 200);
+    });
+</script>
+
+{% endblock %}

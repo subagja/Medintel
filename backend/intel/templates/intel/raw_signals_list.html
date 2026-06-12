@@ -663,6 +663,93 @@
         font-weight: 700;
         color: #7a3d00;
     }
+
+    .triage-db-badge,
+    .recommendation-badge,
+    .confidence-badge,
+    .cluster-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .triage-db-urgent {
+        background: #fde8e8;
+        color: #b00020;
+        border: 1px solid #e5aaaa;
+    }
+
+    .triage-db-high {
+        background: #fff0df;
+        color: #9a4d00;
+        border: 1px solid #efc28f;
+    }
+
+    .triage-db-medium {
+        background: #eef3ff;
+        color: #2451a6;
+        border: 1px solid #aebff0;
+    }
+
+    .triage-db-low {
+        background: #f1f1f1;
+        color: #555;
+        border: 1px solid #d5d5d5;
+    }
+
+    .triage-db-noise_candidate {
+        background: #333;
+        color: #fff;
+        border: 1px solid #333;
+    }
+
+    .recommendation-approve {
+        background: var(--green-bg);
+        color: var(--green-text);
+        border: 1px solid #7acb8a;
+    }
+
+    .recommendation-review {
+        background: var(--blue-bg);
+        color: var(--blue-text);
+        border: 1px solid #aebff0;
+    }
+
+    .recommendation-fix_location {
+        background: var(--yellow-bg);
+        color: var(--yellow-text);
+        border: 1px solid #efd47a;
+    }
+
+    .recommendation-noise,
+    .recommendation-duplicate {
+        background: #333;
+        color: #fff;
+        border: 1px solid #333;
+    }
+
+    .confidence-badge {
+        background: #f7f7f7;
+        color: #333;
+        border: 1px solid #ccc;
+        margin-top: 6px;
+    }
+
+    .cluster-badge {
+        background: #f1ecff;
+        color: var(--primary);
+        border: 1px solid #b99be8;
+        margin-top: 6px;
+        white-space: normal;
+        line-height: 1.25;
+    }
+
+    .triage-db-reason {
+        max-width: 560px;
+    }
     .btn-edit-location {
         background: #fff0df;
         color: #9a4d00;
@@ -748,6 +835,26 @@
             </option>
         </select>
 
+        <select name="triage_priority">
+            <option value="">Semua priority sistem</option>
+            {% for value, label in triage_priority_choices %}
+                <option value="{{ value }}" {% if triage_priority == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <select name="approval_recommendation">
+            <option value="">Semua rekomendasi approval</option>
+            {% for value, label in approval_recommendation_choices %}
+                <option value="{{ value }}" {% if approval_recommendation == value %}selected{% endif %}>
+                    {{ label }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <input type="number" name="min_confidence" min="0" max="100" placeholder="Min confidence" value="{{ min_confidence }}">
+
         <select name="province">
             <option value="">Semua provinsi</option>
             {% for item in provinces %}
@@ -775,6 +882,8 @@
             <option value="published_at" {% if sort == "published_at" %}selected{% endif %}>Tanggal terlama</option>
             <option value="-threat_score" {% if sort == "-threat_score" %}selected{% endif %}>Skor tertinggi</option>
             <option value="threat_score" {% if sort == "threat_score" %}selected{% endif %}>Skor terendah</option>
+            <option value="-confidence_score" {% if sort == "-confidence_score" %}selected{% endif %}>Confidence tertinggi</option>
+            <option value="confidence_score" {% if sort == "confidence_score" %}selected{% endif %}>Confidence terendah</option>
             <option value="title" {% if sort == "title" %}selected{% endif %}>Judul A-Z</option>
             <option value="-title" {% if sort == "-title" %}selected{% endif %}>Judul Z-A</option>
         </select>
@@ -836,6 +945,24 @@
                             </span>
                         {% endif %}
 
+                        {% if signal.triage_priority %}
+                            <span class="triage-db-badge triage-db-{{ signal.triage_priority }}" title="Priority hasil triage bertingkat">
+                                Priority: {{ signal.get_triage_priority_display|default:signal.triage_priority }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.approval_recommendation %}
+                            <span class="recommendation-badge recommendation-{{ signal.approval_recommendation }}" title="Rekomendasi approval sistem">
+                                {{ signal.get_approval_recommendation_display|default:signal.approval_recommendation }}
+                            </span>
+                        {% endif %}
+
+                        {% if signal.confidence_score is not None %}
+                            <span class="confidence-badge" title="Confidence score = keyakinan kualitas data, bukan skor risiko">
+                                Confidence {{ signal.confidence_score }}%
+                            </span>
+                        {% endif %}
+
                         {% if signal.has_duplicate_warning or signal.duplicate_count %}
                             <a
                                 href="{% url 'intel:signal_duplicate_review' signal.id %}"
@@ -847,6 +974,15 @@
                             </a>
                         {% endif %}
                     </div>
+
+                    {% if signal.triage_reason %}
+                        <details>
+                            <summary>Alasan triage</summary>
+                            <div class="detail-box triage-db-reason">
+                                {{ signal.triage_reason|linebreaksbr }}
+                            </div>
+                        </details>
+                    {% endif %}
 
                     <div class="signal-meta">
                         {% if signal.source_url %}
@@ -1018,6 +1154,10 @@
                         </form>
                     </div>
 
+                    <div class="confidence-badge" title="Confidence score hasil triage bertingkat">
+                        Confidence: {{ signal.confidence_score|default:0 }}%
+                    </div>
+
                     {% if signal.risk_level %}
                         <div class="risk-label risk-{{ signal.risk_level }}">
                             {{ signal.risk_level }}
@@ -1062,6 +1202,16 @@
                         {% endwith %}
                     {% else %}
                         <div class="location-title muted">Belum match</div>
+                    {% endif %}
+
+                    {% if signal.cluster %}
+                        <div class="cluster-badge" title="Cluster tidak mengubah status signal; hanya membantu review analis">
+                            Cluster: {{ signal.cluster.disease_tag|default:"-" }} /
+                            {{ signal.cluster.location_name|default:"unknown_location" }}<br>
+                            {{ signal.cluster.date_start|default:"-" }} · {{ signal.cluster.signal_count }} signal
+                        </div>
+                    {% else %}
+                        <div class="small-muted" style="margin-top: 6px;">Belum masuk cluster</div>
                     {% endif %}
 
                     <details>
@@ -1132,15 +1282,15 @@
 
 <div class="pagination">
     {% if page_obj.has_previous %}
-        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
-        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
+        <a href="?page=1&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Sebelumnya</a>
     {% endif %}
 
     <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
 
     {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
+        <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&disease={{ disease }}&geocode_status={{ geocode_status }}&assessment={{ assessment }}&triage={{ triage }}&triage_priority={{ triage_priority }}&approval_recommendation={{ approval_recommendation }}&min_confidence={{ min_confidence }}&province={{ province_id }}&city={{ city_id }}&date_from={{ date_from }}&date_to={{ date_to }}&sort={{ sort }}">Akhir</a>
     {% endif %}
 </div>
 
@@ -1174,6 +1324,8 @@
             "-disease_tag": [2, "desc"],
             "threat_score": [3, "asc"],
             "-threat_score": [3, "desc"],
+            "confidence_score": [3, "asc"],
+            "-confidence_score": [3, "desc"],
             "raw_location_text": [4, "asc"],
             "-raw_location_text": [4, "desc"],
             "geocode_status": [5, "asc"],

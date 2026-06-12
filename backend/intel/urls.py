@@ -8,6 +8,9 @@ urlpatterns = [
     path("dashboard/", views.dashboard_overview, name="dashboard"),
 
     path("raw-signals/", views.raw_signals_list, name="raw_signals"),
+    path("triage/clusters/", views.cluster_triage_queue, name="cluster_triage_queue"),
+    path("triage/clusters/<int:pk>/", views.cluster_detail, name="cluster_detail"),
+    path("triage/clusters/<int:pk>/action/", views.cluster_signal_action, name="cluster_signal_action"),
     path("verified-signals/", views.verified_signals_list, name="verified_signals"),
 
     path("debug/signal-counts/", views.production_signal_debug, name="production_signal_debug"),
