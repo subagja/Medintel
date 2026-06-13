@@ -6,7 +6,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from intel.services.signal_assessment import build_assessment
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, FileResponse, Http404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
@@ -23,6 +23,7 @@ from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 from intel.services.signal_assessment import build_assessment
 from datetime import timedelta
+from collections import defaultdict
 from .forms import (
     GeocodeManualUpdateForm,
     LocationForm,
@@ -44,6 +45,306 @@ from .models import (
     Alert,
     PublisherDomainAlias,
 )
+
+
+def _stable_disease_color(disease_name):
+    """
+    Deterministic color by disease name so the same disease keeps the same color.
+    """
+    palette = [
+        "#2fb344",  # green
+        "#7c3aed",  # purple
+        "#2563eb",  # blue
+        "#e11d48",  # rose
+        "#f97316",  # orange
+        "#0891b2",  # cyan
+        "#db2777",  # pink
+        "#16a34a",  # emerald
+        "#ca8a04",  # amber
+        "#4f46e5",  # indigo
+        "#dc2626",  # red
+        "#0f766e",  # teal
+    ]
+    if not disease_name:
+        return "#6b7280"
+    idx = abs(hash(str(disease_name).lower().strip())) % len(palette)
+    return palette[idx]
+
+
+def _date_range_for_box_map(request):
+    days_raw = (request.GET.get("days") or "7").strip()
+    date_to_raw = (request.GET.get("date_to") or "").strip()
+
+    try:
+        days = int(days_raw)
+    except Exception:
+        days = 7
+
+    if days not in [7, 14, 30, 60, 90]:
+        days = 7
+
+    if date_to_raw:
+        try:
+            end_date = timezone.datetime.fromisoformat(date_to_raw).date()
+        except Exception:
+            end_date = timezone.now().date()
+    else:
+        end_date = timezone.now().date()
+
+    start_date = end_date - timedelta(days=days - 1)
+    return days, start_date, end_date
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def disease_box_map(request):
+    """
+    Separate documentation-style disease map.
+
+    Main idea:
+    - Left side: neutral Indonesia map.
+    - Right side: inset boxes that show province mini-maps.
+    - Each box represents a high-volume disease-location combination.
+    - Ranking is based on total signals, high-risk count, and average score.
+    """
+    days, start_date, end_date = _date_range_for_box_map(request)
+    selected_disease = (request.GET.get("disease") or "").strip()
+    status_filter = (request.GET.get("status_filter") or "operational").strip()
+    box_limit_raw = (request.GET.get("box_limit") or "10").strip()
+
+    try:
+        box_limit = int(box_limit_raw)
+    except Exception:
+        box_limit = 10
+
+    if box_limit not in [6, 8, 10, 12, 16]:
+        box_limit = 10
+
+    # Reuse your existing report status logic.
+    # If status_filter is sent through GET, get_report_status_config() reads it.
+    _, selected_statuses, status_label = get_report_status_config(request)
+
+    base_qs = (
+        Signal.objects.filter(
+            published_at__date__gte=start_date,
+            published_at__date__lte=end_date,
+            status__in=selected_statuses,
+        )
+        .exclude(status="noise")
+        .select_related("source")
+    )
+
+    if selected_disease:
+        base_qs = base_qs.filter(disease_tag__iexact=selected_disease)
+
+    links = (
+        SignalLocation.objects.filter(
+            signal__in=base_qs,
+            is_primary=True,
+            location__isnull=False,
+        )
+        .select_related("signal", "signal__source", "location", "location__parent")
+        .order_by("-signal__threat_score", "-signal__published_at", "-signal__id")
+    )
+
+    province_map = {}
+    disease_location_map = defaultdict(lambda: {
+        "province_code": "",
+        "province_name": "",
+        "disease_tag": "",
+        "total": 0,
+        "high_risk_total": 0,
+        "score_sum": 0.0,
+        "signals": [],
+    })
+
+    for link in links:
+        signal = link.signal
+        loc = link.location
+        if not signal or not loc:
+            continue
+
+        # Promote city/regency to parent province.
+        if loc.level == "province":
+            province_code = loc.province_code or str(loc.id)
+            province_name = loc.display_name or loc.name or "-"
+        elif loc.parent:
+            province_code = loc.parent.province_code or loc.province_code or str(loc.parent.id)
+            province_name = loc.parent.display_name or loc.parent.name or "-"
+        else:
+            province_code = loc.province_code or str(loc.id)
+            province_name = loc.display_name or loc.name or "-"
+
+        disease = signal.disease_tag or "Tidak diketahui"
+        score = signal.threat_score or 0
+        is_high_risk = score >= 70
+
+        if province_code not in province_map:
+            province_map[province_code] = {
+                "province_code": province_code,
+                "province_name": province_name,
+                "total": 0,
+                "high_risk_total": 0,
+                "score_sum": 0.0,
+                "diseases": defaultdict(int),
+            }
+
+        province_map[province_code]["total"] += 1
+        province_map[province_code]["score_sum"] += score
+        province_map[province_code]["diseases"][disease] += 1
+        if is_high_risk:
+            province_map[province_code]["high_risk_total"] += 1
+
+        key = (province_code, disease)
+        row = disease_location_map[key]
+        row["province_code"] = province_code
+        row["province_name"] = province_name
+        row["disease_tag"] = disease
+        row["total"] += 1
+        row["score_sum"] += score
+        if is_high_risk:
+            row["high_risk_total"] += 1
+
+        if len(row["signals"]) < 4:
+            row["signals"].append({
+                "id": signal.id,
+                "title": signal.title or "-",
+                "score": score,
+                "published_at": signal.published_at.strftime("%Y-%m-%d") if signal.published_at else "",
+                "source": signal.source.name if signal.source else "",
+                "url": signal.source_url or "",
+            })
+
+    # Province summary used by the main map and recap table.
+    province_rows = []
+    for item in province_map.values():
+        dominant_disease = "-"
+        dominant_total = 0
+        if item["diseases"]:
+            dominant_disease, dominant_total = sorted(
+                item["diseases"].items(),
+                key=lambda x: (-x[1], x[0])
+            )[0]
+
+        total = item["total"] or 0
+        avg_score = round(item["score_sum"] / total, 2) if total else 0
+        province_rows.append({
+            "province_code": item["province_code"],
+            "province_name": item["province_name"],
+            "total": total,
+            "high_risk_total": item["high_risk_total"],
+            "avg_score": avg_score,
+            "dominant_disease": dominant_disease,
+            "dominant_total": dominant_total,
+        })
+
+    province_rows.sort(key=lambda x: (-x["total"], -x["avg_score"], x["province_name"]))
+
+    # Box ranking: disease-location combinations with highest volume.
+    # This matches your request: boxes represent diseases that are currently high.
+    top_boxes = []
+    for item in disease_location_map.values():
+        total = item["total"] or 0
+        avg_score = round(item["score_sum"] / total, 2) if total else 0
+        disease = item["disease_tag"] or "Tidak diketahui"
+        top_boxes.append({
+            "province_code": item["province_code"],
+            "province_name": item["province_name"],
+            "disease_tag": disease,
+            "total": total,
+            "high_risk_total": item["high_risk_total"],
+            "avg_score": avg_score,
+            "color": _stable_disease_color(disease),
+            "signals": item["signals"],
+        })
+
+    top_boxes.sort(
+        key=lambda x: (-x["total"], -x["high_risk_total"], -x["avg_score"], x["province_name"], x["disease_tag"])
+    )
+    top_boxes = top_boxes[:box_limit]
+
+    # Disease legend from boxes only, grouped by disease.
+    disease_legend_map = {}
+    for box in top_boxes:
+        disease = box["disease_tag"] or "Tidak diketahui"
+        if disease not in disease_legend_map:
+            disease_legend_map[disease] = {
+                "disease_tag": disease,
+                "color": box["color"],
+                "total": 0,
+                "locations": 0,
+            }
+        disease_legend_map[disease]["total"] += box["total"]
+        disease_legend_map[disease]["locations"] += 1
+
+    disease_legend = sorted(
+        disease_legend_map.values(),
+        key=lambda x: (-x["total"], x["disease_tag"])
+    )
+
+    disease_choices = (
+        Signal.objects.exclude(status="noise")
+        .exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values_list("disease_tag", flat=True)
+        .distinct()
+        .order_by("disease_tag")
+    )
+
+    total_signals = base_qs.count()
+    high_risk_count = base_qs.filter(threat_score__gte=70).count()
+    avg_score = round(base_qs.aggregate(avg=Avg("threat_score"))["avg"] or 0, 2)
+
+    context = {
+        "page_title": "Disease Box Map",
+        "days": str(days),
+        "box_limit": str(box_limit),
+        "selected_disease": selected_disease,
+        "status_filter": status_filter,
+        "status_label": status_label,
+        "date_to": end_date.isoformat(),
+        "date_from": start_date.isoformat(),
+        "disease_choices": disease_choices,
+        "province_rows": province_rows,
+        "top_boxes": top_boxes,
+        "disease_legend": disease_legend,
+        "province_rows_json": json.dumps(province_rows, default=str),
+        "top_boxes_json": json.dumps(top_boxes, default=str),
+        "disease_legend_json": json.dumps(disease_legend, default=str),
+        "total_signals": total_signals,
+        "high_risk_count": high_risk_count,
+        "avg_score": avg_score,
+        "mapped_provinces": len(province_rows),
+    }
+    return render(request, "intel/disease_box_map.html", context)
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def geojson_file(request, geo_type):
+    """
+    Menyajikan file GeoJSON dari folder backend/data/geo/
+    agar file batas wilayah tidak perlu dipindahkan ke static.
+    """
+
+    allowed_files = {
+        "indonesia-provinces": "indonesia_provinces.geojson",
+        "indonesia-kabkota": "indonesia_kabkota.geojson",
+    }
+
+    filename = allowed_files.get(geo_type)
+    if not filename:
+        raise Http404("GeoJSON tidak dikenali.")
+
+    base_dir = Path(settings.BASE_DIR)
+    geojson_path = base_dir / "data" / "geo" / filename
+
+    if not geojson_path.exists():
+        raise Http404(f"File GeoJSON tidak ditemukan: {filename}")
+
+    return FileResponse(
+        open(geojson_path, "rb"),
+        content_type="application/geo+json"
+    )
 
 def kabkota_map_view(request, province_id):
     province = get_object_or_404(
@@ -3349,6 +3650,334 @@ def signal_quick_score(request, pk):
 
     return redirect("intel:raw_signals")
 
+
+
+def _trend_status_config(status_filter):
+    """
+    Status filter khusus halaman Disease Trend.
+    Dibuat lokal agar tidak mengganggu logic report existing.
+    """
+    if status_filter == "approved":
+        return ["approved"], "Approved Mapping"
+    if status_filter == "validated":
+        return ["validated", "approved"], "Validated + Approved"
+    if status_filter == "raw":
+        return ["raw"], "Raw Crawling"
+    return ["raw", "validated", "approved"], "Data Operasional Crawling"
+
+
+def _trend_risk_label(avg_score, high_risk_total, total):
+    avg_score = avg_score or 0
+    high_risk_total = high_risk_total or 0
+    total = total or 0
+
+    if high_risk_total >= 3 or avg_score >= 70:
+        return "Tinggi"
+    if high_risk_total >= 1 or avg_score >= 50:
+        return "Sedang-Tinggi"
+    if avg_score >= 35 or total >= 3:
+        return "Sedang"
+    return "Rendah"
+
+
+def _trend_label(current_total, previous_total):
+    current_total = current_total or 0
+    previous_total = previous_total or 0
+
+    if previous_total <= 0 and current_total > 0:
+        return "Baru/Muncul"
+    if current_total > previous_total:
+        return "Naik"
+    if current_total < previous_total:
+        return "Turun"
+    return "Stabil"
+
+
+def _safe_growth_percent(current_total, previous_total):
+    current_total = current_total or 0
+    previous_total = previous_total or 0
+
+    if previous_total <= 0:
+        return 100 if current_total > 0 else 0
+    return round(((current_total - previous_total) / previous_total) * 100, 2)
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def disease_trends(request):
+    """
+    Disease Trend Intelligence.
+
+    Tujuan:
+    - Menampilkan tren penyakit berbasis OSINT.
+    - Membandingkan periode berjalan dengan periode sebelumnya.
+    - Memprioritaskan penyakit dan lokasi yang perlu dipantau analis.
+
+    Catatan implementasi:
+    - Tidak menambah model/migrasi.
+    - Menggunakan Signal + SignalLocation existing.
+    """
+    try:
+        days = int(request.GET.get("days", "7"))
+    except ValueError:
+        days = 7
+
+    if days not in [7, 14, 30]:
+        days = 7
+
+    selected_disease = (request.GET.get("disease") or "").strip()
+    status_filter = (request.GET.get("status_filter") or "operational").strip()
+    selected_statuses, status_label = _trend_status_config(status_filter)
+
+    date_to_raw = (request.GET.get("date_to") or "").strip()
+    if date_to_raw:
+        try:
+            date_to_obj = timezone.datetime.fromisoformat(date_to_raw).date()
+        except ValueError:
+            date_to_obj = timezone.now().date()
+    else:
+        date_to_obj = timezone.now().date()
+
+    current_start = date_to_obj - timedelta(days=days - 1)
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=days - 1)
+
+    current_qs = (
+        Signal.objects.filter(
+            published_at__date__gte=current_start,
+            published_at__date__lte=date_to_obj,
+            status__in=selected_statuses,
+        )
+        .exclude(status="noise")
+        .select_related("source")
+    )
+
+    previous_qs = (
+        Signal.objects.filter(
+            published_at__date__gte=previous_start,
+            published_at__date__lte=previous_end,
+            status__in=selected_statuses,
+        )
+        .exclude(status="noise")
+    )
+
+    if selected_disease:
+        current_qs = current_qs.filter(disease_tag__iexact=selected_disease)
+        previous_qs = previous_qs.filter(disease_tag__iexact=selected_disease)
+
+    current_total = current_qs.count()
+    previous_total = previous_qs.count()
+    total_growth_abs = current_total - previous_total
+    total_growth_percent = _safe_growth_percent(current_total, previous_total)
+
+    high_risk_total = current_qs.filter(threat_score__gte=70).count()
+    avg_score = round(current_qs.aggregate(avg=Avg("threat_score"))["avg"] or 0, 2)
+    active_disease_count = (
+        current_qs.exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values("disease_tag")
+        .distinct()
+        .count()
+    )
+
+    current_disease_rows = list(
+        current_qs.exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values("disease_tag")
+        .annotate(
+            total=Count("id", distinct=True),
+            avg_score=Avg("threat_score"),
+            high_risk_total=Count("id", filter=Q(threat_score__gte=70), distinct=True),
+            first_signal_at=Min("published_at"),
+            last_signal_at=Max("published_at"),
+        )
+        .order_by("-total", "-avg_score", "disease_tag")
+    )
+
+    previous_disease_map = {
+        row["disease_tag"]: row["total"]
+        for row in previous_qs.exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values("disease_tag")
+        .annotate(total=Count("id", distinct=True))
+    }
+
+    disease_trend_rows = []
+    for row in current_disease_rows:
+        disease_name = row["disease_tag"] or "-"
+        total = row["total"] or 0
+        prev_total = previous_disease_map.get(disease_name, 0)
+        growth_abs = total - prev_total
+        growth_percent = _safe_growth_percent(total, prev_total)
+        row_avg = round(row["avg_score"] or 0, 2)
+        row_high = row["high_risk_total"] or 0
+
+        disease_trend_rows.append({
+            "disease": disease_name,
+            "total": total,
+            "previous_total": prev_total,
+            "growth_abs": growth_abs,
+            "growth_percent": growth_percent,
+            "trend_label": _trend_label(total, prev_total),
+            "avg_score": row_avg,
+            "high_risk_total": row_high,
+            "risk_label": _trend_risk_label(row_avg, row_high, total),
+            "first_signal_at": row["first_signal_at"],
+            "last_signal_at": row["last_signal_at"],
+        })
+
+    rising_disease_rows = sorted(
+        disease_trend_rows,
+        key=lambda x: (x["growth_abs"], x["growth_percent"], x["total"], x["avg_score"]),
+        reverse=True,
+    )[:10]
+
+    priority_disease_rows = sorted(
+        disease_trend_rows,
+        key=lambda x: (x["high_risk_total"], x["avg_score"], x["total"], x["growth_abs"]),
+        reverse=True,
+    )[:10]
+
+    top_location_rows = list(
+        SignalLocation.objects.filter(
+            signal__in=current_qs,
+            is_primary=True,
+            location__isnull=False,
+        )
+        .select_related("location", "location__parent")
+        .values(
+            "location_id",
+            "location__display_name",
+            "location__name",
+            "location__level",
+            "location__parent__display_name",
+            "location__parent__name",
+        )
+        .annotate(
+            total=Count("signal_id", distinct=True),
+            avg_score=Avg("signal__threat_score"),
+            high_risk_total=Count("signal_id", filter=Q(signal__threat_score__gte=70), distinct=True),
+        )
+        .order_by("-total", "-avg_score", "location__display_name")[:15]
+    )
+
+    normalized_locations = []
+    for item in top_location_rows:
+        loc_name = item["location__display_name"] or item["location__name"] or "-"
+        parent_name = item["location__parent__display_name"] or item["location__parent__name"] or ""
+        avg_loc_score = round(item["avg_score"] or 0, 2)
+        normalized_locations.append({
+            "location_id": item["location_id"],
+            "location_name": loc_name,
+            "parent_name": parent_name,
+            "level": item["location__level"] or "-",
+            "total": item["total"] or 0,
+            "avg_score": avg_loc_score,
+            "high_risk_total": item["high_risk_total"] or 0,
+            "risk_label": _trend_risk_label(avg_loc_score, item["high_risk_total"] or 0, item["total"] or 0),
+        })
+
+    top_disease_names = [item["disease"] for item in disease_trend_rows[:5]]
+    daily_rows = list(
+        current_qs.exclude(published_at__isnull=True)
+        .exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .filter(disease_tag__in=top_disease_names if top_disease_names else [])
+        .annotate(day=TruncDate("published_at"))
+        .values("day", "disease_tag")
+        .annotate(total=Count("id", distinct=True))
+        .order_by("day", "disease_tag")
+    )
+
+    day_labels = []
+    cursor = current_start
+    while cursor <= date_to_obj:
+        day_labels.append(cursor)
+        cursor += timedelta(days=1)
+
+    daily_map = {
+        (row["day"], row["disease_tag"]): row["total"]
+        for row in daily_rows
+        if row["day"]
+    }
+
+    chart_series = []
+    for disease_name in top_disease_names:
+        chart_series.append({
+            "label": disease_name,
+            "data": [daily_map.get((day, disease_name), 0) for day in day_labels],
+        })
+
+    chart_data = {
+        "labels": [day.strftime("%d/%m") for day in day_labels],
+        "series": chart_series,
+    }
+
+    recent_priority_signals = (
+        current_qs.filter(Q(threat_score__gte=70) | Q(triage_priority__in=["urgent", "high"]))
+        .select_related("source", "cluster")
+        .order_by("-threat_score", "-published_at", "-created_at")[:15]
+    )
+
+    disease_choices = (
+        Signal.objects.exclude(status="noise")
+        .exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values_list("disease_tag", flat=True)
+        .distinct()
+        .order_by("disease_tag")
+    )
+
+    top_rising = rising_disease_rows[0] if rising_disease_rows else None
+    top_priority = priority_disease_rows[0] if priority_disease_rows else None
+    top_location = normalized_locations[0] if normalized_locations else None
+
+    narrative_items = []
+    if top_rising:
+        narrative_items.append(
+            f"{top_rising['disease']} menjadi penyakit dengan kenaikan paling menonjol, dari {top_rising['previous_total']} menjadi {top_rising['total']} signal pada periode ini."
+        )
+    if top_priority:
+        narrative_items.append(
+            f"{top_priority['disease']} perlu diprioritaskan karena memiliki {top_priority['high_risk_total']} signal high-risk dengan rata-rata skor {top_priority['avg_score']}."
+        )
+    if top_location:
+        narrative_items.append(
+            f"Konsentrasi lokasi tertinggi berada pada {top_location['location_name']} dengan {top_location['total']} signal dan rata-rata skor {top_location['avg_score']}."
+        )
+    if not narrative_items:
+        narrative_items.append("Belum terdapat tren penyakit yang menonjol pada parameter yang dipilih.")
+
+    context = {
+        "page_title": "Disease Trend Intelligence",
+        "days": days,
+        "status_filter": status_filter,
+        "status_label": status_label,
+        "selected_disease": selected_disease,
+        "date_to": date_to_obj.isoformat(),
+        "current_start": current_start,
+        "current_end": date_to_obj,
+        "previous_start": previous_start,
+        "previous_end": previous_end,
+        "current_total": current_total,
+        "previous_total": previous_total,
+        "total_growth_abs": total_growth_abs,
+        "total_growth_percent": total_growth_percent,
+        "active_disease_count": active_disease_count,
+        "high_risk_total": high_risk_total,
+        "avg_score": avg_score,
+        "disease_trend_rows": disease_trend_rows[:20],
+        "rising_disease_rows": rising_disease_rows,
+        "priority_disease_rows": priority_disease_rows,
+        "top_location_rows": normalized_locations,
+        "recent_priority_signals": recent_priority_signals,
+        "disease_choices": disease_choices,
+        "chart_data_json": json.dumps(chart_data, default=str),
+        "narrative_items": narrative_items,
+    }
+
+    return render(request, "intel/disease_trends.html", context)
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def dashboard_overview(request):
@@ -4947,3 +5576,189 @@ def publisher_alias_toggle_active(request, pk):
     state = "aktif" if obj.is_active else "nonaktif"
     messages.success(request, f'Publisher alias "{obj.alias}" sekarang {state}.')
     return redirect(request.META.get("HTTP_REFERER", "intel:publisher_alias_manager"))
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def disease_choropleth_map(request):
+    """
+    Peta choropleth statis berbasis GeoJSON lokal.
+    Tujuan: mengganti peta tile/marker yang bergantung internet menjadi peta tematik
+    seperti gambar publikasi ilmiah: wilayah diberi warna berdasarkan metrik.
+
+    Syarat file batas wilayah:
+    backend/intel/static/intel/geo/indonesia_provinces.geojson
+
+    Properti GeoJSON yang bisa dibaca:
+    - province_code / kode / KODE / Kode / code
+    - province_name / name / NAME_1 / Propinsi / PROVINSI
+    """
+    metric = (request.GET.get("metric") or "signal_count").strip()
+    disease = (request.GET.get("disease") or "").strip()
+    status_filter = (request.GET.get("status_filter") or "operational").strip()
+    days = int(request.GET.get("days") or 30)
+
+    if days not in [7, 14, 30, 60, 90]:
+        days = 30
+
+    date_to = (request.GET.get("date_to") or "").strip()
+    if date_to:
+        date_to_obj = timezone.datetime.fromisoformat(date_to).date()
+    else:
+        date_to_obj = timezone.now().date()
+    date_from_obj = date_to_obj - timedelta(days=days - 1)
+
+    if status_filter == "approved":
+        statuses = ["approved"]
+        status_label = "Approved Mapping"
+    elif status_filter == "validated":
+        statuses = ["validated", "approved"]
+        status_label = "Validated + Approved"
+    elif status_filter == "raw":
+        statuses = ["raw"]
+        status_label = "Raw Crawling"
+    else:
+        statuses = ["raw", "validated", "approved"]
+        status_label = "Data Operasional Crawling"
+
+    base_qs = (
+        SignalLocation.objects.filter(
+            is_primary=True,
+            location__isnull=False,
+            signal__status__in=statuses,
+            signal__published_at__date__gte=date_from_obj,
+            signal__published_at__date__lte=date_to_obj,
+        )
+        .exclude(signal__status="noise")
+        .select_related("signal", "location", "location__parent", "signal__source")
+    )
+
+    if disease:
+        base_qs = base_qs.filter(signal__disease_tag__iexact=disease)
+
+    province_map = {}
+    seen_signal_per_province = set()
+
+    def _province_from_location(loc):
+        if not loc:
+            return None
+        if loc.level == "province":
+            return loc
+        if loc.parent and loc.parent.level == "province":
+            return loc.parent
+        return None
+
+    for link in base_qs:
+        signal = link.signal
+        loc = link.location
+        province = _province_from_location(loc)
+        if not province:
+            continue
+
+        province_code = province.province_code or normalize_region_code(province.display_name or province.name)
+        province_name = province.display_name or province.name or province_code
+        key = province_code
+
+        province_map.setdefault(key, {
+            "region_key": key,
+            "province_code": province_code,
+            "province_name": province_name,
+            "signal_ids": set(),
+            "signal_count": 0,
+            "high_risk_count": 0,
+            "score_sum": 0,
+            "max_score": 0,
+            "diseases": {},
+            "top_signal_title": "",
+            "top_signal_url": "",
+            "top_signal_score": 0,
+        })
+
+        unique_pair = (key, signal.id)
+        if unique_pair in seen_signal_per_province:
+            continue
+        seen_signal_per_province.add(unique_pair)
+
+        row = province_map[key]
+        score = signal.threat_score or 0
+        disease_name = signal.disease_tag or "Tidak terklasifikasi"
+
+        row["signal_ids"].add(signal.id)
+        row["signal_count"] += 1
+        row["score_sum"] += score
+        row["max_score"] = max(row["max_score"], score)
+        if score >= 70 or signal.is_high_risk:
+            row["high_risk_count"] += 1
+        row["diseases"][disease_name] = row["diseases"].get(disease_name, 0) + 1
+
+        if score >= row["top_signal_score"]:
+            row["top_signal_title"] = signal.title or "-"
+            row["top_signal_url"] = signal.source_url or ""
+            row["top_signal_score"] = score
+
+    rows = []
+    for item in province_map.values():
+        total = item["signal_count"]
+        avg_score = round(item["score_sum"] / total, 2) if total else 0
+        dominant_disease = "-"
+        if item["diseases"]:
+            dominant_disease = sorted(item["diseases"].items(), key=lambda x: (-x[1], x[0]))[0][0]
+
+        risk_index = round((avg_score * 0.55) + (item["high_risk_count"] * 8) + min(total * 2, 30), 2)
+        if risk_index >= 75:
+            risk_level = "Tinggi"
+        elif risk_index >= 50:
+            risk_level = "Sedang-Tinggi"
+        elif risk_index >= 30:
+            risk_level = "Sedang"
+        else:
+            risk_level = "Rendah"
+
+        rows.append({
+            "region_key": item["region_key"],
+            "province_code": item["province_code"],
+            "province_name": item["province_name"],
+            "signal_count": total,
+            "high_risk_count": item["high_risk_count"],
+            "avg_score": avg_score,
+            "max_score": item["max_score"],
+            "risk_index": risk_index,
+            "risk_level": risk_level,
+            "dominant_disease": dominant_disease,
+            "disease_breakdown": item["diseases"],
+            "top_signal_title": item["top_signal_title"],
+            "top_signal_url": item["top_signal_url"],
+            "top_signal_score": item["top_signal_score"],
+        })
+
+    rows.sort(key=lambda x: (-x.get(metric, x["signal_count"]), -x["signal_count"], x["province_name"]))
+
+    total_signals = sum(r["signal_count"] for r in rows)
+    high_risk_total = sum(r["high_risk_count"] for r in rows)
+    mapped_province_total = len(rows)
+    avg_score_national = round(sum((r["avg_score"] * r["signal_count"]) for r in rows) / total_signals, 2) if total_signals else 0
+
+    disease_choices = (
+        Signal.objects.exclude(status="noise")
+        .exclude(disease_tag="")
+        .exclude(disease_tag__isnull=True)
+        .values_list("disease_tag", flat=True)
+        .distinct()
+        .order_by("disease_tag")
+    )
+
+    return render(request, "intel/disease_choropleth_map.html", {
+        "page_title": "Disease Choropleth Map",
+        "metric": metric,
+        "disease": disease,
+        "days": days,
+        "date_from": date_from_obj.isoformat(),
+        "date_to": date_to_obj.isoformat(),
+        "status_filter": status_filter,
+        "status_label": status_label,
+        "disease_choices": disease_choices,
+        "rows": rows,
+        "rows_json": json.dumps(rows, default=str),
+        "total_signals": total_signals,
+        "high_risk_total": high_risk_total,
+        "mapped_province_total": mapped_province_total,
+        "avg_score_national": avg_score_national,
+    })

@@ -1,0 +1,359 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e8e8e8;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 800; }
+    .page-subtitle { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .filter-field { display: flex; flex-direction: column; gap: 5px; }
+    .filter-field label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+    .filter-field input, .filter-field select { min-width: 170px; padding: 8px 9px; border: 1px solid #bbb; border-radius: 6px; font-size: 13px; background: #fff; }
+    .btn, button { border: 1px solid #999; border-radius: 6px; background: #f7f7f7; padding: 8px 12px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 800; }
+    .btn:hover, button:hover { background: #e8e8e8; }
+    .btn-primary:hover { background: #36005e; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 12px; }
+    .kpi-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 700; }
+    .kpi-value { font-size: 28px; font-weight: 900; line-height: 1; }
+    .kpi-sub { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+    .two-col { display: grid; grid-template-columns: 1.3fr .9fr; gap: 16px; }
+    .three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .chart-box { height: 330px; width: 100%; }
+    .narrative-list { margin: 8px 0 0 18px; padding: 0; line-height: 1.6; }
+    .narrative-list li { margin-bottom: 6px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--soft-border); padding: 8px 9px; vertical-align: top; }
+    th { background: #f5f5f5; font-weight: 800; white-space: nowrap; }
+    .table-wrap { overflow-x: auto; }
+    .small-muted, .small { color: var(--muted); font-size: 11px; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .risk-Tinggi { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
+    .risk-Sedang-Tinggi { background: #fff0df; color: #9a4d00; border: 1px solid #efc28f; }
+    .risk-Sedang { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
+    .risk-Rendah { background: var(--blue-bg); color: var(--blue-text); border: 1px solid #aebff0; }
+    .trend-Naik, .trend-Baru\/Muncul { background: var(--red-bg); color: var(--red-text); }
+    .trend-Turun { background: var(--green-bg); color: var(--green-text); }
+    .trend-Stabil { background: var(--blue-bg); color: var(--blue-text); }
+    .signal-title { font-weight: 800; margin-bottom: 4px; }
+    .signal-meta { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .section-title { margin: 0 0 8px; font-size: 18px; font-weight: 800; }
+
+    @media (max-width: 1100px) {
+        .kpi-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+        .two-col, .three-col { grid-template-columns: 1fr; }
+        .chart-box { height: 300px; }
+    }
+</style>
+
+<div class="card">
+    <h1 class="page-title">Disease Trend Intelligence</h1>
+    <p class="page-subtitle">
+        Halaman ini membaca signal OSINT berdasarkan penyakit, periode, skor risiko, dan lokasi untuk membantu analis melihat penyakit yang sedang naik, wilayah konsentrasi, serta prioritas pemantauan dini.
+    </p>
+</div>
+
+<div class="card">
+    <form method="get" class="filters">
+        <div class="filter-field">
+            <label>Periode</label>
+            <select name="days">
+                <option value="7" {% if days == 7 %}selected{% endif %}>7 hari</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>14 hari</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30 hari</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Sampai Tanggal</label>
+            <input type="date" name="date_to" value="{{ date_to }}">
+        </div>
+        <div class="filter-field">
+            <label>Status Data</label>
+            <select name="status_filter">
+                <option value="operational" {% if status_filter == "operational" %}selected{% endif %}>Data Operasional Crawling</option>
+                <option value="raw" {% if status_filter == "raw" %}selected{% endif %}>Raw Crawling</option>
+                <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated + Approved</option>
+                <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved Mapping</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Penyakit</label>
+            <select name="disease">
+                <option value="">Semua penyakit</option>
+                {% for item in disease_choices %}
+                    <option value="{{ item }}" {% if selected_disease == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn-primary" type="submit">Tampilkan Tren</button>
+        <a class="btn" href="{% url 'intel:disease_trends' %}">Reset</a>
+    </form>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Signal periode ini</div>
+        <div class="kpi-value">{{ current_total }}</div>
+        <div class="kpi-sub">{{ current_start|date:"d/m/Y" }} s.d. {{ current_end|date:"d/m/Y" }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Periode sebelumnya</div>
+        <div class="kpi-value">{{ previous_total }}</div>
+        <div class="kpi-sub">{{ previous_start|date:"d/m/Y" }} s.d. {{ previous_end|date:"d/m/Y" }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Perubahan</div>
+        <div class="kpi-value">{{ total_growth_abs }}</div>
+        <div class="kpi-sub">{{ total_growth_percent }}% dibanding periode sebelumnya</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Penyakit aktif</div>
+        <div class="kpi-value">{{ active_disease_count }}</div>
+        <div class="kpi-sub">Jumlah disease_tag berbeda</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">High-risk</div>
+        <div class="kpi-value">{{ high_risk_total }}</div>
+        <div class="kpi-sub">Rata-rata skor: {{ avg_score }}</div>
+    </div>
+</div>
+
+<div class="two-col">
+    <div class="card">
+        <h2 class="section-title">Tren Harian Top Penyakit</h2>
+        <div class="chart-box">
+            <canvas id="diseaseTrendChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="section-title">Ringkasan Intelijen</h2>
+        <p class="small-muted">Status data: {{ status_label }}. Ringkasan bersifat indikatif dan perlu validasi analis.</p>
+        <ul class="narrative-list">
+            {% for item in narrative_items %}
+                <li>{{ item }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="three-col">
+    <div class="card table-wrap">
+        <h2 class="section-title">Penyakit Naik Tercepat</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Penyakit</th>
+                    <th>Now</th>
+                    <th>Prev</th>
+                    <th>Growth</th>
+                    <th>Tren</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in rising_disease_rows %}
+                <tr>
+                    <td><strong>{{ item.disease }}</strong></td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.previous_total }}</td>
+                    <td>{{ item.growth_abs }}<br><span class="small-muted">{{ item.growth_percent }}%</span></td>
+                    <td><span class="badge trend-{{ item.trend_label|slugify }}">{{ item.trend_label }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">Belum ada data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card table-wrap">
+        <h2 class="section-title">Prioritas Penyakit</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Penyakit</th>
+                    <th>Total</th>
+                    <th>High-risk</th>
+                    <th>Avg</th>
+                    <th>Risiko</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in priority_disease_rows %}
+                <tr>
+                    <td><strong>{{ item.disease }}</strong></td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.high_risk_total }}</td>
+                    <td>{{ item.avg_score }}</td>
+                    <td><span class="badge risk-{{ item.risk_label }}">{{ item.risk_label }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5">Belum ada data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card table-wrap">
+        <h2 class="section-title">Wilayah Konsentrasi</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Lokasi</th>
+                    <th>Total</th>
+                    <th>Avg</th>
+                    <th>Risiko</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in top_location_rows %}
+                <tr>
+                    <td>
+                        <strong>{{ item.location_name }}</strong><br>
+                        <span class="small-muted">{{ item.level }}{% if item.parent_name %} · {{ item.parent_name }}{% endif %}</span>
+                    </td>
+                    <td>{{ item.total }}</td>
+                    <td>{{ item.avg_score }}</td>
+                    <td><span class="badge risk-{{ item.risk_label }}">{{ item.risk_label }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">Belum ada lokasi terpetakan.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card table-wrap">
+    <h2 class="section-title">Rekap Tren Penyakit</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Penyakit</th>
+                <th>Total</th>
+                <th>Periode Sebelumnya</th>
+                <th>Perubahan</th>
+                <th>Avg Score</th>
+                <th>High-risk</th>
+                <th>Risiko</th>
+                <th>Window</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in disease_trend_rows %}
+            <tr>
+                <td><strong>{{ item.disease }}</strong></td>
+                <td>{{ item.total }}</td>
+                <td>{{ item.previous_total }}</td>
+                <td>{{ item.growth_abs }}<br><span class="small-muted">{{ item.growth_percent }}%</span></td>
+                <td>{{ item.avg_score }}</td>
+                <td>{{ item.high_risk_total }}</td>
+                <td><span class="badge risk-{{ item.risk_label }}">{{ item.risk_label }}</span></td>
+                <td>
+                    {% if item.first_signal_at %}{{ item.first_signal_at|date:"d/m/Y H:i" }}{% else %}-{% endif %}<br>
+                    s.d.<br>
+                    {% if item.last_signal_at %}{{ item.last_signal_at|date:"d/m/Y H:i" }}{% else %}-{% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8">Belum ada data penyakit pada parameter yang dipilih.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card table-wrap">
+    <h2 class="section-title">Signal Prioritas untuk Analis</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Signal</th>
+                <th>Penyakit</th>
+                <th>Skor</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Tanggal</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in recent_priority_signals %}
+            <tr>
+                <td>
+                    <div class="signal-title">{{ signal.title|default:"-" }}</div>
+                    <div class="signal-meta">
+                        {% if signal.source %}{{ signal.source.name }} · {% endif %}
+                        {% if signal.source_url %}<a href="{{ signal.source_url }}" target="_blank">Buka sumber</a>{% endif %}
+                        {% if signal.cluster %}<br>Cluster: <a href="{% url 'intel:cluster_detail' signal.cluster.id %}">{{ signal.cluster.cluster_key|truncatechars:80 }}</a>{% endif %}
+                    </div>
+                </td>
+                <td>{{ signal.disease_tag|default:"-" }}</td>
+                <td><strong>{{ signal.threat_score|default:0 }}</strong></td>
+                <td>{{ signal.triage_priority|default:"-" }}</td>
+                <td>{{ signal.status|default:"-" }}</td>
+                <td>{% if signal.published_at %}{{ signal.published_at|date:"d/m/Y H:i" }}{% else %}-{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6">Belum ada signal prioritas.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const trendData = {{ chart_data_json|safe }};
+    const ctx = document.getElementById('diseaseTrendChart');
+
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: trendData.labels || [],
+                datasets: (trendData.series || []).map(function (item) {
+                    return {
+                        label: item.label,
+                        data: item.data,
+                        tension: 0.25,
+                        fill: false
+                    };
+                })
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { mode: 'index', intersect: false }
+                },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

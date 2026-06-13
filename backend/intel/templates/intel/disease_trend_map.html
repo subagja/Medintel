@@ -1,0 +1,267 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e8e8e8;
+        --text: #111;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 800; }
+    .page-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .filter-field { display: flex; flex-direction: column; gap: 5px; }
+    .filter-field label { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .3px; }
+    .filters select, .filters input { min-width: 160px; min-height: 36px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 6px; font-size: 13px; background: #fff; }
+    .btn, button { border: 1px solid #999; border-radius: 6px; background: #f7f7f7; padding: 8px 12px; font-size: 13px; cursor: pointer; text-decoration: none; color: var(--text); display: inline-block; min-height: 36px; }
+    .btn-primary, .filters button[type="submit"] { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 800; }
+    .btn:hover, button:hover { background: #e8e8e8; }
+    .btn-primary:hover, .filters button[type="submit"]:hover { background: #36005e; }
+    .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .metric-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .metric-label { color: var(--muted); font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+    .metric-value { font-size: 26px; font-weight: 900; color: var(--text); line-height: 1; }
+    .metric-sub { color: var(--muted); font-size: 11px; margin-top: 6px; }
+    .map-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, .6fr); gap: 14px; align-items: start; }
+    .map-card { padding: 0; overflow: hidden; }
+    .map-header { display: flex; justify-content: space-between; gap: 12px; padding: 14px; border-bottom: 1px solid var(--soft-border); flex-wrap: wrap; }
+    .map-title { margin: 0; font-size: 18px; font-weight: 900; }
+    .map-summary { color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 900px; }
+    #diseaseTrendMap { width: 100%; height: 650px; min-height: 480px; background: #edf2f7; }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--soft-border); background: #fff; color: var(--muted); font-size: 12px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .table th, .table td { border-bottom: 1px solid var(--soft-border); padding: 8px 9px; vertical-align: top; }
+    .table th { background: #f5f5f5; white-space: nowrap; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .risk-tinggi { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
+    .risk-sedang-tinggi { background: #fff0df; color: #9a4d00; border: 1px solid #efc28f; }
+    .risk-sedang { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
+    .risk-rendah { background: var(--blue-bg); color: var(--blue-text); border: 1px solid #aebff0; }
+    .small-muted { color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .popup-title { font-weight: 900; margin-bottom: 5px; color: #111; }
+    .popup-meta { font-size: 12px; line-height: 1.45; }
+    .popup-list { margin: 6px 0 0 16px; padding: 0; font-size: 11px; line-height: 1.35; }
+    .side-section-title { margin: 0 0 8px; font-size: 16px; font-weight: 900; }
+    .empty-note { background: var(--bg-soft); border: 1px dashed #ccc; color: var(--muted); padding: 12px; border-radius: 8px; font-size: 13px; }
+    @media (max-width: 1200px) { .metric-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } .map-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 760px) { .metric-grid, .filters { display: grid; grid-template-columns: 1fr; } .filters select, .filters input, .filter-field { width: 100%; } #diseaseTrendMap { height: 520px; } }
+</style>
+
+<h1 class="page-title">Disease Trend Map</h1>
+<p class="page-subtitle">
+    Peta konsentrasi signal penyakit menular berbasis OSINT. Gunakan untuk melihat wilayah dominan, penyakit dominan, skor risiko, dan titik prioritas verifikasi analis.
+</p>
+
+<div class="card">
+    <form method="get" class="filters">
+        <div class="filter-field">
+            <label>Periode</label>
+            <select name="days">
+                <option value="7" {% if days == 7 %}selected{% endif %}>7 hari terakhir</option>
+                <option value="14" {% if days == 14 %}selected{% endif %}>14 hari terakhir</option>
+                <option value="30" {% if days == 30 %}selected{% endif %}>30 hari terakhir</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Status Data</label>
+            <select name="status_filter">
+                <option value="operational" {% if status_filter == "operational" %}selected{% endif %}>Data Operasional Crawling</option>
+                <option value="raw" {% if status_filter == "raw" %}selected{% endif %}>Raw Crawling</option>
+                <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated + Approved</option>
+                <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved Mapping</option>
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Penyakit</label>
+            <select name="disease">
+                <option value="">Semua Penyakit</option>
+                {% for item in disease_choices %}
+                    <option value="{{ item }}" {% if selected_disease == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-field">
+            <label>Sampai Tanggal</label>
+            <input type="date" name="date_to" value="{{ date_to }}">
+        </div>
+        <button type="submit">Tampilkan Peta</button>
+        <a class="btn" href="{% url 'intel:disease_trend_map' %}">Reset</a>
+        <a class="btn" href="{% url 'intel:disease_trends' %}?days={{ days }}&status_filter={{ status_filter }}&disease={{ selected_disease|urlencode }}&date_to={{ date_to }}">Lihat Disease Trends</a>
+    </form>
+</div>
+
+<div class="metric-grid">
+    <div class="metric-card"><div class="metric-label">Total signal</div><div class="metric-value">{{ total_signals }}</div><div class="metric-sub">{{ date_from }} s.d. {{ date_to }}</div></div>
+    <div class="metric-card"><div class="metric-label">Lokasi terpetakan</div><div class="metric-value">{{ mapped_locations }}</div><div class="metric-sub">Kab/kota/provinsi dengan koordinat</div></div>
+    <div class="metric-card"><div class="metric-label">Lokasi prioritas</div><div class="metric-value">{{ high_risk_locations }}</div><div class="metric-sub">Risiko tinggi/sedang-tinggi</div></div>
+    <div class="metric-card"><div class="metric-label">High-risk signal</div><div class="metric-value">{{ high_risk_signals }}</div><div class="metric-sub">Skor ≥ 70</div></div>
+    <div class="metric-card"><div class="metric-label">Average score</div><div class="metric-value">{{ avg_score }}</div><div class="metric-sub">Rata-rata skor ancaman</div></div>
+</div>
+
+<div class="map-layout">
+    <div class="card map-card">
+        <div class="map-header">
+            <div>
+                <h2 class="map-title">Peta Titik Tren Penyakit</h2>
+                <div class="map-summary">{{ map_summary }}</div>
+            </div>
+            <div class="small-muted"><strong>Status:</strong> {{ status_label }}<br><strong>Penyakit:</strong> {{ selected_disease|default:"Semua" }}</div>
+        </div>
+        <div id="diseaseTrendMap"></div>
+        <div class="legend">
+            <span class="legend-item"><span class="legend-dot" style="background:#b00020;"></span> Tinggi</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#d97706;"></span> Sedang-Tinggi</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#ca8a04;"></span> Sedang</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#2451a6;"></span> Rendah</span>
+            <span class="legend-item">Ukuran marker mengikuti jumlah signal.</span>
+        </div>
+    </div>
+
+    <div>
+        <div class="card">
+            <h2 class="side-section-title">Top Wilayah</h2>
+            {% if top_regions %}
+            <table class="table">
+                <thead><tr><th>Wilayah</th><th>Total</th><th>Risiko</th></tr></thead>
+                <tbody>
+                    {% for item in top_regions %}
+                    <tr>
+                        <td><strong>{{ item.location_name }}</strong><br><span class="small-muted">{{ item.province_name }} · {{ item.dominant_disease }}</span></td>
+                        <td>{{ item.total }}<br><span class="small-muted">Avg {{ item.avg_score }}</span></td>
+                        <td><span class="badge risk-{{ item.risk_label|lower|slugify }}">{{ item.risk_label }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-note">Belum ada wilayah yang dapat dipetakan.</div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2 class="side-section-title">Top Penyakit</h2>
+            {% if top_diseases %}
+            <table class="table">
+                <thead><tr><th>Penyakit</th><th>Total</th><th>Risiko</th></tr></thead>
+                <tbody>
+                    {% for item in top_diseases %}
+                    <tr>
+                        <td><strong>{{ item.disease }}</strong><br><span class="small-muted">High-risk: {{ item.high_risk_total }}</span></td>
+                        <td>{{ item.total }}<br><span class="small-muted">Avg {{ item.avg_score }}</span></td>
+                        <td><span class="badge risk-{{ item.risk_label|lower|slugify }}">{{ item.risk_label }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-note">Belum ada penyakit yang terpantau pada parameter ini.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{{ map_points_json|json_script:"map-points-data" }}
+
+<script>
+(function () {
+    const raw = document.getElementById('map-points-data').textContent;
+    const points = JSON.parse(raw || '[]');
+
+    const map = L.map('diseaseTrendMap', { scrollWheelZoom: true }).setView([-2.5, 118], 5);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    function markerColor(riskLabel) {
+        if (riskLabel === 'Tinggi') return '#b00020';
+        if (riskLabel === 'Sedang-Tinggi') return '#d97706';
+        if (riskLabel === 'Sedang') return '#ca8a04';
+        return '#2451a6';
+    }
+
+    function markerRadius(total) {
+        const base = 8 + Math.sqrt(Math.max(total || 1, 1)) * 3;
+        return Math.min(base, 28);
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    const bounds = [];
+
+    points.forEach(function (point) {
+        if (point.lat === null || point.lon === null) return;
+
+        const color = markerColor(point.risk_label);
+        const marker = L.circleMarker([point.lat, point.lon], {
+            radius: markerRadius(point.total),
+            color: color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.72
+        }).addTo(map);
+
+        bounds.push([point.lat, point.lon]);
+
+        const diseaseBreakdown = (point.disease_breakdown || [])
+            .map(function (d) { return '<li>' + escapeHtml(d.name) + ': ' + escapeHtml(d.total) + '</li>'; })
+            .join('');
+
+        const signals = (point.signals || [])
+            .map(function (s) {
+                const link = s.url ? '<a href="' + escapeHtml(s.url) + '" target="_blank">buka</a>' : '-';
+                return '<li><strong>' + escapeHtml(s.disease) + '</strong> · skor ' + escapeHtml(s.score) + ' · ' + link + '<br>' + escapeHtml(s.title).slice(0, 120) + '</li>';
+            })
+            .join('');
+
+        const popupHtml = `
+            <div class="popup-title">${escapeHtml(point.location_name)}</div>
+            <div class="popup-meta">
+                <strong>Provinsi:</strong> ${escapeHtml(point.province_name)}<br>
+                <strong>Penyakit dominan:</strong> ${escapeHtml(point.dominant_disease)}<br>
+                <strong>Total signal:</strong> ${escapeHtml(point.total)}<br>
+                <strong>High-risk:</strong> ${escapeHtml(point.high_risk_total)}<br>
+                <strong>Avg score:</strong> ${escapeHtml(point.avg_score)}<br>
+                <strong>Risiko:</strong> ${escapeHtml(point.risk_label)}
+            </div>
+            ${diseaseBreakdown ? '<hr><strong>Breakdown penyakit</strong><ul class="popup-list">' + diseaseBreakdown + '</ul>' : ''}
+            ${signals ? '<hr><strong>Signal prioritas</strong><ul class="popup-list">' + signals + '</ul>' : ''}
+        `;
+
+        marker.bindPopup(popupHtml, { maxWidth: 380 });
+    });
+
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 9 });
+    }
+})();
+</script>
+{% endblock %}

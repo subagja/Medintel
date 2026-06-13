@@ -6,6 +6,7 @@ app_name = "intel"
 urlpatterns = [
     path("", views.dashboard_overview, name="dashboard"),
     path("dashboard/", views.dashboard_overview, name="dashboard"),
+    path("disease-trends/", views.disease_trends, name="disease_trends"),
 
     path("raw-signals/", views.raw_signals_list, name="raw_signals"),
     path("triage/clusters/", views.cluster_triage_queue, name="cluster_triage_queue"),
@@ -74,5 +75,8 @@ urlpatterns = [
     path("publisher-aliases/create/", views.publisher_alias_create, name="publisher_alias_create"),
     path("publisher-aliases/<int:pk>/edit/", views.publisher_alias_edit, name="publisher_alias_edit"),
     path("publisher-aliases/<int:pk>/toggle-active/", views.publisher_alias_toggle_active, name="publisher_alias_toggle_active"),
-    
+
+	path("disease-choropleth-map/", views.disease_choropleth_map, name="disease_choropleth_map"),
+	path("geojson/<str:geo_type>/", views.geojson_file, name="geojson_file"),
+	path("disease-box-map/", views.disease_box_map, name="disease_box_map"),
 ]

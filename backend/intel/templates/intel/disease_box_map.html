@@ -1,0 +1,1053 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+    :root {
+        --boxmap-primary: #4b0082;
+        --boxmap-border: #d8dee9;
+        --boxmap-soft-border: #e8edf5;
+        --boxmap-muted: #64748b;
+        --boxmap-ink: #0f172a;
+        --boxmap-ocean: #d8e8ff;
+        --boxmap-land: #eef2f7;
+        --boxmap-land-active: #c7d2fe;
+        --boxmap-panel: rgba(255,255,255,0.97);
+    }
+
+    .boxmap-page-title {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--boxmap-ink);
+    }
+
+    .boxmap-page-subtitle {
+        margin: 0 0 16px;
+        color: var(--boxmap-muted);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    .boxmap-card {
+        background: #fff;
+        border: 1px solid var(--boxmap-border);
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 16px;
+    }
+
+    .boxmap-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: end;
+    }
+
+    .boxmap-field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .boxmap-field label {
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--boxmap-muted);
+        text-transform: uppercase;
+        letter-spacing: .3px;
+    }
+
+    .boxmap-filters input,
+    .boxmap-filters select {
+        min-width: 160px;
+        min-height: 36px;
+        padding: 7px 9px;
+        border: 1px solid #c7ceda;
+        border-radius: 8px;
+        font-size: 13px;
+        background: #fff;
+    }
+
+    .boxmap-btn,
+    .boxmap-filters button {
+        min-height: 36px;
+        border: 1px solid var(--boxmap-primary);
+        border-radius: 8px;
+        background: var(--boxmap-primary);
+        color: #fff;
+        padding: 7px 12px;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .boxmap-btn-secondary {
+        background: #fff;
+        color: var(--boxmap-primary);
+    }
+
+    .boxmap-metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .boxmap-metric {
+        background: #fff;
+        border: 1px solid var(--boxmap-border);
+        border-radius: 10px;
+        padding: 12px;
+    }
+
+    .boxmap-metric-label {
+        font-size: 12px;
+        color: var(--boxmap-muted);
+        margin-bottom: 5px;
+        font-weight: 700;
+    }
+
+    .boxmap-metric-value {
+        font-size: 25px;
+        line-height: 1;
+        font-weight: 900;
+        color: var(--boxmap-ink);
+    }
+
+    .boxmap-shell {
+        position: relative;
+        height: clamp(720px, 82vh, 980px);
+        min-height: 720px;
+        background: var(--boxmap-ocean);
+        border: 1px solid var(--boxmap-border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+    }
+
+    .boxmap-main-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        right: 400px;
+        padding: 16px;
+    }
+
+    .boxmap-main-map {
+        width: 100%;
+        height: 100%;
+        border: 1px solid rgba(100, 116, 139, .35);
+        border-radius: 12px;
+        background: var(--boxmap-ocean);
+        position: relative;
+        overflow: hidden;
+    }
+
+    #mainIndonesiaSvg {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .boxmap-note {
+        position: absolute;
+        top: 18px;
+        left: 18px;
+        max-width: 380px;
+        padding: 12px 14px;
+        border: 1px solid rgba(148, 163, 184, .55);
+        border-radius: 10px;
+        background: rgba(255,255,255,.92);
+        color: #1f2937;
+        font-size: 13px;
+        line-height: 1.45;
+        z-index: 10;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, 0.07);
+    }
+
+    .boxmap-note strong {
+        display: block;
+        margin-bottom: 3px;
+    }
+
+    .province-path {
+        fill: var(--boxmap-land);
+        stroke: #94a3b8;
+        stroke-width: .75;
+        cursor: pointer;
+        transition: fill .12s ease, stroke .12s ease, stroke-width .12s ease, opacity .12s ease;
+    }
+
+    .province-path.has-data {
+        fill: #dfe7f3;
+    }
+
+    .province-path.box-target {
+        fill: #d8dcf0;
+    }
+
+    .province-path:hover,
+    .province-path.active {
+        fill: var(--boxmap-land-active) !important;
+        stroke: #4f46e5;
+        stroke-width: 1.7;
+    }
+
+    .province-label {
+        font-size: 10px;
+        fill: #334155;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 3px;
+        stroke-linejoin: round;
+        pointer-events: none;
+        font-weight: 800;
+    }
+
+    .boxmap-tooltip {
+        position: absolute;
+        display: none;
+        max-width: 300px;
+        z-index: 20;
+        background: rgba(255,255,255,.96);
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 10px 11px;
+        color: #0f172a;
+        box-shadow: 0 10px 26px rgba(15,23,42,.14);
+        font-size: 12px;
+        line-height: 1.45;
+        pointer-events: none;
+    }
+
+    .boxmap-tooltip-title {
+        font-size: 14px;
+        font-weight: 900;
+        margin-bottom: 4px;
+    }
+
+    .inset-panel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 400px;
+        background: var(--boxmap-panel);
+        border-left: 1px solid var(--boxmap-border);
+        padding: 14px;
+        overflow-y: auto;
+        z-index: 30;
+    }
+
+    .inset-panel-title {
+        font-size: 18px;
+        font-weight: 900;
+        color: var(--boxmap-ink);
+        margin: 0 0 4px;
+        line-height: 1.25;
+    }
+
+    .inset-panel-subtitle {
+        font-size: 12px;
+        color: var(--boxmap-muted);
+        line-height: 1.45;
+        margin-bottom: 12px;
+    }
+
+    .inset-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .inset-box {
+        background: #ffffff;
+        border: 1px solid #d9e0ea;
+        border-radius: 10px;
+        min-height: 252px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        box-shadow: 0 3px 8px rgba(15,23,42,.04);
+        transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+
+    .inset-box:hover,
+    .inset-box.active {
+        transform: translateY(-1px);
+        border-color: #7c3aed;
+        box-shadow: 0 8px 18px rgba(15,23,42,.12);
+    }
+
+    .inset-box-header {
+        min-height: 55px;
+    }
+
+    .inset-rank {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 900;
+        margin-bottom: 2px;
+    }
+
+    .inset-province {
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.15;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+
+    .inset-disease {
+        font-size: 13px;
+        font-weight: 900;
+        line-height: 1.15;
+    }
+
+    .inset-map-frame {
+        height: 96px;
+        border: 1px solid #dce3ed;
+        border-radius: 7px;
+        background: #d8e8ff;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .mini-province-map {
+        width: 100%;
+        height: 100%;
+    }
+
+    .inset-stats {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 2px;
+        font-size: 12px;
+        color: #334155;
+        line-height: 1.35;
+    }
+
+    .inset-stats strong {
+        color: #0f172a;
+    }
+
+    .inset-signal-list {
+        margin: 0 0 0 16px;
+        padding: 0;
+        font-size: 10.5px;
+        color: #475569;
+        line-height: 1.25;
+        max-height: 56px;
+        overflow: hidden;
+    }
+
+    .inset-signal-list li {
+        margin-bottom: 2px;
+    }
+
+    .legend-card {
+        margin-top: 12px;
+        background: #fff;
+        border: 1px solid var(--boxmap-border);
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    .legend-title {
+        font-size: 13px;
+        font-weight: 900;
+        margin-bottom: 7px;
+        color: #0f172a;
+    }
+
+    .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #334155;
+        margin-bottom: 5px;
+    }
+
+    .legend-swatch {
+        width: 13px;
+        height: 13px;
+        border-radius: 3px;
+        display: inline-block;
+        flex: 0 0 auto;
+    }
+
+    .recap-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 16px;
+    }
+
+    .recap-table-card {
+        background: #fff;
+        border: 1px solid var(--boxmap-border);
+        border-radius: 10px;
+        padding: 10px;
+        overflow-x: auto;
+    }
+
+    .recap-table-card h3 {
+        margin: 2px 0 8px;
+        font-size: 16px;
+    }
+
+    .recap-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+    .recap-table th,
+    .recap-table td {
+        border-bottom: 1px solid #edf2f7;
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .recap-table th {
+        background: #f8fafc;
+        font-weight: 900;
+        color: #334155;
+        white-space: nowrap;
+    }
+
+    .small-muted {
+        color: var(--boxmap-muted);
+        font-size: 11px;
+    }
+
+    .empty-state {
+        background: #fff;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        padding: 14px;
+        color: var(--boxmap-muted);
+        font-size: 13px;
+        line-height: 1.45;
+        grid-column: 1 / -1;
+    }
+
+    @media (max-width: 1320px) {
+        .boxmap-shell {
+            height: auto;
+            min-height: 0;
+            overflow: visible;
+        }
+        .boxmap-main-area {
+            position: relative;
+            right: auto;
+            height: 680px;
+            padding: 14px;
+        }
+        .inset-panel {
+            position: relative;
+            width: auto;
+            border-left: 0;
+            border-top: 1px solid var(--boxmap-border);
+            max-height: none;
+        }
+    }
+
+    @media (max-width: 850px) {
+        .boxmap-metric-grid,
+        .recap-grid {
+            grid-template-columns: 1fr;
+        }
+        .inset-grid {
+            grid-template-columns: 1fr;
+        }
+        .boxmap-filters input,
+        .boxmap-filters select,
+        .boxmap-field {
+            width: 100%;
+        }
+    }
+</style>
+
+<h1 class="boxmap-page-title">Disease Box Map</h1>
+<!-- <p class="boxmap-page-subtitle">
+    Peta dokumentasi terpisah untuk menampilkan penyakit yang sedang tinggi berdasarkan kombinasi penyakit dan provinsi. Panel kanan berisi inset box berisi mini peta provinsi, penyakit dominan/tinggi, dan indikator signal.
+</p> -->
+
+<div class="boxmap-card">
+    <form method="get" class="boxmap-filters">
+        <div class="boxmap-field">
+            <label>Periode</label>
+            <select name="days">
+                <option value="7" {% if days == "7" %}selected{% endif %}>7 hari</option>
+                <option value="14" {% if days == "14" %}selected{% endif %}>14 hari</option>
+                <option value="30" {% if days == "30" %}selected{% endif %}>30 hari</option>
+                <option value="60" {% if days == "60" %}selected{% endif %}>60 hari</option>
+                <option value="90" {% if days == "90" %}selected{% endif %}>90 hari</option>
+            </select>
+        </div>
+
+        <div class="boxmap-field">
+            <label>Status Data</label>
+            <select name="status_filter">
+                <option value="operational" {% if status_filter == "operational" %}selected{% endif %}>Data Operasional Crawling</option>
+                <option value="raw" {% if status_filter == "raw" %}selected{% endif %}>Raw Crawling</option>
+                <option value="validated" {% if status_filter == "validated" %}selected{% endif %}>Validated + Approved</option>
+                <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved Mapping</option>
+            </select>
+        </div>
+
+        <div class="boxmap-field">
+            <label>Penyakit</label>
+            <select name="disease">
+                <option value="">Semua penyakit</option>
+                {% for item in disease_choices %}
+                    <option value="{{ item }}" {% if selected_disease == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="boxmap-field">
+            <label>Jumlah Box</label>
+            <select name="box_limit">
+                <option value="6" {% if box_limit == "6" %}selected{% endif %}>6 box</option>
+                <option value="8" {% if box_limit == "8" %}selected{% endif %}>8 box</option>
+                <option value="10" {% if box_limit == "10" %}selected{% endif %}>10 box</option>
+                <option value="12" {% if box_limit == "12" %}selected{% endif %}>12 box</option>
+                <option value="16" {% if box_limit == "16" %}selected{% endif %}>16 box</option>
+            </select>
+        </div>
+
+        <div class="boxmap-field">
+            <label>Sampai Tanggal</label>
+            <input type="date" name="date_to" value="{{ date_to }}">
+        </div>
+
+        <button type="submit">Terapkan</button>
+        <a class="boxmap-btn boxmap-btn-secondary" href="{% url 'intel:disease_box_map' %}">Reset</a>
+    </form>
+</div>
+
+<div class="boxmap-metric-grid">
+    <div class="boxmap-metric">
+        <div class="boxmap-metric-label">Total signal</div>
+        <div class="boxmap-metric-value">{{ total_signals }}</div>
+    </div>
+    <div class="boxmap-metric">
+        <div class="boxmap-metric-label">Provinsi terpetakan</div>
+        <div class="boxmap-metric-value">{{ mapped_provinces }}</div>
+    </div>
+    <div class="boxmap-metric">
+        <div class="boxmap-metric-label">High-risk signal</div>
+        <div class="boxmap-metric-value">{{ high_risk_count }}</div>
+    </div>
+    <div class="boxmap-metric">
+        <div class="boxmap-metric-label">Average score</div>
+        <div class="boxmap-metric-value">{{ avg_score }}</div>
+    </div>
+</div>
+
+<div class="boxmap-shell">
+    <div class="boxmap-main-area">
+        <div class="boxmap-main-map" id="boxmapMainMap">
+            <div class="boxmap-note">
+                <strong>Documentation map.</strong>
+                Base map netral; inset box kanan menampilkan penyakit dengan signal tertinggi pada periode {{ date_from }} s.d. {{ date_to }}.
+            </div>
+            <svg id="mainIndonesiaSvg" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="boxmap-tooltip" id="boxmapTooltip"></div>
+        </div>
+    </div>
+
+    <aside class="inset-panel">
+        <h2 class="inset-panel-title">Penyakit dengan Signal Tertinggi</h2>
+        <!-- <div class="inset-panel-subtitle">
+            Tiap box merepresentasikan kombinasi provinsi dan penyakit dengan volume signal tertinggi. Mini peta di dalam box memperlihatkan bentuk provinsi terkait.
+        </div> -->
+
+        <div class="inset-grid" id="insetGrid">
+            {% for item in top_boxes %}
+            <div class="inset-box"
+                 data-province-code="{{ item.province_code }}"
+                 data-province-name="{{ item.province_name }}"
+                 data-disease="{{ item.disease_tag }}"
+                 data-color="{{ item.color }}">
+                <div class="inset-box-header">
+                    <div class="inset-rank">#{{ forloop.counter }}</div>
+                    <div class="inset-province">{{ item.province_name }}</div>
+                    <div class="inset-disease" style="color: {{ item.color }};">{{ item.disease_tag }}</div>
+                </div>
+
+                <div class="inset-map-frame">
+                    <div class="mini-province-map"
+                         data-province-code="{{ item.province_code }}"
+                         data-province-name="{{ item.province_name }}"
+                         data-color="{{ item.color }}">
+                    </div>
+                </div>
+
+                <div class="inset-stats">
+                    <div><strong>{{ item.total }}</strong> signal</div>
+                    <div>{{ item.high_risk_total }} high-risk · Avg score {{ item.avg_score }}</div>
+                </div>
+
+                {% if item.signals %}
+                <ul class="inset-signal-list">
+                    {% for sig in item.signals %}
+                    <li>#{{ sig.id }} · skor {{ sig.score }} · {{ sig.published_at }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="empty-state">
+                Belum ada data yang memenuhi filter saat ini. Coba perluas periode atau pilih status data operasional.
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="legend-card">
+            <div class="legend-title">Legend penyakit pada box</div>
+            {% for item in disease_legend %}
+            <div class="legend-row">
+                <span class="legend-swatch" style="background: {{ item.color }};"></span>
+                <span>{{ item.disease_tag }} · {{ item.total }} signal · {{ item.locations }} lokasi</span>
+            </div>
+            {% empty %}
+            <div class="small-muted">Belum ada legend.</div>
+            {% endfor %}
+        </div>
+    </aside>
+</div>
+
+<div class="recap-grid">
+    <div class="recap-table-card">
+        <h3>Ringkasan Provinsi</h3>
+        <table class="recap-table">
+            <thead>
+                <tr>
+                    <th>Provinsi</th>
+                    <th>Total</th>
+                    <th>High Risk</th>
+                    <th>Penyakit Dominan</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in province_rows|slice:":15" %}
+                <tr>
+                    <td>{{ row.province_name }}</td>
+                    <td>{{ row.total }}</td>
+                    <td>{{ row.high_risk_total }}</td>
+                    <td>{{ row.dominant_disease }} ({{ row.dominant_total }})</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">Belum ada data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="recap-table-card">
+        <h3>Box Ranking</h3>
+        <table class="recap-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Provinsi</th>
+                    <th>Penyakit</th>
+                    <th>Signal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in top_boxes %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ item.province_name }}</td>
+                    <td>{{ item.disease_tag }}</td>
+                    <td>{{ item.total }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4">Belum ada data.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const provinceRows = {{ province_rows_json|safe }};
+    const topBoxes = {{ top_boxes_json|safe }};
+    const diseaseLegend = {{ disease_legend_json|safe }};
+
+    const mainSvg = document.getElementById("mainIndonesiaSvg");
+    const tooltip = document.getElementById("boxmapTooltip");
+    const mainMap = document.getElementById("boxmapMainMap");
+
+    const provinceByCode = new Map();
+    const provinceByName = new Map();
+    const boxByProvinceCode = new Map();
+    const provincePathByKey = new Map();
+
+    function normalizeName(value) {
+        return (value || "")
+            .toString()
+            .toLowerCase()
+            .replace(/^provinsi\s+/i, "")
+            .replace(/^propinsi\s+/i, "")
+            .replace(/dki\s+/g, "")
+            .replace(/di\s+yogyakarta/g, "yogyakarta")
+            .replace(/kepulauan\s+/g, "kep. ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function normalizeCode(value) {
+        return (value || "")
+            .toString()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "");
+    }
+
+    function getFeatureName(props) {
+        return (
+            props.display_name || props.name || props.NAME_1 || props.PROVINSI ||
+            props.provinsi || props.Province || props.PROVINCE || props.WADMPR ||
+            props.Propinsi || props.NAMOBJ || props.NAME || ""
+        );
+    }
+
+    function getFeatureCode(props) {
+        return (
+            props.province_code || props.kode || props.code || props.CODE || props.KODE ||
+            props.id || props.ID || props.ID_1 || props.KDPPUM || props.provinsi_code || ""
+        ).toString();
+    }
+
+    function getInitials(name) {
+        const cleaned = (name || "").replace(/^Provinsi\s+/i, "").trim();
+        const parts = cleaned.split(/\s+/).filter(Boolean);
+        if (!parts.length) return "";
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return parts.map(p => p[0]).join("").slice(0, 3).toUpperCase();
+    }
+
+    function extractRings(geometry) {
+        if (!geometry) return [];
+        if (geometry.type === "Polygon") {
+            return geometry.coordinates || [];
+        }
+        if (geometry.type === "MultiPolygon") {
+            const all = [];
+            (geometry.coordinates || []).forEach(poly => {
+                poly.forEach(ring => all.push(ring));
+            });
+            return all;
+        }
+        return [];
+    }
+
+    function getBBoxFromRings(rings) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        rings.forEach(ring => {
+            ring.forEach(coord => {
+                const x = coord[0];
+                const y = coord[1];
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            });
+        });
+        return { minX, minY, maxX, maxY };
+    }
+
+    function mergeBBoxes(boxes) {
+        return boxes.reduce((acc, b) => ({
+            minX: Math.min(acc.minX, b.minX),
+            minY: Math.min(acc.minY, b.minY),
+            maxX: Math.max(acc.maxX, b.maxX),
+            maxY: Math.max(acc.maxY, b.maxY),
+        }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+    }
+
+    function makeProjector(bbox, width, height, pad) {
+        const scaleX = (width - pad * 2) / Math.max(0.00001, bbox.maxX - bbox.minX);
+        const scaleY = (height - pad * 2) / Math.max(0.00001, bbox.maxY - bbox.minY);
+        const scale = Math.min(scaleX, scaleY);
+        const usedW = (bbox.maxX - bbox.minX) * scale;
+        const usedH = (bbox.maxY - bbox.minY) * scale;
+        const offsetX = (width - usedW) / 2;
+        const offsetY = (height - usedH) / 2;
+        return function(coord) {
+            const x = ((coord[0] - bbox.minX) * scale) + offsetX;
+            const y = height - (((coord[1] - bbox.minY) * scale) + offsetY);
+            return [x, y];
+        };
+    }
+
+    function ringToPath(ring, projector) {
+        if (!ring || !ring.length) return "";
+        return ring.map((coord, idx) => {
+            const [x, y] = projector(coord);
+            return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+        }).join(" ") + " Z";
+    }
+
+    function featureToPath(feature, projector) {
+        const rings = extractRings(feature.geometry);
+        return rings.map(ring => ringToPath(ring, projector)).join(" ");
+    }
+
+    function getFeatureCentroid(feature) {
+        const rings = extractRings(feature.geometry);
+        if (!rings.length || !rings[0].length) return null;
+        let sx = 0, sy = 0, n = 0;
+        rings[0].forEach(coord => {
+            sx += coord[0];
+            sy += coord[1];
+            n += 1;
+        });
+        return n ? [sx / n, sy / n] : null;
+    }
+
+    function findProvinceDataByFeature(feature) {
+        const props = feature.properties || {};
+        const code = normalizeCode(getFeatureCode(props));
+        const name = normalizeName(getFeatureName(props));
+        return provinceByCode.get(code) || provinceByName.get(name) || null;
+    }
+
+    function findBoxForProvince(feature) {
+        const props = feature.properties || {};
+        const code = normalizeCode(getFeatureCode(props));
+        const name = normalizeName(getFeatureName(props));
+        return boxByProvinceCode.get(code) || boxByProvinceCode.get(name) || null;
+    }
+
+    function showTooltip(html, x, y) {
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+        const rect = mainMap.getBoundingClientRect();
+        const left = Math.min(x + 14, rect.width - 320);
+        const top = Math.min(y + 14, rect.height - 180);
+        tooltip.style.left = `${Math.max(10, left)}px`;
+        tooltip.style.top = `${Math.max(10, top)}px`;
+    }
+
+    function hideTooltip() {
+        tooltip.style.display = "none";
+    }
+
+    function clearActive() {
+        document.querySelectorAll(".province-path.active").forEach(el => el.classList.remove("active"));
+        document.querySelectorAll(".inset-box.active").forEach(el => el.classList.remove("active"));
+    }
+
+    function setActiveProvince(key) {
+        clearActive();
+        const path = provincePathByKey.get(key);
+        if (path) path.classList.add("active");
+        document.querySelectorAll(".inset-box").forEach(box => {
+            const code = normalizeCode(box.dataset.provinceCode || "");
+            const name = normalizeName(box.dataset.provinceName || "");
+            if (code === key || name === key) box.classList.add("active");
+        });
+    }
+
+    function registerDataMaps() {
+        provinceRows.forEach(row => {
+            const code = normalizeCode(row.province_code);
+            const name = normalizeName(row.province_name);
+            if (code) provinceByCode.set(code, row);
+            if (name) provinceByName.set(name, row);
+        });
+
+        topBoxes.forEach(box => {
+            const code = normalizeCode(box.province_code);
+            const name = normalizeName(box.province_name);
+            if (code && !boxByProvinceCode.has(code)) boxByProvinceCode.set(code, box);
+            if (name && !boxByProvinceCode.has(name)) boxByProvinceCode.set(name, box);
+        });
+    }
+
+    function renderMainMap(geojson) {
+        const features = geojson.features || [];
+        const bboxes = features.map(f => getBBoxFromRings(extractRings(f.geometry))).filter(b => Number.isFinite(b.minX));
+        const bbox = mergeBBoxes(bboxes);
+        const width = 1000;
+        const height = 620;
+        const projector = makeProjector(bbox, width, height, 24);
+
+        mainSvg.innerHTML = "";
+
+        const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        bg.setAttribute("x", "0");
+        bg.setAttribute("y", "0");
+        bg.setAttribute("width", width);
+        bg.setAttribute("height", height);
+        bg.setAttribute("fill", "#d8e8ff");
+        mainSvg.appendChild(bg);
+
+        features.forEach(feature => {
+            const props = feature.properties || {};
+            const name = getFeatureName(props) || "-";
+            const code = normalizeCode(getFeatureCode(props));
+            const nameKey = normalizeName(name);
+            const data = findProvinceDataByFeature(feature);
+            const box = findBoxForProvince(feature);
+            const pathData = featureToPath(feature, projector);
+            if (!pathData) return;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", pathData);
+            path.setAttribute("class", `province-path ${data ? "has-data" : ""} ${box ? "box-target" : ""}`);
+            path.dataset.provinceCode = code;
+            path.dataset.provinceName = name;
+
+            if (box) {
+                path.style.fill = "#ddd6fe";
+                path.style.stroke = box.color || "#7c3aed";
+                path.style.strokeWidth = "1.25";
+            }
+
+            const key = code || nameKey;
+            if (key && !provincePathByKey.has(key)) provincePathByKey.set(key, path);
+            if (nameKey && !provincePathByKey.has(nameKey)) provincePathByKey.set(nameKey, path);
+
+            path.addEventListener("mousemove", function(event) {
+                const rect = mainMap.getBoundingClientRect();
+                const provinceData = data || {};
+                const boxData = box || {};
+                showTooltip(`
+                    <div class="boxmap-tooltip-title">${name}</div>
+                    <div><strong>Total signal:</strong> ${provinceData.total || 0}</div>
+                    <div><strong>Penyakit dominan:</strong> ${provinceData.dominant_disease || "-"} ${provinceData.dominant_total ? `(${provinceData.dominant_total})` : ""}</div>
+                    <div><strong>High-risk:</strong> ${provinceData.high_risk_total || 0}</div>
+                    <div><strong>Avg score:</strong> ${provinceData.avg_score || 0}</div>
+                    ${boxData.disease_tag ? `<hr style="border:0;border-top:1px solid #e5e7eb;margin:6px 0;"><div><strong>Masuk box:</strong> ${boxData.disease_tag} · ${boxData.total} signal</div>` : ""}
+                `, event.clientX - rect.left, event.clientY - rect.top);
+            });
+            path.addEventListener("mouseenter", function() {
+                setActiveProvince(key);
+            });
+            path.addEventListener("mouseleave", function() {
+                hideTooltip();
+            });
+
+            mainSvg.appendChild(path);
+        });
+
+        // Province labels, limited and small to preserve documentation-map look.
+        features.forEach(feature => {
+            const props = feature.properties || {};
+            const name = getFeatureName(props) || "";
+            const centroid = getFeatureCentroid(feature);
+            if (!centroid) return;
+            const [x, y] = projector(centroid);
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", x.toFixed(1));
+            text.setAttribute("y", y.toFixed(1));
+            text.setAttribute("text-anchor", "middle");
+            text.setAttribute("dominant-baseline", "middle");
+            text.setAttribute("class", "province-label");
+            text.textContent = getInitials(name);
+            mainSvg.appendChild(text);
+        });
+    }
+
+    function findFeatureForBox(features, box) {
+        const code = normalizeCode(box.province_code);
+        const name = normalizeName(box.province_name);
+        return features.find(feature => {
+            const props = feature.properties || {};
+            return normalizeCode(getFeatureCode(props)) === code || normalizeName(getFeatureName(props)) === name;
+        });
+    }
+
+    function renderMiniProvinceMap(container, feature, color) {
+        const width = 160;
+        const height = 96;
+        const rings = extractRings(feature.geometry);
+        if (!rings.length) {
+            container.innerHTML = "<div style='font-size:11px;color:#64748b;padding:10px;'>Map unavailable</div>";
+            return;
+        }
+        const bbox = getBBoxFromRings(rings);
+        const projector = makeProjector(bbox, width, height, 9);
+        const paths = featureToPath(feature, projector);
+        container.innerHTML = `
+            <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+                <rect x="0" y="0" width="${width}" height="${height}" fill="#d8e8ff"></rect>
+                <path d="${paths}" fill="${color}" fill-opacity="0.86" stroke="#334155" stroke-width="1.25"></path>
+                <rect x="1" y="1" width="${width - 2}" height="${height - 2}" fill="none" stroke="rgba(15,23,42,.12)" stroke-width="1"></rect>
+            </svg>
+        `;
+    }
+
+    function renderInsetMiniMaps(geojson) {
+        const features = geojson.features || [];
+        document.querySelectorAll(".mini-province-map").forEach(container => {
+            const box = {
+                province_code: container.dataset.provinceCode || "",
+                province_name: container.dataset.provinceName || "",
+            };
+            const color = container.dataset.color || "#7c3aed";
+            const feature = findFeatureForBox(features, box);
+            if (!feature) {
+                container.innerHTML = "<div style='font-size:11px;color:#64748b;padding:10px;'>Province shape not found</div>";
+                return;
+            }
+            renderMiniProvinceMap(container, feature, color);
+        });
+    }
+
+    function wireInsetHover() {
+        document.querySelectorAll(".inset-box").forEach(box => {
+            const code = normalizeCode(box.dataset.provinceCode || "");
+            const name = normalizeName(box.dataset.provinceName || "");
+            box.addEventListener("mouseenter", function() {
+                setActiveProvince(code || name);
+            });
+            box.addEventListener("mouseleave", function() {
+                clearActive();
+            });
+        });
+    }
+
+    async function initDiseaseBoxMap() {
+        registerDataMaps();
+        wireInsetHover();
+
+        const geojsonUrl = "{% url 'intel:geojson_file' 'indonesia-provinces' %}";
+        const response = await fetch(geojsonUrl);
+        if (!response.ok) {
+            throw new Error(`GeoJSON failed: ${response.status}`);
+        }
+        const geojson = await response.json();
+        renderMainMap(geojson);
+        renderInsetMiniMaps(geojson);
+    }
+
+    initDiseaseBoxMap().catch(err => {
+        console.error(err);
+        mainSvg.innerHTML = `
+            <foreignObject x="20" y="20" width="800" height="180">
+                <div xmlns="http://www.w3.org/1999/xhtml" style="background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;font-family:Arial;font-size:13px;line-height:1.45;">
+                    <strong>Peta belum dapat dimuat.</strong><br>
+                    Pastikan GeoJSON tersedia di <code>static/intel/geo/indonesia_provinces.geojson</code> atau sesuaikan variabel <code>geojsonUrl</code> pada template.
+                </div>
+            </foreignObject>
+        `;
+    });
+</script>
+{% endblock %}
