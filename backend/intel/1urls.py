@@ -56,7 +56,6 @@ urlpatterns = [
     path("alerts/generate/", views.generate_alerts, name="generate_alerts"),
     path("alerts/<int:pk>/edit/", views.alert_update_status, name="alert_update_status"),
 
-    path("decision-support/", views.decision_support, name="decision_support"),
     path("user-roles/", views.user_role_management, name="user_role_management"),
     path("user-roles/update/", views.user_role_update, name="user_role_update"),
 
