@@ -4916,187 +4916,187 @@ def system_setting_edit(request, pk):
         "setting_obj": setting,
     })
 
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
-def alert_center(request):
-    qs = Alert.objects.select_related("location").all()
+# @login_required
+# @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+# def alert_center(request):
+#     qs = Alert.objects.select_related("location").all()
 
-    status_filter = request.GET.get("status", "").strip()
-    alert_type = request.GET.get("alert_type", "").strip()
+#     status_filter = request.GET.get("status", "").strip()
+#     alert_type = request.GET.get("alert_type", "").strip()
 
-    if status_filter:
-        qs = qs.filter(status=status_filter)
+#     if status_filter:
+#         qs = qs.filter(status=status_filter)
 
-    if alert_type:
-        qs = qs.filter(alert_type=alert_type)
+#     if alert_type:
+#         qs = qs.filter(alert_type=alert_type)
 
-    qs = qs.order_by("-created_at")
+#     qs = qs.order_by("-created_at")
 
-    paginator = Paginator(qs, 25)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
+#     paginator = Paginator(qs, 25)
+#     page_number = request.GET.get("page")
+#     page_obj = paginator.get_page(page_number)
 
-    return render(request, "intel/alert_center.html", {
-        "page_title": "Alert Center",
-        "page_obj": page_obj,
-        "status_filter": status_filter,
-        "alert_type": alert_type,
-        "alert_type_choices": Alert.ALERT_TYPE_CHOICES,
-        "status_choices": Alert.STATUS_CHOICES,
-    })
+#     return render(request, "intel/alert_center.html", {
+#         "page_title": "Alert Center",
+#         "page_obj": page_obj,
+#         "status_filter": status_filter,
+#         "alert_type": alert_type,
+#         "alert_type_choices": Alert.ALERT_TYPE_CHOICES,
+#         "status_choices": Alert.STATUS_CHOICES,
+#     })
 
 
-@login_required
-@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
-def generate_alerts(request):
-    now = timezone.now()
+# @login_required
+# @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+# def generate_alerts(request):
+#     now = timezone.now()
 
-    city_signal_threshold = int(get_system_setting_value("alert_city_signal_count", 5))
-    alert_window_hours = int(get_system_setting_value("alert_window_hours", 48))
-    avg_score_threshold = float(get_system_setting_value("alert_avg_score_threshold", 60))
+#     city_signal_threshold = int(get_system_setting_value("alert_city_signal_count", 5))
+#     alert_window_hours = int(get_system_setting_value("alert_window_hours", 48))
+#     avg_score_threshold = float(get_system_setting_value("alert_avg_score_threshold", 60))
 
-    since_time = now - timedelta(hours=alert_window_hours)
+#     since_time = now - timedelta(hours=alert_window_hours)
 
-    verified_qs = Signal.objects.filter(
-        published_at__gte=since_time,
-        status__in=["validated", "approved"],
-    )
+#     verified_qs = Signal.objects.filter(
+#         published_at__gte=since_time,
+#         status__in=["validated", "approved"],
+#     )
 
-    # 1. Cluster in city within 48h
-    city_clusters = (
-        SignalLocation.objects.filter(
-            signal__in=verified_qs,
-            is_primary=True,
-            location__isnull=False,
-            location__level__in=["city", "regency"],
-        )
-        .values("location_id", "location__display_name")
-        .annotate(
-            total=Count("id"),
-            avg_score=Avg("signal__threat_score"),
-            first_signal_at=Min("signal__published_at"),
-            last_signal_at=Max("signal__published_at"),
-        )
-        .filter(total__gte=city_signal_threshold)
-        .order_by("-total")
-    )
+#     # 1. Cluster in city within 48h
+#     city_clusters = (
+#         SignalLocation.objects.filter(
+#             signal__in=verified_qs,
+#             is_primary=True,
+#             location__isnull=False,
+#             location__level__in=["city", "regency"],
+#         )
+#         .values("location_id", "location__display_name")
+#         .annotate(
+#             total=Count("id"),
+#             avg_score=Avg("signal__threat_score"),
+#             first_signal_at=Min("signal__published_at"),
+#             last_signal_at=Max("signal__published_at"),
+#         )
+#         .filter(total__gte=city_signal_threshold)
+#         .order_by("-total")
+#     )
 
-    created_count = 0
+#     created_count = 0
 
-    for item in city_clusters:
-        location_id = item["location_id"]
-        loc_name = item["location__display_name"] or "Unknown Location"
-        dedup_key = f"cluster_city_48h::{location_id}::{since_time.date()}::{item['total']}"
+#     for item in city_clusters:
+#         location_id = item["location_id"]
+#         loc_name = item["location__display_name"] or "Unknown Location"
+#         dedup_key = f"cluster_city_48h::{location_id}::{since_time.date()}::{item['total']}"
 
-        _, created = Alert.objects.get_or_create(
-            dedup_key=dedup_key,
-            defaults={
-                "alert_type": "cluster_city_48h",
-                "title": f"Cluster signal di {loc_name}",
-                "description": f"Terdeteksi {item['total']} signal dalam {alert_window_hours} jam terakhir di {loc_name}.",
-                "location_id": location_id,
-                "signal_count": item["total"],
-                "avg_score": round(item["avg_score"] or 0, 2),
-                "status": "open",
-                "first_signal_at": item["first_signal_at"],
-                "last_signal_at": item["last_signal_at"],
-                "rule_key": "cluster_city_48h",
-            },
-        )
-        if created:
-            created_count += 1
+#         _, created = Alert.objects.get_or_create(
+#             dedup_key=dedup_key,
+#             defaults={
+#                 "alert_type": "cluster_city_48h",
+#                 "title": f"Cluster signal di {loc_name}",
+#                 "description": f"Terdeteksi {item['total']} signal dalam {alert_window_hours} jam terakhir di {loc_name}.",
+#                 "location_id": location_id,
+#                 "signal_count": item["total"],
+#                 "avg_score": round(item["avg_score"] or 0, 2),
+#                 "status": "open",
+#                 "first_signal_at": item["first_signal_at"],
+#                 "last_signal_at": item["last_signal_at"],
+#                 "rule_key": "cluster_city_48h",
+#             },
+#         )
+#         if created:
+#             created_count += 1
 
-    # 2. High average score in city/regency
-    high_avg_groups = (
-        SignalLocation.objects.filter(
-            signal__in=verified_qs,
-            is_primary=True,
-            location__isnull=False,
-            location__level__in=["city", "regency"],
-        )
-        .values("location_id", "location__display_name")
-        .annotate(
-            total=Count("id"),
-            avg_score=Avg("signal__threat_score"),
-            first_signal_at=Min("signal__published_at"),
-            last_signal_at=Max("signal__published_at"),
-        )
-        .filter(avg_score__gt=avg_score_threshold, total__gte=2)
-        .order_by("-avg_score")
-    )
+#     # 2. High average score in city/regency
+#     high_avg_groups = (
+#         SignalLocation.objects.filter(
+#             signal__in=verified_qs,
+#             is_primary=True,
+#             location__isnull=False,
+#             location__level__in=["city", "regency"],
+#         )
+#         .values("location_id", "location__display_name")
+#         .annotate(
+#             total=Count("id"),
+#             avg_score=Avg("signal__threat_score"),
+#             first_signal_at=Min("signal__published_at"),
+#             last_signal_at=Max("signal__published_at"),
+#         )
+#         .filter(avg_score__gt=avg_score_threshold, total__gte=2)
+#         .order_by("-avg_score")
+#     )
 
-    for item in high_avg_groups:
-        location_id = item["location_id"]
-        loc_name = item["location__display_name"] or "Unknown Location"
-        dedup_key = f"high_avg_score::{location_id}::{since_time.date()}::{round(item['avg_score'] or 0, 2)}"
+#     for item in high_avg_groups:
+#         location_id = item["location_id"]
+#         loc_name = item["location__display_name"] or "Unknown Location"
+#         dedup_key = f"high_avg_score::{location_id}::{since_time.date()}::{round(item['avg_score'] or 0, 2)}"
 
-        _, created = Alert.objects.get_or_create(
-            dedup_key=dedup_key,
-            defaults={
-                "alert_type": "high_avg_score",
-                "title": f"Rata-rata skor tinggi di {loc_name}",
-                "description": f"Rata-rata skor {round(item['avg_score'] or 0, 2)} pada {item['total']} signal di {loc_name}.",
-                "location_id": location_id,
-                "signal_count": item["total"],
-                "avg_score": round(item["avg_score"] or 0, 2),
-                "status": "open",
-                "first_signal_at": item["first_signal_at"],
-                "last_signal_at": item["last_signal_at"],
-                "rule_key": "high_avg_score",
-            },
-        )
-        if created:
-            created_count += 1
+#         _, created = Alert.objects.get_or_create(
+#             dedup_key=dedup_key,
+#             defaults={
+#                 "alert_type": "high_avg_score",
+#                 "title": f"Rata-rata skor tinggi di {loc_name}",
+#                 "description": f"Rata-rata skor {round(item['avg_score'] or 0, 2)} pada {item['total']} signal di {loc_name}.",
+#                 "location_id": location_id,
+#                 "signal_count": item["total"],
+#                 "avg_score": round(item["avg_score"] or 0, 2),
+#                 "status": "open",
+#                 "first_signal_at": item["first_signal_at"],
+#                 "last_signal_at": item["last_signal_at"],
+#                 "rule_key": "high_avg_score",
+#             },
+#         )
+#         if created:
+#             created_count += 1
 
-    # 3. New location appeared recently
-    recent_locations = (
-        SignalLocation.objects.filter(
-            signal__in=verified_qs,
-            is_primary=True,
-            location__isnull=False,
-        )
-        .values("location_id", "location__display_name")
-        .annotate(
-            first_signal_at=Min("signal__published_at"),
-            total=Count("id"),
-            avg_score=Avg("signal__threat_score"),
-        )
-    )
+#     # 3. New location appeared recently
+#     recent_locations = (
+#         SignalLocation.objects.filter(
+#             signal__in=verified_qs,
+#             is_primary=True,
+#             location__isnull=False,
+#         )
+#         .values("location_id", "location__display_name")
+#         .annotate(
+#             first_signal_at=Min("signal__published_at"),
+#             total=Count("id"),
+#             avg_score=Avg("signal__threat_score"),
+#         )
+#     )
 
-    for item in recent_locations:
-        location_id = item["location_id"]
-        loc_name = item["location__display_name"] or "Unknown Location"
+#     for item in recent_locations:
+#         location_id = item["location_id"]
+#         loc_name = item["location__display_name"] or "Unknown Location"
 
-        older_exists = SignalLocation.objects.filter(
-            location_id=location_id,
-            is_primary=True,
-            signal__published_at__lt=since_time,
-            signal__status__in=["validated", "approved"],
-        ).exists()
+#         older_exists = SignalLocation.objects.filter(
+#             location_id=location_id,
+#             is_primary=True,
+#             signal__published_at__lt=since_time,
+#             signal__status__in=["validated", "approved"],
+#         ).exists()
 
-        if not older_exists:
-            dedup_key = f"new_location::{location_id}::{since_time.date()}"
+#         if not older_exists:
+#             dedup_key = f"new_location::{location_id}::{since_time.date()}"
 
-            _, created = Alert.objects.get_or_create(
-                dedup_key=dedup_key,
-                defaults={
-                    "alert_type": "new_location",
-                    "title": f"Lokasi baru muncul: {loc_name}",
-                    "description": f"Lokasi {loc_name} muncul sebagai signal terverifikasi dalam {alert_window_hours} jam terakhir.",
-                    "location_id": location_id,
-                    "signal_count": item["total"],
-                    "avg_score": round(item["avg_score"] or 0, 2),
-                    "status": "open",
-                    "first_signal_at": item["first_signal_at"],
-                    "last_signal_at": item["first_signal_at"],
-                    "rule_key": "new_location",
-                },
-            )
-            if created:
-                created_count += 1
+#             _, created = Alert.objects.get_or_create(
+#                 dedup_key=dedup_key,
+#                 defaults={
+#                     "alert_type": "new_location",
+#                     "title": f"Lokasi baru muncul: {loc_name}",
+#                     "description": f"Lokasi {loc_name} muncul sebagai signal terverifikasi dalam {alert_window_hours} jam terakhir.",
+#                     "location_id": location_id,
+#                     "signal_count": item["total"],
+#                     "avg_score": round(item["avg_score"] or 0, 2),
+#                     "status": "open",
+#                     "first_signal_at": item["first_signal_at"],
+#                     "last_signal_at": item["first_signal_at"],
+#                     "rule_key": "new_location",
+#                 },
+#             )
+#             if created:
+#                 created_count += 1
 
-    messages.success(request, f"Generate alert selesai. Alert baru dibuat: {created_count}.")
-    return redirect("intel:alert_center")
+#     messages.success(request, f"Generate alert selesai. Alert baru dibuat: {created_count}.")
+#     return redirect("intel:alert_center")
 
 
 @login_required
@@ -5136,6 +5136,539 @@ def alert_update_status(request, pk):
         "form": form,
         "alert_obj": alert,
     })
+
+def _alert_type_choices_extended():
+    """Tambahan label alert tanpa perlu mengubah model choices/migration."""
+    base = list(getattr(Alert, "ALERT_TYPE_CHOICES", []))
+    extra = [
+        ("disease_spike_province", "Disease Spike Province"),
+        ("disease_cluster_city", "Disease Cluster City"),
+        ("new_disease_location", "New Disease Location"),
+    ]
+    existing = {key for key, _ in base}
+    for item in extra:
+        if item[0] not in existing:
+            base.append(item)
+    return base
+
+
+def _alert_level_from_stats(total, avg_score, high_risk_total=0, increase_ratio=0):
+    total = total or 0
+    avg_score = avg_score or 0
+    high_risk_total = high_risk_total or 0
+    increase_ratio = increase_ratio or 0
+
+    if high_risk_total >= 3 or avg_score >= 70 or increase_ratio >= 3:
+        return "Merah"
+    if high_risk_total >= 1 or avg_score >= 55 or increase_ratio >= 2:
+        return "Oranye"
+    if total >= 3 or avg_score >= 40:
+        return "Kuning"
+    return "Hijau"
+
+
+def _location_to_province(loc):
+    if not loc:
+        return None
+    if getattr(loc, "level", "") == "province":
+        return loc
+    parent = getattr(loc, "parent", None)
+    if parent and getattr(parent, "level", "") == "province":
+        return parent
+    return None
+
+
+def _location_to_city(loc):
+    if not loc:
+        return None
+    if getattr(loc, "level", "") in ["city", "regency"]:
+        return loc
+    return None
+
+
+def _build_disease_location_stats(signal_qs, target_level="province"):
+    """
+    Agregasi SignalLocation ke level provinsi/kabkota + penyakit.
+    Return dict dengan key (location_id, disease_tag).
+    """
+    links = (
+        SignalLocation.objects.filter(
+            signal__in=signal_qs,
+            is_primary=True,
+            location__isnull=False,
+        )
+        .select_related("signal", "signal__source", "location", "location__parent")
+        .order_by("-signal__threat_score", "-signal__published_at")
+    )
+
+    stats = {}
+    seen = set()
+
+    for link in links:
+        signal = link.signal
+        loc = link.location
+        disease = (signal.disease_tag or "Tidak diketahui").strip() or "Tidak diketahui"
+
+        if target_level == "province":
+            target_loc = _location_to_province(loc)
+        else:
+            target_loc = _location_to_city(loc)
+
+        if not target_loc:
+            continue
+
+        key = (target_loc.id, disease.lower())
+        seen_key = (signal.id, target_loc.id, disease.lower())
+        if seen_key in seen:
+            continue
+        seen.add(seen_key)
+
+        if key not in stats:
+            stats[key] = {
+                "location": target_loc,
+                "location_id": target_loc.id,
+                "location_name": target_loc.display_name or target_loc.name or "Unknown Location",
+                "disease_tag": disease,
+                "total": 0,
+                "high_risk_total": 0,
+                "score_sum": 0.0,
+                "first_signal_at": None,
+                "last_signal_at": None,
+                "sample_signals": [],
+            }
+
+        item = stats[key]
+        score = signal.threat_score or 0
+        item["total"] += 1
+        item["score_sum"] += score
+        if score >= 70:
+            item["high_risk_total"] += 1
+
+        if signal.published_at:
+            if item["first_signal_at"] is None or signal.published_at < item["first_signal_at"]:
+                item["first_signal_at"] = signal.published_at
+            if item["last_signal_at"] is None or signal.published_at > item["last_signal_at"]:
+                item["last_signal_at"] = signal.published_at
+
+        if len(item["sample_signals"]) < 3:
+            item["sample_signals"].append({
+                "id": signal.id,
+                "title": signal.title or "-",
+                "score": score,
+                "date": signal.published_at.strftime("%Y-%m-%d") if signal.published_at else "-",
+                "source": signal.source.name if signal.source else "-",
+            })
+
+    for item in stats.values():
+        item["avg_score"] = round(item["score_sum"] / item["total"], 2) if item["total"] else 0
+
+    return stats
+
+
+def _create_or_update_alert(*, alert_type, title, description, location, signal_count, avg_score, first_signal_at, last_signal_at, rule_key, dedup_key):
+    """
+    Create alert baru atau update alert open yang sudah ada dengan dedup_key sama.
+    """
+    alert, created = Alert.objects.get_or_create(
+        dedup_key=dedup_key,
+        defaults={
+            "alert_type": alert_type,
+            "title": title,
+            "description": description,
+            "location": location,
+            "signal_count": signal_count,
+            "avg_score": avg_score,
+            "status": "open",
+            "first_signal_at": first_signal_at,
+            "last_signal_at": last_signal_at,
+            "rule_key": rule_key,
+        },
+    )
+
+    if not created and alert.status == "open":
+        alert.title = title
+        alert.description = description
+        alert.location = location
+        alert.signal_count = signal_count
+        alert.avg_score = avg_score
+        alert.first_signal_at = first_signal_at
+        alert.last_signal_at = last_signal_at
+        alert.rule_key = rule_key
+        alert.save(update_fields=[
+            "title", "description", "location", "signal_count", "avg_score",
+            "first_signal_at", "last_signal_at", "rule_key", "updated_at"
+        ])
+
+    return created
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
+def alert_center(request):
+    qs = Alert.objects.select_related("location").all()
+
+    status_filter = (request.GET.get("status") or "").strip()
+    alert_type = (request.GET.get("alert_type") or "").strip()
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+
+    if alert_type:
+        qs = qs.filter(alert_type=alert_type)
+
+    qs = qs.order_by("-created_at")
+
+    alert_rows = []
+    for alert in qs:
+        loc = getattr(alert, "location", None)
+        location_name = "-"
+        if loc:
+            location_name = getattr(loc, "display_name", "") or getattr(loc, "name", "") or "-"
+
+        avg_score = alert.avg_score or 0
+        signal_count = alert.signal_count or 0
+
+        if avg_score >= 70 or signal_count >= 10:
+            visual_level = "Merah"
+        elif avg_score >= 60 or signal_count >= 5:
+            visual_level = "Oranye"
+        elif avg_score >= 40 or signal_count >= 2:
+            visual_level = "Kuning"
+        else:
+            visual_level = "Hijau"
+
+        alert_rows.append({
+            "id": alert.id,
+            "alert_type": alert.alert_type or "-",
+            "title": alert.title or "-",
+            "description": alert.description or "-",
+            "location_name": location_name,
+            "signal_count": signal_count,
+            "avg_score": round(avg_score, 2),
+            "status": alert.status or "open",
+            "first_signal_at": alert.first_signal_at,
+            "last_signal_at": alert.last_signal_at,
+            "rule_key": alert.rule_key or "-",
+            "visual_level": visual_level,
+        })
+
+    paginator = Paginator(alert_rows, 25)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    alert_type_choices = list(getattr(Alert, "ALERT_TYPE_CHOICES", []))
+    status_choices = list(getattr(Alert, "STATUS_CHOICES", []))
+
+    return render(request, "intel/alert_center.html", {
+        "page_title": "Alert Center",
+        "page_obj": page_obj,
+        "status_filter": status_filter,
+        "alert_type": alert_type,
+        "alert_type_choices": alert_type_choices,
+        "status_choices": status_choices,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def generate_alerts(request):
+    """
+    Upgrade generate alert:
+    1. mempertahankan alert lama: city cluster, high avg score, new location
+    2. menambahkan disease spike provinsi berbasis pembanding baseline
+    3. menambahkan disease cluster kab/kota
+    4. menambahkan new disease-location
+    """
+    now = timezone.now()
+
+    city_signal_threshold = int(get_system_setting_value("alert_city_signal_count", 5))
+    alert_window_hours = int(get_system_setting_value("alert_window_hours", 48))
+    avg_score_threshold = float(get_system_setting_value("alert_avg_score_threshold", 60))
+
+    recent_days = int(get_system_setting_value("alert_recent_days", 7))
+    baseline_days = int(get_system_setting_value("alert_baseline_days", 21))
+    disease_signal_threshold = int(get_system_setting_value("alert_disease_signal_count", 5))
+    spike_ratio_threshold = float(get_system_setting_value("alert_spike_ratio", 2.0))
+
+    since_time = now - timedelta(hours=alert_window_hours)
+    recent_start = now - timedelta(days=recent_days)
+    baseline_start = recent_start - timedelta(days=baseline_days)
+
+    verified_recent_qs = Signal.objects.filter(
+        published_at__gte=since_time,
+        status__in=["validated", "approved"],
+    ).exclude(status="noise")
+
+    verified_window_qs = Signal.objects.filter(
+        published_at__gte=recent_start,
+        published_at__lte=now,
+        status__in=["validated", "approved"],
+    ).exclude(status="noise")
+
+    verified_baseline_qs = Signal.objects.filter(
+        published_at__gte=baseline_start,
+        published_at__lt=recent_start,
+        status__in=["validated", "approved"],
+    ).exclude(status="noise")
+
+    created_count = 0
+    updated_or_existing_count = 0
+
+    # ------------------------------------------------------------
+    # 1. Existing: Cluster in city within alert window
+    # ------------------------------------------------------------
+    city_clusters = (
+        SignalLocation.objects.filter(
+            signal__in=verified_recent_qs,
+            is_primary=True,
+            location__isnull=False,
+            location__level__in=["city", "regency"],
+        )
+        .values("location_id", "location__display_name")
+        .annotate(
+            total=Count("id"),
+            avg_score=Avg("signal__threat_score"),
+            first_signal_at=Min("signal__published_at"),
+            last_signal_at=Max("signal__published_at"),
+        )
+        .filter(total__gte=city_signal_threshold)
+        .order_by("-total")
+    )
+
+    for item in city_clusters:
+        location_id = item["location_id"]
+        loc_name = item["location__display_name"] or "Unknown Location"
+        loc = Location.objects.filter(id=location_id).first()
+        dedup_key = f"cluster_city_48h::{location_id}::{since_time.date()}"
+        created = _create_or_update_alert(
+            alert_type="cluster_city_48h",
+            title=f"Cluster signal di {loc_name}",
+            description=f"Terdeteksi {item['total']} signal dalam {alert_window_hours} jam terakhir di {loc_name}.",
+            location=loc,
+            signal_count=item["total"],
+            avg_score=round(item["avg_score"] or 0, 2),
+            first_signal_at=item["first_signal_at"],
+            last_signal_at=item["last_signal_at"],
+            rule_key="cluster_city_48h",
+            dedup_key=dedup_key,
+        )
+        created_count += 1 if created else 0
+        updated_or_existing_count += 0 if created else 1
+
+    # ------------------------------------------------------------
+    # 2. Existing: High average score city/regency
+    # ------------------------------------------------------------
+    high_avg_groups = (
+        SignalLocation.objects.filter(
+            signal__in=verified_recent_qs,
+            is_primary=True,
+            location__isnull=False,
+            location__level__in=["city", "regency"],
+        )
+        .values("location_id", "location__display_name")
+        .annotate(
+            total=Count("id"),
+            avg_score=Avg("signal__threat_score"),
+            first_signal_at=Min("signal__published_at"),
+            last_signal_at=Max("signal__published_at"),
+        )
+        .filter(avg_score__gt=avg_score_threshold, total__gte=2)
+        .order_by("-avg_score")
+    )
+
+    for item in high_avg_groups:
+        location_id = item["location_id"]
+        loc_name = item["location__display_name"] or "Unknown Location"
+        loc = Location.objects.filter(id=location_id).first()
+        dedup_key = f"high_avg_score::{location_id}::{since_time.date()}"
+        created = _create_or_update_alert(
+            alert_type="high_avg_score",
+            title=f"Rata-rata skor tinggi di {loc_name}",
+            description=f"Rata-rata skor {round(item['avg_score'] or 0, 2)} pada {item['total']} signal di {loc_name}.",
+            location=loc,
+            signal_count=item["total"],
+            avg_score=round(item["avg_score"] or 0, 2),
+            first_signal_at=item["first_signal_at"],
+            last_signal_at=item["last_signal_at"],
+            rule_key="high_avg_score",
+            dedup_key=dedup_key,
+        )
+        created_count += 1 if created else 0
+        updated_or_existing_count += 0 if created else 1
+
+    # ------------------------------------------------------------
+    # 3. Existing: New location appeared recently
+    # ------------------------------------------------------------
+    recent_locations = (
+        SignalLocation.objects.filter(
+            signal__in=verified_recent_qs,
+            is_primary=True,
+            location__isnull=False,
+        )
+        .values("location_id", "location__display_name")
+        .annotate(
+            first_signal_at=Min("signal__published_at"),
+            last_signal_at=Max("signal__published_at"),
+            total=Count("id"),
+            avg_score=Avg("signal__threat_score"),
+        )
+    )
+
+    for item in recent_locations:
+        location_id = item["location_id"]
+        loc_name = item["location__display_name"] or "Unknown Location"
+        older_exists = SignalLocation.objects.filter(
+            location_id=location_id,
+            is_primary=True,
+            signal__published_at__lt=since_time,
+            signal__status__in=["validated", "approved"],
+        ).exists()
+
+        if not older_exists:
+            loc = Location.objects.filter(id=location_id).first()
+            dedup_key = f"new_location::{location_id}::{since_time.date()}"
+            created = _create_or_update_alert(
+                alert_type="new_location",
+                title=f"Lokasi baru muncul: {loc_name}",
+                description=f"Lokasi {loc_name} muncul sebagai signal terverifikasi dalam {alert_window_hours} jam terakhir.",
+                location=loc,
+                signal_count=item["total"],
+                avg_score=round(item["avg_score"] or 0, 2),
+                first_signal_at=item["first_signal_at"],
+                last_signal_at=item["last_signal_at"],
+                rule_key="new_location",
+                dedup_key=dedup_key,
+            )
+            created_count += 1 if created else 0
+            updated_or_existing_count += 0 if created else 1
+
+    # ------------------------------------------------------------
+    # 4. New: Disease spike at province level
+    # ------------------------------------------------------------
+    recent_province_stats = _build_disease_location_stats(verified_window_qs, target_level="province")
+    baseline_province_stats = _build_disease_location_stats(verified_baseline_qs, target_level="province")
+
+    baseline_factor = max(1, baseline_days / max(1, recent_days))
+
+    for key, recent in recent_province_stats.items():
+        baseline = baseline_province_stats.get(key, {"total": 0})
+        baseline_expected = (baseline.get("total", 0) / baseline_factor) if baseline_factor else 0
+        baseline_expected_for_ratio = max(1, baseline_expected)
+        increase_ratio = round((recent["total"] / baseline_expected_for_ratio), 2)
+
+        if recent["total"] < disease_signal_threshold:
+            continue
+        if increase_ratio < spike_ratio_threshold and recent["high_risk_total"] <= 0 and recent["avg_score"] < avg_score_threshold:
+            continue
+
+        loc = recent["location"]
+        loc_name = recent["location_name"]
+        disease = recent["disease_tag"]
+        level = _alert_level_from_stats(recent["total"], recent["avg_score"], recent["high_risk_total"], increase_ratio)
+        dedup_key = f"disease_spike_province::{loc.id}::{disease.lower()}::{recent_start.date()}::{now.date()}"
+        description = (
+            f"{level}: {disease} meningkat di {loc_name}. "
+            f"Periode {recent_days} hari terakhir mencatat {recent['total']} signal, "
+            f"baseline ekuivalen sekitar {round(baseline_expected, 2)} signal, "
+            f"rasio kenaikan {increase_ratio}x, high-risk {recent['high_risk_total']}, "
+            f"dan rata-rata skor {recent['avg_score']}."
+        )
+        created = _create_or_update_alert(
+            alert_type="disease_spike_province",
+            title=f"Lonjakan {disease} di {loc_name}",
+            description=description,
+            location=loc,
+            signal_count=recent["total"],
+            avg_score=recent["avg_score"],
+            first_signal_at=recent["first_signal_at"],
+            last_signal_at=recent["last_signal_at"],
+            rule_key="disease_spike_province",
+            dedup_key=dedup_key,
+        )
+        created_count += 1 if created else 0
+        updated_or_existing_count += 0 if created else 1
+
+    # ------------------------------------------------------------
+    # 5. New: Disease cluster at city/regency level
+    # ------------------------------------------------------------
+    recent_city_stats = _build_disease_location_stats(verified_window_qs, target_level="city")
+
+    for key, recent in recent_city_stats.items():
+        if recent["total"] < max(2, city_signal_threshold):
+            continue
+        if recent["avg_score"] < 35 and recent["high_risk_total"] <= 0:
+            continue
+
+        loc = recent["location"]
+        loc_name = recent["location_name"]
+        disease = recent["disease_tag"]
+        level = _alert_level_from_stats(recent["total"], recent["avg_score"], recent["high_risk_total"], 0)
+        dedup_key = f"disease_cluster_city::{loc.id}::{disease.lower()}::{recent_start.date()}::{now.date()}"
+        description = (
+            f"{level}: Terdapat cluster {disease} di {loc_name} dengan {recent['total']} signal "
+            f"dalam {recent_days} hari terakhir, high-risk {recent['high_risk_total']}, "
+            f"dan rata-rata skor {recent['avg_score']}."
+        )
+        created = _create_or_update_alert(
+            alert_type="disease_cluster_city",
+            title=f"Cluster {disease} di {loc_name}",
+            description=description,
+            location=loc,
+            signal_count=recent["total"],
+            avg_score=recent["avg_score"],
+            first_signal_at=recent["first_signal_at"],
+            last_signal_at=recent["last_signal_at"],
+            rule_key="disease_cluster_city",
+            dedup_key=dedup_key,
+        )
+        created_count += 1 if created else 0
+        updated_or_existing_count += 0 if created else 1
+
+    # ------------------------------------------------------------
+    # 6. New: New disease-location combination
+    # ------------------------------------------------------------
+    for key, recent in recent_city_stats.items():
+        loc = recent["location"]
+        disease = recent["disease_tag"]
+        older_same_disease_exists = SignalLocation.objects.filter(
+            location_id=loc.id,
+            is_primary=True,
+            signal__disease_tag__iexact=disease,
+            signal__published_at__lt=recent_start,
+            signal__status__in=["validated", "approved"],
+        ).exists()
+
+        if older_same_disease_exists:
+            continue
+        if recent["total"] < 2 and recent["avg_score"] < avg_score_threshold:
+            continue
+
+        dedup_key = f"new_disease_location::{loc.id}::{disease.lower()}::{recent_start.date()}"
+        description = (
+            f"Kombinasi penyakit-lokasi baru: {disease} muncul di {recent['location_name']} "
+            f"pada periode {recent_days} hari terakhir dengan {recent['total']} signal dan rata-rata skor {recent['avg_score']}."
+        )
+        created = _create_or_update_alert(
+            alert_type="new_disease_location",
+            title=f"{disease} muncul di lokasi baru: {recent['location_name']}",
+            description=description,
+            location=loc,
+            signal_count=recent["total"],
+            avg_score=recent["avg_score"],
+            first_signal_at=recent["first_signal_at"],
+            last_signal_at=recent["last_signal_at"],
+            rule_key="new_disease_location",
+            dedup_key=dedup_key,
+        )
+        created_count += 1 if created else 0
+        updated_or_existing_count += 0 if created else 1
+
+    messages.success(
+        request,
+        f"Generate alert selesai. Alert baru dibuat: {created_count}. Alert existing/update: {updated_or_existing_count}."
+    )
+    return redirect("intel:alert_center")
+
 
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST, ROLE_VIEWER)
 def map_intelligence(request):

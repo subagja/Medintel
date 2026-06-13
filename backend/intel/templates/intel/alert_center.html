@@ -1,0 +1,202 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --muted: #666;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --orange-bg: #fff0df;
+        --orange-text: #9a4d00;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+    }
+
+    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 700; }
+    .page-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .filters select, .filters input { min-width: 170px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 7px 10px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 700; }
+    .btn-primary:hover { background: #36005e; }
+    .table-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow-x: auto; margin-bottom: 16px; }
+    .datatable-table { width: 100% !important; border-collapse: collapse; font-size: 13px; }
+    .datatable-table th, .datatable-table td { vertical-align: top; border-bottom: 1px solid #e6e6e6; padding: 8px 10px; overflow-wrap: anywhere; }
+    .datatable-table thead th { background: #f5f5f5; font-weight: 700; white-space: nowrap; }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .level-Hijau { background: var(--green-bg); color: var(--green-text); border: 1px solid #7acb8a; }
+    .level-Kuning { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
+    .level-Oranye { background: var(--orange-bg); color: var(--orange-text); border: 1px solid #efc28f; }
+    .level-Merah { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
+    .status-open { background: var(--red-bg); color: var(--red-text); }
+    .status-reviewed { background: var(--blue-bg); color: var(--blue-text); }
+    .status-closed { background: #f1f1f1; color: #555; }
+    .type-badge { background: #f1ecff; color: var(--primary); border: 1px solid #b99be8; }
+    .alert-title { font-weight: 800; margin-bottom: 4px; }
+    .alert-desc { color: #333; font-size: 12px; line-height: 1.45; }
+    .pagination { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #111; background: #fff; }
+    .pagination span { background: #f5f5f5; font-weight: 700; }
+</style>
+
+<h1 class="page-title">Alert Center</h1>
+<p class="page-subtitle">
+    Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi. Upgrade ini menambahkan disease spike, disease cluster city, dan new disease-location.
+</p>
+
+<div class="card toolbar">
+    <div>
+        <a href="{% url 'intel:generate_alerts' %}" class="btn btn-primary">Generate Alerts</a>
+        <span class="small">Gunakan tombol ini setelah validasi signal untuk membuat peringatan dini terbaru.</span>
+    </div>
+
+    <form method="get" class="filters">
+        <select name="alert_type">
+            <option value="">Semua jenis alert</option>
+            {% for key, label in alert_type_choices %}
+                <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="status">
+            <option value="">Semua status</option>
+            {% for key, label in status_choices %}
+                <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="submit">Filter</button>
+        <a class="btn" href="{% url 'intel:alert_center' %}">Reset</a>
+    </form>
+</div>
+
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alert</p>
+</div>
+
+<div class="table-card">
+    <table id="alertCenterTable" class="display stripe hover compact datatable-table">
+        <thead>
+            <tr>
+                <th>Level</th>
+                <th>Jenis</th>
+                <th>Alert</th>
+                <th>Lokasi</th>
+                <th>Signal</th>
+                <th>Avg Score</th>
+                <th>Status</th>
+                <th>Window</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for alert in page_obj %}
+            <tr>
+                <td>
+                    <span class="badge level-{{ alert.visual_level|default:'Kuning' }}">
+                        {{ alert.visual_level|default:"Kuning" }}
+                    </span>
+                </td>
+
+                <td>
+                    <span class="badge type-badge">
+                        {{ alert.alert_type|default:"-" }}
+                    </span>
+                </td>
+
+                <td>
+                    <div class="alert-title">{{ alert.title|default:"-" }}</div>
+                    <div class="alert-desc">{{ alert.description|default:"-" }}</div>
+                    <div class="small">Rule: {{ alert.rule_key|default:"-" }}</div>
+                </td>
+
+                <td>{{ alert.location_name|default:"-" }}</td>
+
+                <td><strong>{{ alert.signal_count|default:0 }}</strong></td>
+
+                <td>{{ alert.avg_score|default:0|floatformat:2 }}</td>
+
+                <td>
+                    <span class="badge status-{{ alert.status|default:'open' }}">
+                        {{ alert.status|default:"open" }}
+                    </span>
+                </td>
+
+                <td>
+                    {% if alert.first_signal_at %}
+                        {{ alert.first_signal_at|date:"Y-m-d H:i" }}
+                    {% else %}
+                        -
+                    {% endif %}
+                    <br>s.d.<br>
+                    {% if alert.last_signal_at %}
+                        {{ alert.last_signal_at|date:"Y-m-d H:i" }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+
+                <td>
+                    <a href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&status={{ status_filter }}&alert_type={{ alert_type }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&status={{ status_filter }}&alert_type={{ alert_type }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&status={{ status_filter }}&alert_type={{ alert_type }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&status={{ status_filter }}&alert_type={{ alert_type }}">Akhir</a>
+    {% endif %}
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script>
+    $(document).ready(function () {
+        const table = $('#alertCenterTable');
+
+        if (table.length && table.find('thead th').length > 0) {
+            if ($.fn.DataTable.isDataTable('#alertCenterTable')) {
+                table.DataTable().destroy();
+            }
+
+            table.DataTable({
+                paging: false,
+                info: false,
+                searching: true,
+                ordering: true,
+                order: [],
+                autoWidth: false,
+                scrollX: true,
+                responsive: false,
+                destroy: true,
+                language: {
+                    search: "Cari cepat:",
+                    zeroRecords: "Tidak ada data yang cocok",
+                    emptyTable: "Belum ada alert"
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
