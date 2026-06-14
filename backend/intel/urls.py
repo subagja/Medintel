@@ -54,6 +54,7 @@ urlpatterns = [
 
     path("alerts/", views.alert_center, name="alert_center"),
     path("alerts/generate/", views.generate_alerts, name="generate_alerts"),
+    path("alerts/<int:pk>/", views.alert_detail, name="alert_detail"),
     path("alerts/<int:pk>/edit/", views.alert_update_status, name="alert_update_status"),
 
     path("decision-support/", views.decision_support, name="decision_support"),

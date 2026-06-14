@@ -17,23 +17,136 @@
         --red-text: #b00020;
         --blue-bg: #eef3ff;
         --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
     }
 
-    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 700; }
+    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 800; }
     .page-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
     .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-    .toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+
+    .toolbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .filters select, .filters input { min-width: 170px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
-    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 7px 10px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
-    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 700; }
+
+    .btn, button {
+        border: 1px solid #999;
+        border-radius: 4px;
+        background: #f7f7f7;
+        padding: 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        color: #111;
+        display: inline-block;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 800; }
     .btn-primary:hover { background: #36005e; }
+    .btn-info { background: #f6f2fb; color: var(--primary); border-color: #d3b7ee; font-weight: 800; }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(110px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .kpi-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        min-height: 72px;
+    }
+
+    .kpi-label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .kpi-value { font-size: 22px; font-weight: 900; line-height: 1; }
+    .kpi-card.level-Merah { border-left: 5px solid #d64a4a; }
+    .kpi-card.level-Oranye { border-left: 5px solid #e68a2e; }
+    .kpi-card.level-Kuning { border-left: 5px solid #d7a900; }
+    .kpi-card.status-open-card { border-left: 5px solid #d64a4a; }
+    .kpi-card.status-reviewed-card { border-left: 5px solid #3e70c8; }
+
+    .info-panel {
+        display: none;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #eee;
+    }
+
+    .info-panel.open { display: block; }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.3fr);
+        gap: 22px;
+        align-items: start;
+    }
+
+    .info-title { font-weight: 900; margin: 0 0 10px; }
+    .legend-list { display: grid; gap: 9px; }
+
+    .legend-row {
+        display: grid;
+        grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+        column-gap: 14px;
+        row-gap: 4px;
+        align-items: start;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .legend-row .badge {
+        justify-self: start;
+        max-width: 100%;
+        white-space: normal;
+        text-align: center;
+        overflow-wrap: anywhere;
+    }
+
+    .legend-row div { min-width: 0; }
+    .legend-row strong { display: block; }
+    .legend-row code {
+        display: block;
+        color: var(--primary);
+        font-weight: 800;
+        font-family: Arial, sans-serif;
+        overflow-wrap: anywhere;
+    }
+
     .table-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow-x: auto; margin-bottom: 16px; }
     .datatable-table { width: 100% !important; border-collapse: collapse; font-size: 13px; }
     .datatable-table th, .datatable-table td { vertical-align: top; border-bottom: 1px solid #e6e6e6; padding: 8px 10px; overflow-wrap: anywhere; }
-    .datatable-table thead th { background: #f5f5f5; font-weight: 700; white-space: nowrap; }
+    .datatable-table thead th { background: #f5f5f5; font-weight: 800; white-space: nowrap; }
+
     .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
-    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .tiny-code { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 900;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+
     .level-Hijau { background: var(--green-bg); color: var(--green-text); border: 1px solid #7acb8a; }
     .level-Kuning { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
     .level-Oranye { background: var(--orange-bg); color: var(--orange-text); border: 1px solid #efc28f; }
@@ -41,47 +154,117 @@
     .status-open { background: var(--red-bg); color: var(--red-text); }
     .status-reviewed { background: var(--blue-bg); color: var(--blue-text); }
     .status-closed { background: #f1f1f1; color: #555; }
-    .type-badge { background: #f1ecff; color: var(--primary); border: 1px solid #b99be8; }
-    .alert-title { font-weight: 800; margin-bottom: 4px; }
+    .type-badge { background: var(--purple-bg); color: var(--primary); border: 1px solid #b99be8; }
+
+    .alert-title { font-weight: 900; margin-bottom: 4px; }
     .alert-desc { color: #333; font-size: 12px; line-height: 1.45; }
+    .actions-cell { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+    .actions-cell .btn { text-align: center; padding: 6px 9px; font-size: 12px; }
+
     .pagination { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #111; background: #fff; }
-    .pagination span { background: #f5f5f5; font-weight: 700; }
+    .pagination span { background: #f5f5f5; font-weight: 800; }
+
+    @media (max-width: 1100px) {
+        .kpi-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+        .info-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 700px) {
+        .legend-row { grid-template-columns: 1fr; }
+    }
 </style>
 
 <h1 class="page-title">Alert Center</h1>
 <p class="page-subtitle">
-    Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi. Upgrade ini menambahkan disease spike, disease cluster city, dan new disease-location.
+    Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi. Gunakan detail alert untuk melihat evidence, judgement, early warning, forecasting, dan problem solving.
 </p>
 
-<div class="card toolbar">
-    <div>
-        <a href="{% url 'intel:generate_alerts' %}" class="btn btn-primary">Generate Alerts</a>
-        <span class="small">Gunakan tombol ini setelah validasi signal untuk membuat peringatan dini terbaru.</span>
+<div class="card">
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <a href="{% url 'intel:generate_alerts' %}" class="btn btn-primary">Generate Alerts</a>
+            <button type="button" class="btn btn-info" id="toggleAlertInfo">Info Alert</button>
+            <span class="small">Panduan level dan jenis alert tersedia pada tombol Info Alert.</span>
+        </div>
+
+        <form method="get" class="filters toolbar-right">
+            <select name="alert_type">
+                <option value="">Semua jenis alert</option>
+                {% for key, label in alert_type_choices %}
+                    <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="status">
+                <option value="">Semua status</option>
+                {% for key, label in status_choices %}
+                    <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <button type="submit">Filter</button>
+            <a class="btn" href="{% url 'intel:alert_center' %}">Reset</a>
+        </form>
     </div>
 
-    <form method="get" class="filters">
-        <select name="alert_type">
-            <option value="">Semua jenis alert</option>
-            {% for key, label in alert_type_choices %}
-                <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <select name="status">
-            <option value="">Semua status</option>
-            {% for key, label in status_choices %}
-                <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <button type="submit">Filter</button>
-        <a class="btn" href="{% url 'intel:alert_center' %}">Reset</a>
-    </form>
+    <div class="info-panel" id="alertInfoPanel">
+        <div class="info-grid">
+            <div>
+                <p class="info-title">Legend Level Alert</p>
+                <div class="legend-list">
+                    {% for item in alert_level_legend %}
+                        <div class="legend-row">
+                            <span class="badge level-{{ item.level }}">{{ item.level }}</span>
+                            <div><strong>{{ item.criteria }}</strong>{{ item.meaning }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <p class="info-title">Penjelasan Jenis Alert</p>
+                <div class="legend-list">
+                    {% for item in alert_type_legend %}
+                        <div class="legend-row">
+                            <span class="badge type-badge">{{ item.label }}</span>
+                            <div><code>{{ item.code }}</code><br>{{ item.meaning }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div class="card">
-    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alert</p>
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Total Alert</div>
+        <div class="kpi-value">{{ alert_summary.total }}</div>
+    </div>
+    <div class="kpi-card status-open-card">
+        <div class="kpi-label">Open</div>
+        <div class="kpi-value">{{ alert_summary.open }}</div>
+    </div>
+    <div class="kpi-card status-reviewed-card">
+        <div class="kpi-label">Reviewed</div>
+        <div class="kpi-value">{{ alert_summary.reviewed }}</div>
+    </div>
+    <div class="kpi-card level-Merah">
+        <div class="kpi-label">Merah</div>
+        <div class="kpi-value">{{ alert_summary.merah }}</div>
+    </div>
+    <div class="kpi-card level-Oranye">
+        <div class="kpi-label">Oranye</div>
+        <div class="kpi-value">{{ alert_summary.oranye }}</div>
+    </div>
+    <div class="kpi-card level-Kuning">
+        <div class="kpi-label">Kuning</div>
+        <div class="kpi-value">{{ alert_summary.kuning }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Closed</div>
+        <div class="kpi-value">{{ alert_summary.closed }}</div>
+    </div>
 </div>
 
 <div class="table-card">
@@ -103,15 +286,16 @@
             {% for alert in page_obj %}
             <tr>
                 <td>
-                    <span class="badge level-{{ alert.visual_level|default:'Kuning' }}">
+                    <span class="badge level-{{ alert.visual_level|default:'Kuning' }}" title="{{ alert.level_title }}">
                         {{ alert.visual_level|default:"Kuning" }}
                     </span>
                 </td>
 
                 <td>
-                    <span class="badge type-badge">
-                        {{ alert.alert_type|default:"-" }}
+                    <span class="badge type-badge" title="{{ alert.alert_type_help }}">
+                        {{ alert.alert_type_short|default:alert.alert_type_label|default:"-" }}
                     </span>
+                    <span class="tiny-code">{{ alert.alert_type|default:"-" }}</span>
                 </td>
 
                 <td>
@@ -121,9 +305,7 @@
                 </td>
 
                 <td>{{ alert.location_name|default:"-" }}</td>
-
                 <td><strong>{{ alert.signal_count|default:0 }}</strong></td>
-
                 <td>{{ alert.avg_score|default:0|floatformat:2 }}</td>
 
                 <td>
@@ -147,7 +329,10 @@
                 </td>
 
                 <td>
-                    <a href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
+                    <div class="actions-cell">
+                        <a class="btn" href="{% url 'intel:alert_detail' alert.id %}">Detail</a>
+                        <a class="btn" href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -172,6 +357,18 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
 <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const toggleButton = document.getElementById('toggleAlertInfo');
+        const infoPanel = document.getElementById('alertInfoPanel');
+
+        if (toggleButton && infoPanel) {
+            toggleButton.addEventListener('click', function () {
+                infoPanel.classList.toggle('open');
+                toggleButton.textContent = infoPanel.classList.contains('open') ? 'Tutup Info Alert' : 'Info Alert';
+            });
+        }
+    });
+
     $(document).ready(function () {
         const table = $('#alertCenterTable');
 

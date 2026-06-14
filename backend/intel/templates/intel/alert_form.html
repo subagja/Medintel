@@ -5,7 +5,7 @@
     <h1>Update Alert</h1>
     <p><strong>{{ alert_obj.title }}</strong></p>
     <p>{{ alert_obj.description }}</p>
-    <p class="small">Jenis: {{ alert_obj.alert_type }} | Lokasi: {{ alert_obj.location.display_name|default:"-" }}</p>
+    <p class="small">Jenis: {{ alert_obj.alert_type }} | Lokasi: {% if alert_obj.location %}{{ alert_obj.location.display_name|default:alert_obj.location.name }}{% else %}-{% endif %}</p>
 </div>
 
 <div class="card">
