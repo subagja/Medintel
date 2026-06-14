@@ -2308,6 +2308,90 @@ def production_signal_debug(request):
 
     return JsonResponse(data, json_dumps_params={"indent": 2, "default": str})
 
+
+# =========================================================
+# RAW SIGNAL + CLUSTER ANALYST WORKFLOW HELPERS
+# =========================================================
+RAW_WORKFLOW_GEOCODE_OK_STATUSES = ["OK", "ok", "matched", "manual", "gazetteer_only", "MANUAL"]
+RAW_WORKFLOW_LOCATION_PROBLEM_STATUSES = [
+    "empty", "empty_loc", "unmatched", "not_found", "skip_low_conf",
+    "skip_too_general", "net_err", "EMPTY_LOC", "NOT_FOUND", "NET_ERR",
+    "SKIP_LOW_CONF", "SKIP_TOO_GENERAL", "PENDING", "pending",
+]
+
+
+def build_raw_workflow_stats(base_qs=None):
+    """
+    Ringkasan antrean kerja analis pada Raw Signals.
+    Tidak membuat halaman baru agar workflow tetap terpusat pada Raw Signal + Cluster.
+    """
+    if base_qs is None:
+        base_qs = Signal.objects.filter(status__in=["raw", "validated"])
+
+    base_qs = base_qs.exclude(status="noise")
+
+    needs_assessment_q = (
+        Q(assessment_summary__isnull=True) |
+        Q(assessment_summary="") |
+        Q(assessment_status__in=["pending", "not_generated", ""])
+    )
+    assessment_failed_q = (
+        Q(assessment_status__in=["failed", "fallback"]) |
+        (Q(assessment_error__isnull=False) & ~Q(assessment_error=""))
+    )
+    needs_location_q = (
+        Q(geocode_status__in=RAW_WORKFLOW_LOCATION_PROBLEM_STATUSES) |
+        Q(locations__isnull=True)
+    )
+    ready_validation_q = (
+        Q(status="raw") &
+        ~Q(assessment_summary="") &
+        Q(assessment_summary__isnull=False) &
+        Q(geocode_status__in=RAW_WORKFLOW_GEOCODE_OK_STATUSES) &
+        ~Q(approval_recommendation__in=["noise", "duplicate", "fix_location"])
+    )
+    ready_approval_q = (
+        Q(status="validated") &
+        Q(geocode_status__in=RAW_WORKFLOW_GEOCODE_OK_STATUSES) &
+        (Q(approval_recommendation="approve") | Q(confidence_score__gte=60))
+    )
+
+    return {
+        "total_queue": base_qs.distinct().count(),
+        "high_risk": base_qs.filter(threat_score__gte=70).distinct().count(),
+        "needs_assessment": base_qs.filter(needs_assessment_q).distinct().count(),
+        "assessment_failed": base_qs.filter(assessment_failed_q).distinct().count(),
+        "needs_location": base_qs.filter(needs_location_q).distinct().count(),
+        "duplicate_candidate": base_qs.filter(approval_recommendation="duplicate").distinct().count(),
+        "ready_validation": base_qs.filter(ready_validation_q).distinct().count(),
+        "ready_approval": base_qs.filter(ready_approval_q).distinct().count(),
+    }
+
+
+def get_signal_workflow_action(signal):
+    """Label ringkas tindakan berikutnya pada Raw Signal."""
+    assessment_summary = (getattr(signal, "assessment_summary", "") or "").strip()
+    assessment_status = (getattr(signal, "assessment_status", "") or "").strip()
+    assessment_error = (getattr(signal, "assessment_error", "") or "").strip()
+    geocode_status = (getattr(signal, "geocode_status", "") or "").strip()
+    recommendation = (getattr(signal, "approval_recommendation", "") or "").strip()
+    status = (getattr(signal, "status", "") or "").strip()
+
+    if recommendation == "duplicate":
+        return {"code": "duplicate", "label": "Review duplikat", "class": "workflow-duplicate"}
+    if assessment_status in ["failed", "fallback"] or assessment_error:
+        return {"code": "assessment_failed", "label": "Re-assessment", "class": "workflow-warning"}
+    if not assessment_summary:
+        return {"code": "needs_assessment", "label": "Generate 5W+1H", "class": "workflow-assessment"}
+    if geocode_status in RAW_WORKFLOW_LOCATION_PROBLEM_STATUSES:
+        return {"code": "needs_location", "label": "Koreksi lokasi", "class": "workflow-location"}
+    if status == "raw":
+        return {"code": "ready_validation", "label": "Siap validasi", "class": "workflow-valid"}
+    if status == "validated":
+        return {"code": "ready_approval", "label": "Siap approval", "class": "workflow-approve"}
+    return {"code": "monitor", "label": "Monitoring", "class": "workflow-monitor"}
+
+
 @login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
 def raw_signals_list(request):
@@ -2340,6 +2424,12 @@ def raw_signals_list(request):
             )
         )
         .filter(status__in=["raw", "validated"])
+    )
+
+    # Ringkasan antrean kerja dihitung dari seluruh Raw + Validated,
+    # tidak mengikuti filter tabel agar analis tetap melihat beban kerja total.
+    raw_workflow_stats = build_raw_workflow_stats(
+        Signal.objects.filter(status__in=["raw", "validated"])
     )
 
     # =========================
@@ -2385,6 +2475,28 @@ def raw_signals_list(request):
                 Q(assessment_error__isnull=False) &
                 ~Q(assessment_error="")
             )
+        )
+
+    elif triage == "duplicate_candidate":
+        qs = qs.filter(approval_recommendation="duplicate")
+
+    elif triage == "ready_validation":
+        qs = qs.filter(
+            status="raw",
+            geocode_status__in=RAW_WORKFLOW_GEOCODE_OK_STATUSES,
+        ).exclude(
+            Q(assessment_summary="") |
+            Q(assessment_summary__isnull=True) |
+            Q(approval_recommendation__in=["noise", "duplicate", "fix_location"])
+        )
+
+    elif triage == "ready_approval":
+        qs = qs.filter(
+            status="validated",
+            geocode_status__in=RAW_WORKFLOW_GEOCODE_OK_STATUSES,
+        ).filter(
+            Q(approval_recommendation="approve") |
+            Q(confidence_score__gte=60)
         )
 
     # =========================
@@ -2528,6 +2640,7 @@ def raw_signals_list(request):
     # =========================
     for signal in page_obj.object_list:
         signal.triage_flag = get_signal_triage_flag(signal)
+        signal.workflow_action = get_signal_workflow_action(signal)
         attach_duplicate_warning(signal, days=7, limit=30)
 
     # =========================
@@ -2577,6 +2690,7 @@ def raw_signals_list(request):
         "triage_priority": triage_priority,
         "approval_recommendation": approval_recommendation,
         "min_confidence": min_confidence,
+        "raw_workflow_stats": raw_workflow_stats,
         "triage_priority_choices": Signal.TRIAGE_PRIORITY_CHOICES,
         "approval_recommendation_choices": Signal.APPROVAL_RECOMMENDATION_CHOICES,
         "sort": sort,

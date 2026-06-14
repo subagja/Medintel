@@ -113,6 +113,9 @@
     <div class="card">
         <div class="action-bar">
             <a class="btn" href="{% url 'intel:cluster_triage_queue' %}">← Kembali ke Cluster Queue</a>
+            <a class="btn btn-warning-soft" href="{% url 'intel:raw_signals' %}?disease={{ cluster.disease_tag|urlencode }}&search={{ cluster.location_name|urlencode }}">
+                Buka Raw Signals terkait
+            </a>
             <form method="post" action="{% url 'intel:cluster_signal_action' cluster.id %}">
                 {% csrf_token %}
                 <button type="submit" name="action" value="mark_cluster_reviewed" class="btn-review">Mark Cluster Reviewed</button>

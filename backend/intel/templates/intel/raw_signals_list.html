@@ -761,9 +761,132 @@
     .btn-edit-location:hover {
         background: #ffe2bd;
     }
+
+
+    .page-subtitle {
+        margin: -8px 0 16px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .worklist-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .worklist-card {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 12px;
+        text-decoration: none;
+        color: var(--text);
+        display: block;
+    }
+
+    .worklist-card:hover {
+        background: #faf7ff;
+        border-color: #c8a9ea;
+    }
+
+    .worklist-label {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 5px;
+        font-weight: 700;
+    }
+
+    .worklist-value {
+        font-size: 24px;
+        font-weight: 900;
+        line-height: 1.1;
+    }
+
+    .worklist-note {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.35;
+    }
+
+    .workflow-badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .workflow-duplicate { background: #333; color: #fff; }
+    .workflow-warning { background: var(--red-bg); color: var(--red-text); }
+    .workflow-assessment { background: var(--purple-bg); color: var(--primary); border: 1px solid #b99be8; }
+    .workflow-location { background: #fff0df; color: #9a4d00; border: 1px solid #efc28f; }
+    .workflow-valid { background: var(--green-bg); color: var(--green-text); border: 1px solid #7acb8a; }
+    .workflow-approve { background: var(--blue-bg); color: var(--blue-text); border: 1px solid #aebff0; }
+    .workflow-monitor { background: #f1f1f1; color: #555; }
+
+    @media (max-width: 1100px) {
+        .worklist-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    }
+
+    @media (max-width: 700px) {
+        .worklist-grid { grid-template-columns: 1fr; }
+    }
+
 </style>
 
 <h1 class="page-title">Raw Signals</h1>
+<p class="page-subtitle">
+    Meja kerja utama analis untuk assessment 5W+1H, koreksi lokasi, duplicate review, validasi, dan approval signal. Cluster tetap digunakan sebagai bantuan pengelompokan, bukan pengganti kerja per-signal.
+</p>
+
+<div class="worklist-grid">
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}">
+        <div class="worklist-label">Total antrean</div>
+        <div class="worklist-value">{{ raw_workflow_stats.total_queue|default:0 }}</div>
+        <div class="worklist-note">Raw + validated yang masih aktif.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=high_risk&sort=-threat_score">
+        <div class="worklist-label">Risiko tinggi</div>
+        <div class="worklist-value">{{ raw_workflow_stats.high_risk|default:0 }}</div>
+        <div class="worklist-note">Prioritas verifikasi dan pemantauan.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=needs_assessment">
+        <div class="worklist-label">Belum assessment</div>
+        <div class="worklist-value">{{ raw_workflow_stats.needs_assessment|default:0 }}</div>
+        <div class="worklist-note">Perlu Generate 5W+1H.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=needs_location">
+        <div class="worklist-label">Perlu koreksi lokasi</div>
+        <div class="worklist-value">{{ raw_workflow_stats.needs_location|default:0 }}</div>
+        <div class="worklist-note">Geocode gagal/kosong atau belum match.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=duplicate_candidate">
+        <div class="worklist-label">Potensi duplikat</div>
+        <div class="worklist-value">{{ raw_workflow_stats.duplicate_candidate|default:0 }}</div>
+        <div class="worklist-note">Perlu Duplicate Review sebelum validasi.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=assessment_failed">
+        <div class="worklist-label">Re-assessment</div>
+        <div class="worklist-value">{{ raw_workflow_stats.assessment_failed|default:0 }}</div>
+        <div class="worklist-note">Assessment gagal/fallback.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=ready_validation">
+        <div class="worklist-label">Siap validasi</div>
+        <div class="worklist-value">{{ raw_workflow_stats.ready_validation|default:0 }}</div>
+        <div class="worklist-note">Assessment dan lokasi sudah memadai.</div>
+    </a>
+    <a class="worklist-card" href="{% url 'intel:raw_signals' %}?triage=ready_approval">
+        <div class="worklist-label">Siap approval</div>
+        <div class="worklist-value">{{ raw_workflow_stats.ready_approval|default:0 }}</div>
+        <div class="worklist-note">Validated dan layak masuk mapping.</div>
+    </a>
+</div>
 
 <div class="card">
     <form method="get" class="filters">
@@ -833,6 +956,18 @@
             <option value="url_problem" {% if triage == "url_problem" %}selected{% endif %}>
                 URL / Fetch Bermasalah
             </option>
+
+            <option value="duplicate_candidate" {% if triage == "duplicate_candidate" %}selected{% endif %}>
+                Potensi Duplikat
+            </option>
+
+            <option value="ready_validation" {% if triage == "ready_validation" %}selected{% endif %}>
+                Siap Validasi
+            </option>
+
+            <option value="ready_approval" {% if triage == "ready_approval" %}selected{% endif %}>
+                Siap Approval
+            </option>
         </select>
 
         <select name="triage_priority">
@@ -897,7 +1032,7 @@
     <div class="summary-row">
         <p>Total: <strong>{{ page_obj.paginator.count }}</strong> signal</p>
         <p class="small-muted">
-            Filter server-side tetap aktif. Pencarian cepat DataTables hanya mencari data pada halaman ini.
+            Gunakan kartu antrean di atas sebagai pintu masuk kerja analis. Filter server-side tetap aktif; pencarian cepat DataTables hanya mencari data pada halaman ini.
         </p>
     </div>
 </div>
@@ -960,6 +1095,12 @@
                         {% if signal.confidence_score is not None %}
                             <span class="confidence-badge" title="Confidence score = keyakinan kualitas data, bukan skor risiko">
                                 Confidence {{ signal.confidence_score }}%
+                            </span>
+                        {% endif %}
+
+                        {% if signal.workflow_action %}
+                            <span class="workflow-badge {{ signal.workflow_action.class }}" title="Tindakan berikutnya yang disarankan">
+                                Next: {{ signal.workflow_action.label }}
                             </span>
                         {% endif %}
 
