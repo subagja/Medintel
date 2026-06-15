@@ -36,6 +36,7 @@ urlpatterns = [
     path("signals/<int:pk>/assessment/", views.signal_generate_assessment, name="signal_generate_assessment"),
     path("signals/<int:pk>/resolved-url/", views.signal_update_resolved_url, name="signal_update_resolved_url"),
     path("signals/<int:pk>/duplicates/", views.signal_duplicate_review, name="signal_duplicate_review"),
+    path("signals/<int:pk>/brief/", views.signal_intelligence_brief, name="signal_intelligence_brief"),
     path("signals/<int:pk>/geocode/", views.geocode_manual_update, name="geocode_manual_update"),
     path("scoring-rules/", views.scoring_rules_manager, name="scoring_rules_manager"),
     path("scoring-rules/create/", views.scoring_rule_create, name="scoring_rule_create"),
@@ -78,7 +79,8 @@ urlpatterns = [
     path("publisher-aliases/<int:pk>/edit/", views.publisher_alias_edit, name="publisher_alias_edit"),
     path("publisher-aliases/<int:pk>/toggle-active/", views.publisher_alias_toggle_active, name="publisher_alias_toggle_active"),
 
-	path("disease-choropleth-map/", views.disease_choropleth_map, name="disease_choropleth_map"),
-	path("geojson/<str:geo_type>/", views.geojson_file, name="geojson_file"),
-	path("disease-box-map/", views.disease_box_map, name="disease_box_map"),
+    path("disease-choropleth-map/", views.disease_choropleth_map, name="disease_choropleth_map"),
+    path("geojson/<str:geo_type>/", views.geojson_file, name="geojson_file"),
+    path("disease-box-map/", views.disease_box_map, name="disease_box_map"),
+    
 ]

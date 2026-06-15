@@ -486,6 +486,9 @@
                     <div class="signal-title">
                         {{ signal.title|default:"-" }}
                     </div>
+                    <div class="signal-meta">
+                        <a href="{% url 'intel:signal_intelligence_brief' signal.id %}">Buka brief</a>
+                    </div>
 
                     <div class="signal-meta">
                         {% if signal.source_url %}

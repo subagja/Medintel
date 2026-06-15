@@ -55,6 +55,12 @@
     .risk-tinggi { background:#fee2e2; color:#991b1b; }
     .geojson-warning { display:none; margin-top:10px; padding:12px; border:1px dashed #b91c1c; background:#fff1f2; color:#991b1b; border-radius:12px; font-size:13px; line-height:1.5; }
     .map-tooltip { position:absolute; display:none; pointer-events:none; background:#111827; color:#fff; padding:8px 10px; border-radius:10px; font-size:12px; max-width:320px; z-index:5; box-shadow:0 10px 28px rgba(0,0,0,.2); }
+    .disease-symbol { stroke:#111827; stroke-width:.75; cursor:pointer; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+    .disease-symbol:hover { stroke:#000; stroke-width:1.5; filter: brightness(.95) drop-shadow(0 3px 5px rgba(0,0,0,.32)); }
+    .disease-symbol-label { font-size:9px; font-weight:900; fill:#111827; pointer-events:none; text-anchor:middle; paint-order:stroke; stroke:#ffffff; stroke-width:2px; stroke-linejoin:round; }
+    .disease-box-note { margin-top:10px; padding:10px 12px; border:1px solid #f0cde2; background:#fdf2f8; color:#831843; border-radius:12px; font-size:12px; line-height:1.45; }
+    .symbol-legend { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; color:var(--map-muted); font-size:12px; }
+    .symbol-legend .symbol-swatch { width:14px; height:14px; border:1px solid #111827; display:inline-block; }
     @media (max-width: 1200px) { .filters { grid-template-columns: repeat(3, minmax(140px, 1fr)); } .map-layout { grid-template-columns: 1fr; } .kpi-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); } }
     @media (max-width: 760px) { .filters, .kpi-grid { grid-template-columns: 1fr; } #choroplethSvg { height:480px; } .svg-panel { min-height:480px; } }
 </style>
@@ -87,6 +93,14 @@
                     {% for item in disease_choices %}
                     <option value="{{ item }}" {% if disease == item %}selected{% endif %}>{{ item }}</option>
                     {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Kotak Penyakit</label>
+                <select name="box_mode">
+                    <option value="top_diseases" {% if box_mode == "top_diseases" %}selected{% endif %}>Top penyakit per provinsi</option>
+                    <option value="selected_disease" {% if box_mode == "selected_disease" %}selected{% endif %}>Penyakit terpilih saja</option>
+                    <option value="off" {% if box_mode == "off" %}selected{% endif %}>Nonaktif</option>
                 </select>
             </div>
             <div class="filter-field">
@@ -136,7 +150,11 @@
                 Simpan file batas provinsi ke: <code>backend/intel/static/intel/geo/indonesia_provinces.geojson</code>.<br>
                 File GeoJSON wajib memiliki properti nama/kode provinsi agar bisa dicocokkan dengan data sistem.
             </div>
+            <div class="disease-box-note">
+                <strong>Kotak penyakit:</strong> simbol kotak di atas wilayah menunjukkan jumlah signal penyakit dominan. Ukuran kotak mengikuti jumlah signal penyakit pada provinsi tersebut.
+            </div>
             <div class="legend" id="legendBox"></div>
+            <div class="symbol-legend" id="symbolLegendBox"></div>
         </div>
 
         <div class="side-card">
@@ -183,16 +201,20 @@
 </div>
 
 <script id="choroplethData" type="application/json">{{ rows_json|safe }}</script>
+<script id="diseaseSymbolLegendData" type="application/json">{{ disease_symbol_legend|safe }}</script>
 <script>
 (function () {
     const rows = JSON.parse(document.getElementById('choroplethData').textContent || '[]');
+    const diseaseLegend = JSON.parse(document.getElementById('diseaseSymbolLegendData').textContent || '[]');
     const metric = '{{ metric|escapejs }}';
+    const boxMode = '{{ box_mode|escapejs }}';
     const geojsonUrl = "{% url 'intel:geojson_file' 'indonesia-provinces' %}";
     const svg = document.getElementById('choroplethSvg');
     const tooltip = document.getElementById('mapTooltip');
     const detail = document.getElementById('regionDetail');
     const warning = document.getElementById('geojsonWarning');
     const legendBox = document.getElementById('legendBox');
+    const symbolLegendBox = document.getElementById('symbolLegendBox');
 
     const width = 1100;
     const height = 640;
@@ -338,6 +360,76 @@
         legendBox.innerHTML = `<strong>Legenda ${metric.replace('_', ' ')}</strong>` + colors.map((c, i) =>
             `<span class="legend-item"><span class="swatch" style="background:${c}"></span>${labels[i]}</span>`
         ).join('');
+
+        if (!symbolLegendBox) return;
+        if (boxMode === 'off' || !diseaseLegend.length) {
+            symbolLegendBox.innerHTML = '<span>Kotak penyakit nonaktif atau belum ada data penyakit.</span>';
+            return;
+        }
+        symbolLegendBox.innerHTML = '<strong>Legenda kotak penyakit</strong>' + diseaseLegend.slice(0, 8).map(item =>
+            `<span class="legend-item"><span class="symbol-swatch" style="background:${item.color}"></span>${item.name} (${item.total})</span>`
+        ).join('') + '<span>Ukuran kotak = jumlah signal penyakit.</span>';
+    }
+
+    function symbolSize(count) {
+        const v = Number(count || 0);
+        return Math.max(9, Math.min(30, 7 + Math.sqrt(v) * 5));
+    }
+
+    function safeText(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function renderDiseaseSymbols(ns, row, geom, project) {
+        if (boxMode === 'off' || !row || !row.disease_symbols || !row.disease_symbols.length) return;
+        const c = centroid(geom);
+        const p = project(c[0], c[1]);
+        const symbols = row.disease_symbols.slice(0, 3);
+        const sizes = symbols.map(s => symbolSize(s.count));
+        const gap = 4;
+        const totalWidth = sizes.reduce((a, b) => a + b, 0) + gap * (sizes.length - 1);
+        let cursorX = p[0] - totalWidth / 2;
+        const baseY = p[1] - 18;
+
+        symbols.forEach((sym, idx) => {
+            const size = sizes[idx];
+            const x = cursorX;
+            const y = baseY - size / 2;
+
+            const rect = document.createElementNS(ns, 'rect');
+            rect.setAttribute('x', x.toFixed(2));
+            rect.setAttribute('y', y.toFixed(2));
+            rect.setAttribute('width', size.toFixed(2));
+            rect.setAttribute('height', size.toFixed(2));
+            rect.setAttribute('rx', '1.5');
+            rect.setAttribute('class', 'disease-symbol');
+            rect.setAttribute('fill', sym.color || '#db2777');
+            rect.addEventListener('mousemove', function (e) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.offsetX + 18) + 'px';
+                tooltip.style.top = (e.offsetY + 18) + 'px';
+                tooltip.innerHTML = `<strong>${safeText(row.province_name)}</strong><br>Penyakit: <strong>${safeText(sym.name)}</strong><br>Signal penyakit: <strong>${safeText(sym.count)}</strong><br>Total provinsi: <strong>${safeText(row.signal_count)}</strong>`;
+            });
+            rect.addEventListener('mouseleave', function () { tooltip.style.display = 'none'; });
+            rect.addEventListener('click', function () { showDetail(row.province_name, row); });
+            svg.appendChild(rect);
+
+            if (symbols.length === 1) {
+                const label = document.createElementNS(ns, 'text');
+                label.setAttribute('x', (x + size / 2).toFixed(2));
+                label.setAttribute('y', (y - 4).toFixed(2));
+                label.setAttribute('class', 'disease-symbol-label');
+                label.textContent = String(sym.count || '');
+                svg.appendChild(label);
+            }
+
+            cursorX += size + gap;
+        });
     }
 
     fetch(geojsonUrl)
@@ -388,6 +480,10 @@
                     text.setAttribute('class', 'region-label');
                     text.textContent = String(row.province_name || name || '').split(' ').slice(0, 2).join(' ');
                     svg.appendChild(text);
+                }
+
+                if (row) {
+                    renderDiseaseSymbols(ns, row, f.geometry, project);
                 }
             });
             renderLegend();

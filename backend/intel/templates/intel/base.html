@@ -355,7 +355,7 @@
         <nav class="nav">
             <a class="nav-main-link" href="{% url 'intel:dashboard' %}">Dashboard</a>
             <a class="nav-main-link" href="{% url 'intel:disease_trends' %}">Disease Trends</a>
-            <a href="{% url 'intel:decision_support' %}">Decision Support</a>
+            <a class="nav-main-link" href="{% url 'intel:decision_support' %}">Decision Support</a>
             <a class="nav-main-link" href="{% url 'intel:raw_signals' %}">Raw Signals</a>
             <a class="nav-main-link" href="{% url 'intel:cluster_triage_queue' %}">Cluster Triage</a>
             <a class="nav-main-link" href="{% url 'intel:verified_signals' %}">Verified Signals</a>
@@ -363,11 +363,11 @@
             <div class="nav-dropdown">
                 <button class="nav-dropbtn" type="button">Maps ▾</button>
                 <div class="nav-dropdown-content">
-                	<a href="{% url 'intel:disease_choropleth_map' %}">Disease Choropleth Map</a>
-                	<a href="{% url 'intel:disease_box_map' %}">Disease Box Map</a>
                     <a href="{% url 'intel:map_intelligence' %}">Intelligence Map</a>
                     <a href="{% url 'intel:map_thematic' %}">Thematic Map</a>
                     <a href="{% url 'intel:province_map_view' %}">Province Map</a>
+                    <a href="{% url 'intel:disease_choropleth_map' %}">Disease Choropleth Map</a>
+                    <a href="{% url 'intel:disease_box_map' %}">Disease Box Map</a>
                     <a href="{% url 'intel:signal_region_summary' %}">Region Summary</a>
                 </div>
             </div>

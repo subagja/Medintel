@@ -3,279 +3,95 @@
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 <style>
-    :root {
-        --primary: #4b0082;
-        --border: #ddd;
-        --muted: #666;
-        --green-bg: #e8f7ec;
-        --green-text: #08762a;
-        --yellow-bg: #fff5d6;
-        --yellow-text: #795500;
-        --orange-bg: #fff0df;
-        --orange-text: #9a4d00;
-        --red-bg: #fde8e8;
-        --red-text: #b00020;
-        --blue-bg: #eef3ff;
-        --blue-text: #2451a6;
-        --purple-bg: #f1ecff;
-    }
-
-    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 800; }
-    .page-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
-
-    .toolbar {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: wrap;
-    }
-
-    .toolbar-left,
-    .toolbar-right {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .filters select, .filters input { min-width: 170px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
-
-    .btn, button {
-        border: 1px solid #999;
-        border-radius: 4px;
-        background: #f7f7f7;
-        padding: 7px 10px;
-        font-size: 13px;
-        cursor: pointer;
-        text-decoration: none;
-        color: #111;
-        display: inline-block;
-    }
-
-    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 800; }
-    .btn-primary:hover { background: #36005e; }
-    .btn-info { background: #f6f2fb; color: var(--primary); border-color: #d3b7ee; font-weight: 800; }
-
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(110px, 1fr));
-        gap: 10px;
+    .table-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        overflow-x: auto;
         margin-bottom: 16px;
     }
 
-    .kpi-card {
-        background: #fff;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 10px 12px;
-        min-height: 72px;
+    .datatable-table {
+        width: 100% !important;
+        border-collapse: collapse;
+        font-size: 13px;
     }
 
-    .kpi-label { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
-    .kpi-value { font-size: 22px; font-weight: 900; line-height: 1; }
-    .kpi-card.level-Merah { border-left: 5px solid #d64a4a; }
-    .kpi-card.level-Oranye { border-left: 5px solid #e68a2e; }
-    .kpi-card.level-Kuning { border-left: 5px solid #d7a900; }
-    .kpi-card.status-open-card { border-left: 5px solid #d64a4a; }
-    .kpi-card.status-reviewed-card { border-left: 5px solid #3e70c8; }
-
-    .info-panel {
-        display: none;
-        margin-top: 12px;
-        padding-top: 12px;
-        border-top: 1px solid #eee;
-    }
-
-    .info-panel.open { display: block; }
-
-    .info-grid {
-        display: grid;
-        grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.3fr);
-        gap: 22px;
-        align-items: start;
-    }
-
-    .info-title { font-weight: 900; margin: 0 0 10px; }
-    .legend-list { display: grid; gap: 9px; }
-
-    .legend-row {
-        display: grid;
-        grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
-        column-gap: 14px;
-        row-gap: 4px;
-        align-items: start;
-        font-size: 12px;
-        line-height: 1.35;
-    }
-
-    .legend-row .badge {
-        justify-self: start;
-        max-width: 100%;
-        white-space: normal;
-        text-align: center;
+    .datatable-table th,
+    .datatable-table td {
+        vertical-align: top;
+        border-bottom: 1px solid #e6e6e6;
+        padding: 8px 10px;
         overflow-wrap: anywhere;
     }
 
-    .legend-row div { min-width: 0; }
-    .legend-row strong { display: block; }
-    .legend-row code {
-        display: block;
-        color: var(--primary);
-        font-weight: 800;
-        font-family: Arial, sans-serif;
-        overflow-wrap: anywhere;
-    }
-
-    .table-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow-x: auto; margin-bottom: 16px; }
-    .datatable-table { width: 100% !important; border-collapse: collapse; font-size: 13px; }
-    .datatable-table th, .datatable-table td { vertical-align: top; border-bottom: 1px solid #e6e6e6; padding: 8px 10px; overflow-wrap: anywhere; }
-    .datatable-table thead th { background: #f5f5f5; font-weight: 800; white-space: nowrap; }
-
-    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
-    .tiny-code { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
-
-    .badge {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 999px;
-        font-size: 11px;
-        font-weight: 900;
+    .datatable-table thead th {
+        background: #f5f5f5;
+        font-weight: 700;
         white-space: nowrap;
-        line-height: 1.2;
     }
 
-    .level-Hijau { background: var(--green-bg); color: var(--green-text); border: 1px solid #7acb8a; }
-    .level-Kuning { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
-    .level-Oranye { background: var(--orange-bg); color: var(--orange-text); border: 1px solid #efc28f; }
-    .level-Merah { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
-    .status-open { background: var(--red-bg); color: var(--red-text); }
-    .status-reviewed { background: var(--blue-bg); color: var(--blue-text); }
-    .status-closed { background: #f1f1f1; color: #555; }
-    .type-badge { background: var(--purple-bg); color: var(--primary); border: 1px solid #b99be8; }
-
-    .alert-title { font-weight: 900; margin-bottom: 4px; }
-    .alert-desc { color: #333; font-size: 12px; line-height: 1.45; }
-    .actions-cell { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-    .actions-cell .btn { text-align: center; padding: 6px 9px; font-size: 12px; }
-
-    .pagination { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #111; background: #fff; }
-    .pagination span { background: #f5f5f5; font-weight: 800; }
-
-    @media (max-width: 1100px) {
-        .kpi-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
-        .info-grid { grid-template-columns: 1fr; }
+    .dataTables_wrapper {
+        width: 100%;
     }
 
-    @media (max-width: 700px) {
-        .legend-row { grid-template-columns: 1fr; }
+    .dataTables_wrapper .dataTables_filter {
+        margin-bottom: 8px;
+    }
+
+    .dataTables_wrapper .dataTables_filter input {
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 5px 8px;
+    }
+
+    table.dataTable {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
     }
 </style>
-
-<h1 class="page-title">Alert Center</h1>
-<p class="page-subtitle">
-    Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi. Gunakan detail alert untuk melihat evidence, judgement, early warning, forecasting, dan problem solving.
-</p>
-
 <div class="card">
-    <div class="toolbar">
-        <div class="toolbar-left">
-            <a href="{% url 'intel:generate_alerts' %}" class="btn btn-primary">Generate Alerts</a>
-            <button type="button" class="btn btn-info" id="toggleAlertInfo">Info Alert</button>
-            <span class="small">Panduan level dan jenis alert tersedia pada tombol Info Alert.</span>
-        </div>
+    <h1>Alert Center</h1>
+    <p class="small">Deteksi dan pemantauan peringatan dini berbasis signal terverifikasi.</p>
 
-        <form method="get" class="filters toolbar-right">
-            <select name="alert_type">
-                <option value="">Semua jenis alert</option>
-                {% for key, label in alert_type_choices %}
-                    <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
+    <p>
+        <a href="{% url 'intel:generate_alerts' %}">Generate Alerts</a>
+    </p>
 
-            <select name="status">
-                <option value="">Semua status</option>
-                {% for key, label in status_choices %}
-                    <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
+    <form method="get" class="filters">
+        <select name="alert_type">
+            <option value="">Semua jenis alert</option>
+            {% for key, label in alert_type_choices %}
+                <option value="{{ key }}" {% if alert_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
 
-            <button type="submit">Filter</button>
-            <a class="btn" href="{% url 'intel:alert_center' %}">Reset</a>
-        </form>
-    </div>
+        <select name="status">
+            <option value="">Semua status</option>
+            {% for key, label in status_choices %}
+                <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
 
-    <div class="info-panel" id="alertInfoPanel">
-        <div class="info-grid">
-            <div>
-                <p class="info-title">Legend Level Alert</p>
-                <div class="legend-list">
-                    {% for item in alert_level_legend %}
-                        <div class="legend-row">
-                            <span class="badge level-{{ item.level }}">{{ item.level }}</span>
-                            <div><strong>{{ item.criteria }}</strong>{{ item.meaning }}</div>
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
-            <div>
-                <p class="info-title">Penjelasan Jenis Alert</p>
-                <div class="legend-list">
-                    {% for item in alert_type_legend %}
-                        <div class="legend-row">
-                            <span class="badge type-badge">{{ item.label }}</span>
-                            <div><code>{{ item.code }}</code><br>{{ item.meaning }}</div>
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
+        <button type="submit">Filter</button>
+    </form>
 </div>
 
-<div class="kpi-grid">
-    <div class="kpi-card">
-        <div class="kpi-label">Total Alert</div>
-        <div class="kpi-value">{{ alert_summary.total }}</div>
-    </div>
-    <div class="kpi-card status-open-card">
-        <div class="kpi-label">Open</div>
-        <div class="kpi-value">{{ alert_summary.open }}</div>
-    </div>
-    <div class="kpi-card status-reviewed-card">
-        <div class="kpi-label">Reviewed</div>
-        <div class="kpi-value">{{ alert_summary.reviewed }}</div>
-    </div>
-    <div class="kpi-card level-Merah">
-        <div class="kpi-label">Merah</div>
-        <div class="kpi-value">{{ alert_summary.merah }}</div>
-    </div>
-    <div class="kpi-card level-Oranye">
-        <div class="kpi-label">Oranye</div>
-        <div class="kpi-value">{{ alert_summary.oranye }}</div>
-    </div>
-    <div class="kpi-card level-Kuning">
-        <div class="kpi-label">Kuning</div>
-        <div class="kpi-value">{{ alert_summary.kuning }}</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Closed</div>
-        <div class="kpi-value">{{ alert_summary.closed }}</div>
-    </div>
+<div class="card">
+    <p>Total: <strong>{{ page_obj.paginator.count }}</strong> alert</p>
 </div>
 
 <div class="table-card">
     <table id="alertCenterTable" class="display stripe hover compact datatable-table">
+    <table>
         <thead>
             <tr>
-                <th>Level</th>
+                <th>ID</th>
                 <th>Jenis</th>
-                <th>Alert</th>
+                <th>Judul</th>
                 <th>Lokasi</th>
-                <th>Signal</th>
+                <th>Signal Count</th>
                 <th>Avg Score</th>
                 <th>Status</th>
                 <th>Window</th>
@@ -285,55 +101,28 @@
         <tbody>
             {% for alert in page_obj %}
             <tr>
+                <td>{{ alert.id }}</td>
+                <td>{{ alert.alert_type }}</td>
                 <td>
-                    <span class="badge level-{{ alert.visual_level|default:'Kuning' }}" title="{{ alert.level_title }}">
-                        {{ alert.visual_level|default:"Kuning" }}
-                    </span>
+                    <strong>{{ alert.title }}</strong><br>
+                    <span class="small">{{ alert.description }}</span>
                 </td>
-
+                <td>{{ alert.location.display_name|default:"-" }}</td>
+                <td>{{ alert.signal_count }}</td>
+                <td>{{ alert.avg_score|floatformat:2 }}</td>
+                <td>{{ alert.status }}</td>
                 <td>
-                    <span class="badge type-badge" title="{{ alert.alert_type_help }}">
-                        {{ alert.alert_type_short|default:alert.alert_type_label|default:"-" }}
-                    </span>
-                    <span class="tiny-code">{{ alert.alert_type|default:"-" }}</span>
+                    {{ alert.first_signal_at|date:"Y-m-d H:i" }}<br>
+                    s.d.<br>
+                    {{ alert.last_signal_at|date:"Y-m-d H:i" }}
                 </td>
-
                 <td>
-                    <div class="alert-title">{{ alert.title|default:"-" }}</div>
-                    <div class="alert-desc">{{ alert.description|default:"-" }}</div>
-                    <div class="small">Rule: {{ alert.rule_key|default:"-" }}</div>
+                    <a href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
                 </td>
-
-                <td>{{ alert.location_name|default:"-" }}</td>
-                <td><strong>{{ alert.signal_count|default:0 }}</strong></td>
-                <td>{{ alert.avg_score|default:0|floatformat:2 }}</td>
-
-                <td>
-                    <span class="badge status-{{ alert.status|default:'open' }}">
-                        {{ alert.status|default:"open" }}
-                    </span>
-                </td>
-
-                <td>
-                    {% if alert.first_signal_at %}
-                        {{ alert.first_signal_at|date:"Y-m-d H:i" }}
-                    {% else %}
-                        -
-                    {% endif %}
-                    <br>s.d.<br>
-                    {% if alert.last_signal_at %}
-                        {{ alert.last_signal_at|date:"Y-m-d H:i" }}
-                    {% else %}
-                        -
-                    {% endif %}
-                </td>
-
-                <td>
-                    <div class="actions-cell">
-                        <a class="btn" href="{% url 'intel:alert_detail' alert.id %}">Detail</a>
-                        <a class="btn" href="{% url 'intel:alert_update_status' alert.id %}">Update</a>
-                    </div>
-                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9">Belum ada alert.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -356,44 +145,31 @@
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const toggleButton = document.getElementById('toggleAlertInfo');
-        const infoPanel = document.getElementById('alertInfoPanel');
-
-        if (toggleButton && infoPanel) {
-            toggleButton.addEventListener('click', function () {
-                infoPanel.classList.toggle('open');
-                toggleButton.textContent = infoPanel.classList.contains('open') ? 'Tutup Info Alert' : 'Info Alert';
-            });
-        }
-    });
-
     $(document).ready(function () {
-        const table = $('#alertCenterTable');
-
-        if (table.length && table.find('thead th').length > 0) {
-            if ($.fn.DataTable.isDataTable('#alertCenterTable')) {
-                table.DataTable().destroy();
+        $('.datatable-table').each(function () {
+            if ($.fn.DataTable.isDataTable(this)) {
+                $(this).DataTable().destroy();
             }
 
-            table.DataTable({
+            $(this).DataTable({
                 paging: false,
                 info: false,
                 searching: true,
                 ordering: true,
                 order: [],
                 autoWidth: false,
-                scrollX: true,
+                scrollX: false,
                 responsive: false,
                 destroy: true,
                 language: {
                     search: "Cari cepat:",
                     zeroRecords: "Tidak ada data yang cocok",
-                    emptyTable: "Belum ada alert"
+                    emptyTable: "Belum ada data"
                 }
             });
-        }
+        });
     });
 </script>
 {% endblock %}

@@ -259,7 +259,7 @@ function onEachFeature(feature, layer) {
     });
 }
 
-fetch("{% static 'geo/indonesia_provinces.geojson' %}")
+fetch("{% url 'intel:geojson_file' 'indonesia-provinces' %}")
     .then(response => {
         console.log("geojson fetch status =", response.status);
         if (!response.ok) {

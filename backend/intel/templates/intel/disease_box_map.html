@@ -479,9 +479,9 @@
 </style>
 
 <h1 class="boxmap-page-title">Disease Box Map</h1>
-<!-- <p class="boxmap-page-subtitle">
+<p class="boxmap-page-subtitle">
     Peta dokumentasi terpisah untuk menampilkan penyakit yang sedang tinggi berdasarkan kombinasi penyakit dan provinsi. Panel kanan berisi inset box berisi mini peta provinsi, penyakit dominan/tinggi, dan indikator signal.
-</p> -->
+</p>
 
 <div class="boxmap-card">
     <form method="get" class="boxmap-filters">
@@ -570,9 +570,9 @@
 
     <aside class="inset-panel">
         <h2 class="inset-panel-title">Penyakit dengan Signal Tertinggi</h2>
-        <!-- <div class="inset-panel-subtitle">
+        <div class="inset-panel-subtitle">
             Tiap box merepresentasikan kombinasi provinsi dan penyakit dengan volume signal tertinggi. Mini peta di dalam box memperlihatkan bentuk provinsi terkait.
-        </div> -->
+        </div>
 
         <div class="inset-grid" id="insetGrid">
             {% for item in top_boxes %}
@@ -1028,7 +1028,7 @@
         registerDataMaps();
         wireInsetHover();
 
-        const geojsonUrl = "{% url 'intel:geojson_file' 'indonesia-provinces' %}";
+        const geojsonUrl = "{% static 'intel/geo/indonesia_provinces.geojson' %}";
         const response = await fetch(geojsonUrl);
         if (!response.ok) {
             throw new Error(`GeoJSON failed: ${response.status}`);

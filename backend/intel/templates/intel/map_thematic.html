@@ -62,8 +62,8 @@
     });
 
     const geojsonUrl = level === 'kabkota'
-        ? '/static/geo/indonesia_kabkota.geojson'
-        : '/static/geo/indonesia_provinces.geojson';
+        ? "{% url 'intel:geojson_file' 'indonesia-kabkota' %}"
+        : "{% url 'intel:geojson_file' 'indonesia-provinces' %}";
 
     function normalizeKey(value) {
         return (value || '').toString().trim().toLowerCase();

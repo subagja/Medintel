@@ -5433,33 +5433,6 @@ def alert_center(request):
     qs = qs.order_by("-created_at")
 
     alert_type_label_map = {key: label for key, label in _alert_type_choices_extended()}
-    alert_type_short_map = {
-        "cluster_city_48h": "Cluster City 48h",
-        "high_avg_score": "High Avg Score",
-        "new_location": "New Location",
-        "disease_spike_province": "Disease Spike",
-        "disease_cluster_city": "Disease Cluster",
-        "new_disease_location": "New Disease-Location",
-    }
-    alert_type_help_map = {
-        "cluster_city_48h": "Banyak signal pada kab/kota yang sama dalam window waktu pendek.",
-        "high_avg_score": "Rata-rata skor risiko tinggi pada satu lokasi.",
-        "new_location": "Lokasi baru muncul pada signal terverifikasi.",
-        "disease_spike_province": "Peningkatan signal penyakit pada level provinsi dibanding baseline.",
-        "disease_cluster_city": "Konsentrasi penyakit tertentu pada kabupaten/kota.",
-        "new_disease_location": "Kombinasi penyakit dan lokasi baru yang perlu diverifikasi.",
-    }
-
-    alert_summary = {
-        "total": 0,
-        "open": 0,
-        "reviewed": 0,
-        "closed": 0,
-        "merah": 0,
-        "oranye": 0,
-        "kuning": 0,
-        "hijau": 0,
-    }
 
     alert_rows = []
     for alert in qs:
@@ -5473,43 +5446,27 @@ def alert_center(request):
 
         if avg_score >= 70 or signal_count >= 10:
             visual_level = "Merah"
-            level_title = "Merah: prioritas sangat tinggi; avg score ≥ 70 atau jumlah signal ≥ 10."
         elif avg_score >= 60 or signal_count >= 5:
             visual_level = "Oranye"
-            level_title = "Oranye: prioritas tinggi; avg score ≥ 60 atau jumlah signal ≥ 5."
         elif avg_score >= 40 or signal_count >= 2:
             visual_level = "Kuning"
-            level_title = "Kuning: prioritas sedang; avg score ≥ 40 atau jumlah signal ≥ 2."
         else:
             visual_level = "Hijau"
-            level_title = "Hijau: prioritas rendah; avg score < 40 dan jumlah signal < 2."
 
-        status_value = alert.status or "open"
-        alert_summary["total"] += 1
-        if status_value in alert_summary:
-            alert_summary[status_value] += 1
-        level_key = visual_level.lower()
-        if level_key in alert_summary:
-            alert_summary[level_key] += 1
-
-        alert_type_code = alert.alert_type or "-"
         alert_rows.append({
             "id": alert.id,
-            "alert_type": alert_type_code,
+            "alert_type": alert.alert_type or "-",
             "alert_type_label": alert_type_label_map.get(alert.alert_type, alert.alert_type or "-"),
-            "alert_type_short": alert_type_short_map.get(alert.alert_type, alert_type_label_map.get(alert.alert_type, alert.alert_type or "-")),
-            "alert_type_help": alert_type_help_map.get(alert.alert_type, "Jenis alert khusus/teknis yang perlu dilihat pada detail alert."),
             "title": alert.title or "-",
             "description": alert.description or "-",
             "location_name": location_name,
             "signal_count": signal_count,
             "avg_score": round(avg_score, 2),
-            "status": status_value,
+            "status": alert.status or "open",
             "first_signal_at": alert.first_signal_at,
             "last_signal_at": alert.last_signal_at,
             "rule_key": alert.rule_key or "-",
             "visual_level": visual_level,
-            "level_title": level_title,
         })
 
     paginator = Paginator(alert_rows, 25)
@@ -5520,14 +5477,14 @@ def alert_center(request):
     status_choices = list(getattr(Alert, "STATUS_CHOICES", []))
 
     alert_level_legend = [
-        {"level": "Merah", "criteria": "Avg score ≥ 70 atau signal ≥ 10", "meaning": "Prioritas sangat tinggi; perlu verifikasi dan respons segera."},
-        {"level": "Oranye", "criteria": "Avg score ≥ 60 atau signal ≥ 5", "meaning": "Prioritas tinggi; perlu review cepat dan pemantauan intensif."},
-        {"level": "Kuning", "criteria": "Avg score ≥ 40 atau signal ≥ 2", "meaning": "Prioritas sedang; perlu dipantau dan divalidasi sesuai konteks."},
-        {"level": "Hijau", "criteria": "Avg score < 40 dan signal < 2", "meaning": "Prioritas rendah; cukup monitoring rutin."},
+        {"level": "Merah", "criteria": "Avg score ≥ 70 atau jumlah signal ≥ 10", "meaning": "prioritas sangat tinggi; perlu verifikasi dan respons segera."},
+        {"level": "Oranye", "criteria": "Avg score ≥ 60 atau jumlah signal ≥ 5", "meaning": "prioritas tinggi; perlu review cepat dan pemantauan intensif."},
+        {"level": "Kuning", "criteria": "Avg score ≥ 40 atau jumlah signal ≥ 2", "meaning": "prioritas sedang; perlu dipantau dan divalidasi sesuai konteks."},
+        {"level": "Hijau", "criteria": "Avg score < 40 dan jumlah signal < 2", "meaning": "prioritas rendah; cukup monitoring rutin."},
     ]
 
     alert_type_legend = [
-        {"code": "cluster_city_48h", "label": "Cluster City 48h", "meaning": "Banyak signal terverifikasi muncul pada kab/kota yang sama dalam window waktu pendek."},
+        {"code": "cluster_city_48h", "label": "Cluster City 48h", "meaning": "Banyak signal terverifikasi muncul pada kabupaten/kota yang sama dalam window waktu pendek."},
         {"code": "high_avg_score", "label": "High Average Score", "meaning": "Kelompok signal pada suatu lokasi memiliki rata-rata skor risiko tinggi."},
         {"code": "new_location", "label": "New Location", "meaning": "Lokasi baru muncul pada signal terverifikasi dan sebelumnya belum terpantau pada baseline."},
         {"code": "disease_spike_province", "label": "Disease Spike Province", "meaning": "Peningkatan signal penyakit pada level provinsi dibanding periode baseline."},
@@ -5542,7 +5499,6 @@ def alert_center(request):
         "alert_type": alert_type,
         "alert_type_choices": alert_type_choices,
         "status_choices": status_choices,
-        "alert_summary": alert_summary,
         "alert_level_legend": alert_level_legend,
         "alert_type_legend": alert_type_legend,
     })
@@ -6963,3 +6919,243 @@ def decision_support(request):
         "priority_chart_json": json.dumps(priority_chart, default=str),
     }
     return render(request, "intel/decision_support.html", context)
+
+# =========================================================
+# SIGNAL INTELLIGENCE BRIEF - RECOVERY SAFE ADDON
+# =========================================================
+def _signal_primary_location_context(signal):
+    """Return primary location context for a signal without changing DB."""
+    primary_locations = list(getattr(signal, "primary_locations", []) or [])
+
+    if not primary_locations:
+        primary_locations = list(
+            SignalLocation.objects.filter(
+                signal=signal,
+                is_primary=True,
+                location__isnull=False,
+            ).select_related("location", "location__parent")
+        )
+
+    primary_link = primary_locations[0] if primary_locations else None
+    loc = getattr(primary_link, "location", None) if primary_link else None
+
+    location_name = "Belum terpetakan"
+    province_name = "-"
+    level = "-"
+    method = "-"
+    confidence = "-"
+
+    if loc:
+        location_name = getattr(loc, "display_name", "") or getattr(loc, "name", "") or "-"
+        level = getattr(loc, "level", "") or "-"
+        method = getattr(primary_link, "method", "") or "-"
+        confidence = getattr(primary_link, "confidence", "") or "-"
+
+        if getattr(loc, "level", "") == "province":
+            province_name = location_name
+        elif getattr(loc, "parent", None):
+            province_name = loc.parent.display_name or loc.parent.name or "-"
+        else:
+            province_name = getattr(signal, "admin_province", "") or "-"
+    else:
+        location_name = getattr(signal, "raw_location_text", "") or getattr(signal, "admin_kabkota", "") or getattr(signal, "admin_province", "") or "Belum terpetakan"
+        province_name = getattr(signal, "admin_province", "") or "-"
+
+    return {
+        "link": primary_link,
+        "location": loc,
+        "location_name": location_name,
+        "province_name": province_name,
+        "level": level,
+        "method": method,
+        "confidence": confidence,
+    }
+
+def _signal_assessment_dict(signal):
+    assessment = getattr(signal, "assessment_5w1h", None) or {}
+    if not isinstance(assessment, dict):
+        return {}
+    return assessment
+
+def _signal_risk_level_label(score):
+    score = score or 0
+    if score >= 70:
+        return "Tinggi"
+    if score >= 50:
+        return "Sedang-Tinggi"
+    if score >= 35:
+        return "Sedang"
+    return "Rendah"
+
+def _signal_disease_specific_actions(disease):
+    disease_l = (disease or "").lower()
+
+    if any(key in disease_l for key in ["dbd", "demam berdarah", "dengue", "chikungunya", "malaria"]):
+        return [
+            "Perkuat pemantauan kasus berbasis wilayah dan lakukan validasi dengan dinas kesehatan setempat.",
+            "Prioritaskan pemeriksaan klaster lingkungan, survei jentik/vektor, serta intervensi PSN sesuai kewenangan wilayah.",
+            "Pantau ulang pemberitaan dan signal tambahan dalam 3–7 hari untuk melihat perluasan lokasi.",
+        ]
+
+    if any(key in disease_l for key in ["campak", "measles", "rubella"]):
+        return [
+            "Lakukan verifikasi cepat terhadap status kasus, usia terdampak, dan riwayat imunisasi.",
+            "Dorong penelusuran kontak dan penilaian kebutuhan imunisasi responsif di wilayah terdampak.",
+            "Bandingkan signal OSINT dengan data fasilitas kesehatan atau laporan resmi yang tersedia.",
+        ]
+
+    if any(key in disease_l for key in ["rabies", "gigitan"]):
+        return [
+            "Verifikasi kejadian gigitan dan ketersediaan tata laksana pascapajanan di fasilitas kesehatan setempat.",
+            "Koordinasikan pendekatan One Health dengan sektor kesehatan hewan untuk pemantauan hewan penular rabies.",
+            "Pantau narasi publik terkait kasus gigitan/hewan liar agar respons risiko tetap proporsional.",
+        ]
+
+    if any(key in disease_l for key in ["anthrax", "antraks", "zoonosis", "flu burung", "avian"]):
+        return [
+            "Lakukan verifikasi lintas sektor menggunakan pendekatan One Health.",
+            "Prioritaskan penelusuran sumber paparan, pergerakan hewan/produk hewan, dan potensi paparan masyarakat.",
+            "Siapkan komunikasi risiko yang menekankan pencegahan tanpa menimbulkan kepanikan.",
+        ]
+
+    if any(key in disease_l for key in ["influenza", "ispa", "pneumonia", "covid"]):
+        return [
+            "Perkuat pemantauan tren kasus pernapasan dan kapasitas layanan kesehatan di wilayah terkait.",
+            "Dorong pengambilan spesimen atau konfirmasi laboratorium apabila signal menunjukkan peningkatan tidak biasa.",
+            "Pantau sumber terbuka tambahan untuk melihat indikasi klaster sekolah, tempat kerja, atau fasilitas umum.",
+        ]
+
+    return [
+        "Lakukan verifikasi silang terhadap sumber berita, lokasi, waktu kejadian, dan otoritas kesehatan yang disebutkan.",
+        "Prioritaskan assessment 5W+1H dan perbaikan geocode sebelum signal digunakan untuk alert atau rekomendasi kebijakan.",
+        "Pantau perkembangan signal serupa dalam 24–72 jam untuk menilai apakah isu meningkat, stabil, atau menurun.",
+    ]
+
+def _build_signal_brief_narrative(signal, location_ctx, duplicate_count, related_count):
+    score = signal.threat_score or 0
+    risk_label = _signal_risk_level_label(score)
+    disease = signal.disease_tag or "penyakit belum teridentifikasi"
+    location_name = location_ctx.get("location_name") or "lokasi belum terpetakan"
+    province_name = location_ctx.get("province_name") or "-"
+
+    judgement = (
+        f"Signal ini memuat indikasi {disease} pada {location_name}"
+        f"{', ' + province_name if province_name and province_name != '-' and province_name != location_name else ''}. "
+        f"Skor ancaman berada pada {score} dengan kategori perhatian {risk_label.lower()}. "
+        f"Status data saat ini adalah {signal.status or 'raw'} dan geocode berstatus {signal.geocode_status or '-'}."
+    )
+
+    if score >= 70:
+        early_warning = "Signal perlu diprioritaskan sebagai bahan kewaspadaan dini karena skor risiko tinggi dan berpotensi membutuhkan verifikasi cepat."
+    elif related_count >= 3:
+        early_warning = f"Signal perlu dipantau karena terdapat {related_count} signal terkait pada penyakit/lokasi yang sama atau berdekatan."
+    elif duplicate_count:
+        early_warning = f"Terdapat {duplicate_count} kandidat duplikat/kemiripan sehingga analis perlu memastikan apakah signal ini pembaruan, pengulangan, atau noise."
+    else:
+        early_warning = "Belum terdapat indikator eskalasi kuat, tetapi signal tetap relevan untuk monitoring rutin dan pembaruan data apabila muncul laporan tambahan."
+
+    forecasting = (
+        "Dalam 24–72 jam ke depan, isu dapat meningkat apabila muncul laporan tambahan dari wilayah yang sama, "
+        "dikonfirmasi oleh sumber resmi, atau memiliki perluasan lokasi. Apabila tidak ada signal tambahan, isu dapat dikategorikan untuk pemantauan rutin."
+    )
+
+    problem_solving = (
+        "Tindak lanjut utama adalah melengkapi assessment 5W+1H, memastikan lokasi terpetakan dengan benar, "
+        "meninjau potensi duplikasi, dan menaikkan status signal hanya setelah kelayakan data terpenuhi."
+    )
+
+    return {
+        "judgement": judgement,
+        "early_warning": early_warning,
+        "forecasting": forecasting,
+        "problem_solving": problem_solving,
+    }
+
+def signal_intelligence_brief(request, pk):
+    """
+    Detail/brief per signal agar Raw Signal dan Cluster tidak perlu menampilkan semua konteks dalam tabel.
+    Tidak membuat model baru dan tidak mengubah status data secara otomatis.
+    """
+    primary_locations = SignalLocation.objects.filter(is_primary=True).select_related(
+        "location",
+        "location__parent",
+    )
+
+    signal = get_object_or_404(
+        Signal.objects.select_related("source", "validated_by", "cluster")
+        .prefetch_related(
+            Prefetch(
+                "locations",
+                queryset=primary_locations,
+                to_attr="primary_locations",
+            )
+        ),
+        pk=pk,
+    )
+
+    location_ctx = _signal_primary_location_context(signal)
+    assessment = _signal_assessment_dict(signal)
+
+    try:
+        duplicate_candidates = get_duplicate_candidates(signal, days=7, limit=10)
+    except Exception:
+        duplicate_candidates = []
+
+    related_qs = Signal.objects.select_related("source", "cluster").exclude(id=signal.id).exclude(status="noise")
+
+    if signal.disease_tag:
+        related_qs = related_qs.filter(disease_tag__iexact=signal.disease_tag)
+
+    primary_loc = location_ctx.get("location")
+    if primary_loc:
+        related_qs = related_qs.filter(
+            Q(locations__is_primary=True, locations__location_id=primary_loc.id)
+            | Q(locations__is_primary=True, locations__location__parent_id=primary_loc.id)
+            | Q(locations__is_primary=True, locations__location_id=getattr(primary_loc, "parent_id", None))
+        )
+    elif signal.raw_location_text:
+        related_qs = related_qs.filter(raw_location_text__icontains=signal.raw_location_text)
+
+    related_signals = list(related_qs.distinct().order_by("-threat_score", "-published_at", "-created_at")[:10])
+
+    cluster_signals = []
+    if signal.cluster_id:
+        cluster_signals = list(
+            signal.cluster.signals.exclude(id=signal.id)
+            .exclude(status="noise")
+            .select_related("source")
+            .order_by("-threat_score", "-published_at", "-created_at")[:10]
+        )
+
+    readiness = {
+        "has_assessment": bool((signal.assessment_summary or "").strip()),
+        "has_location": bool(location_ctx.get("location")),
+        "has_source_url": bool(signal.source_url or signal.resolved_url),
+        "has_duplicate_warning": bool(duplicate_candidates),
+        "is_high_risk": (signal.threat_score or 0) >= 70,
+        "ready_for_validation": signal.status == "raw" and bool((signal.assessment_summary or "").strip()) and bool(location_ctx.get("location")),
+        "ready_for_approval": signal.status == "validated" and bool(location_ctx.get("location")),
+    }
+
+    narrative = _build_signal_brief_narrative(
+        signal=signal,
+        location_ctx=location_ctx,
+        duplicate_count=len(duplicate_candidates),
+        related_count=len(related_signals),
+    )
+
+    context = {
+        "page_title": "Signal Intelligence Brief",
+        "signal": signal,
+        "location_ctx": location_ctx,
+        "assessment": assessment,
+        "duplicate_candidates": duplicate_candidates,
+        "related_signals": related_signals,
+        "cluster_signals": cluster_signals,
+        "readiness": readiness,
+        "risk_label": _signal_risk_level_label(signal.threat_score),
+        "narrative": narrative,
+        "disease_actions": _signal_disease_specific_actions(signal.disease_tag),
+        "back_url": request.META.get("HTTP_REFERER") or reverse("intel:raw_signals"),
+    }
+    return render(request, "intel/signal_intelligence_brief.html", context)

@@ -1,0 +1,278 @@
+{% extends "intel/base.html" %}
+{% load static %}
+
+{% block content %}
+<style>
+    :root {
+        --primary: #4b0082;
+        --border: #ddd;
+        --soft-border: #e8e8e8;
+        --muted: #666;
+        --bg-soft: #fafafa;
+        --green-bg: #e8f7ec;
+        --green-text: #08762a;
+        --yellow-bg: #fff5d6;
+        --yellow-text: #795500;
+        --orange-bg: #fff0df;
+        --orange-text: #9a4d00;
+        --red-bg: #fde8e8;
+        --red-text: #b00020;
+        --blue-bg: #eef3ff;
+        --blue-text: #2451a6;
+        --purple-bg: #f1ecff;
+    }
+
+    .page-title { margin: 0 0 8px; font-size: 24px; font-weight: 800; }
+    .page-subtitle { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+    .hero-grid { display: grid; grid-template-columns: 1.25fr 420px; gap: 16px; align-items: start; }
+    .content-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+    .signal-title { font-size: 20px; font-weight: 900; line-height: 1.35; margin-bottom: 10px; }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .badge { display: inline-block; padding: 5px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; white-space: nowrap; }
+    .badge-purple { background: var(--purple-bg); color: var(--primary); border: 1px solid #b99be8; }
+    .badge-blue { background: var(--blue-bg); color: var(--blue-text); border: 1px solid #aebff0; }
+    .badge-green { background: var(--green-bg); color: var(--green-text); border: 1px solid #7acb8a; }
+    .badge-yellow { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid #efd47a; }
+    .badge-orange { background: var(--orange-bg); color: var(--orange-text); border: 1px solid #efc28f; }
+    .badge-red { background: var(--red-bg); color: var(--red-text); border: 1px solid #e5aaaa; }
+    .status-raw { background: var(--yellow-bg); color: var(--yellow-text); }
+    .status-validated, .status-approved { background: var(--green-bg); color: var(--green-text); }
+    .status-noise { background: var(--red-bg); color: var(--red-text); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; }
+    .kpi { background: var(--bg-soft); border: 1px solid var(--soft-border); border-radius: 10px; padding: 11px; }
+    .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .kpi-value { font-size: 22px; font-weight: 900; }
+    .section-title { font-size: 16px; font-weight: 900; margin: 0 0 10px; }
+    .subsection-title { font-size: 12px; color: #555; font-weight: 900; margin-bottom: 4px; }
+    .text-block { font-size: 13px; line-height: 1.55; color: #222; }
+    .two-col-small { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .info-box { background: var(--bg-soft); border: 1px solid var(--soft-border); border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.5; }
+    .btn, button { border: 1px solid #999; border-radius: 5px; background: #f7f7f7; padding: 8px 11px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 800; }
+    .btn-danger { background: var(--red-bg); color: var(--red-text); border-color: #d88; font-weight: 800; }
+    .btn-success { background: var(--green-bg); color: var(--green-text); border-color: #7acb8a; font-weight: 800; }
+    .btn-warning { background: var(--orange-bg); color: var(--orange-text); border-color: #efc28f; font-weight: 800; }
+    .action-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .action-row form { margin: 0; }
+    .checklist { display: grid; gap: 7px; }
+    .check-item { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #eee; padding-bottom: 7px; font-size: 13px; }
+    .mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .mini-table th, .mini-table td { border-bottom: 1px solid #eee; padding: 7px; vertical-align: top; }
+    .mini-table th { background: #fafafa; text-align: left; }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .empty-box { background: var(--bg-soft); border: 1px dashed #ccc; border-radius: 8px; padding: 12px; color: var(--muted); font-size: 13px; }
+    .assessment-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 10px; }
+    .assessment-item { background: #fff; border: 1px solid var(--soft-border); border-radius: 8px; padding: 10px; font-size: 13px; line-height: 1.5; }
+    details summary { cursor: pointer; color: var(--primary); font-weight: 800; }
+    .raw-content { max-height: 280px; overflow: auto; white-space: pre-wrap; }
+    @media (max-width: 1100px) { .hero-grid, .content-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 700px) { .kpi-grid, .two-col-small, .assessment-grid { grid-template-columns: 1fr; } }
+</style>
+
+<h1 class="page-title">Signal Intelligence Brief</h1>
+<p class="page-subtitle">
+    Detail operasional per signal. Halaman ini membantu analis membaca konteks lengkap tanpa memperberat tabel Raw Signal atau Cluster.
+</p>
+
+<div class="hero-grid">
+    <section class="card">
+        <div class="signal-title">#{{ signal.id }} — {{ signal.title|default:"-" }}</div>
+        <div class="meta-row">
+            <span class="badge badge-purple">{{ signal.disease_tag|default:"Penyakit belum jelas" }}</span>
+            <span class="badge status-{{ signal.status|default:'raw' }}">{{ signal.status|default:"raw" }}</span>
+            {% if risk_label == "Tinggi" %}
+                <span class="badge badge-red">Risiko {{ risk_label }}</span>
+            {% elif risk_label == "Sedang-Tinggi" %}
+                <span class="badge badge-orange">Risiko {{ risk_label }}</span>
+            {% elif risk_label == "Sedang" %}
+                <span class="badge badge-yellow">Risiko {{ risk_label }}</span>
+            {% else %}
+                <span class="badge badge-green">Risiko {{ risk_label }}</span>
+            {% endif %}
+            <span class="badge badge-blue">Geocode: {{ signal.geocode_status|default:"-" }}</span>
+        </div>
+
+        <div class="two-col-small" style="margin-top: 14px;">
+            <div class="info-box">
+                <div class="subsection-title">Sumber</div>
+                {% if signal.source %}{{ signal.source.name|default:"-" }}<br>{% endif %}
+                {% if signal.source_url %}<a href="{{ signal.source_url }}" target="_blank">Buka sumber crawler</a><br>{% endif %}
+                {% if signal.resolved_url %}<a href="{{ signal.resolved_url }}" target="_blank">Buka resolved URL</a><br>{% endif %}
+                <span class="small">Published: {% if signal.published_at %}{{ signal.published_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</span>
+            </div>
+
+            <div class="info-box">
+                <div class="subsection-title">Lokasi utama</div>
+                <strong>{{ location_ctx.location_name }}</strong><br>
+                <span class="small">Provinsi: {{ location_ctx.province_name }}</span><br>
+                <span class="small">Level: {{ location_ctx.level }} · {{ location_ctx.method }} · Confidence {{ location_ctx.confidence }}</span><br>
+                <span class="small">Raw: {{ signal.raw_location_text|default:"-" }}</span>
+            </div>
+        </div>
+
+        <div class="action-row" style="margin-top: 14px;">
+            <a class="btn" href="{{ back_url }}">Kembali</a>
+            <a class="btn btn-warning" href="{% url 'intel:geocode_manual_update' signal.id %}?next={{ request.get_full_path|urlencode }}">Edit Lokasi</a>
+            <a class="btn" href="{% url 'intel:signal_duplicate_review' signal.id %}">Duplicate Review</a>
+            <form method="post" action="{% url 'intel:signal_generate_assessment' signal.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary">{% if signal.assessment_summary %}Re-generate 5W+1H{% else %}Generate 5W+1H{% endif %}</button>
+            </form>
+            {% if signal.status == "raw" %}
+                <form method="post" action="{% url 'intel:signal_validate' signal.id %}">{% csrf_token %}<button class="btn-success" type="submit">Validasi</button></form>
+                <form method="post" action="{% url 'intel:signal_noise' signal.id %}">{% csrf_token %}<button class="btn-danger" type="submit">Noise</button></form>
+            {% elif signal.status == "validated" %}
+                <form method="post" action="{% url 'intel:signal_approve' signal.id %}">{% csrf_token %}<button class="btn-success" type="submit">Approve Mapping</button></form>
+                <form method="post" action="{% url 'intel:signal_noise' signal.id %}">{% csrf_token %}<button class="btn-danger" type="submit">Noise</button></form>
+            {% endif %}
+        </div>
+    </section>
+
+    <aside class="card">
+        <h3 class="section-title">Kesiapan Data</h3>
+        <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">Threat score</div><div class="kpi-value">{{ signal.threat_score|default:0 }}</div></div>
+            <div class="kpi"><div class="kpi-label">Confidence</div><div class="kpi-value">{{ signal.confidence_score|default:0 }}%</div></div>
+            <div class="kpi"><div class="kpi-label">Duplikat</div><div class="kpi-value">{{ duplicate_candidates|length }}</div></div>
+            <div class="kpi"><div class="kpi-label">Terkait</div><div class="kpi-value">{{ related_signals|length }}</div></div>
+        </div>
+        <div class="checklist" style="margin-top: 12px;">
+            <div class="check-item"><span>Assessment 5W+1H</span><strong>{% if readiness.has_assessment %}Ada{% else %}Belum{% endif %}</strong></div>
+            <div class="check-item"><span>Lokasi terstruktur</span><strong>{% if readiness.has_location %}Ada{% else %}Belum{% endif %}</strong></div>
+            <div class="check-item"><span>URL sumber</span><strong>{% if readiness.has_source_url %}Ada{% else %}Belum{% endif %}</strong></div>
+            <div class="check-item"><span>Potensi duplikat</span><strong>{% if readiness.has_duplicate_warning %}Perlu review{% else %}Tidak menonjol{% endif %}</strong></div>
+            <div class="check-item"><span>Status lanjut</span><strong>{% if readiness.ready_for_approval %}Siap approval{% elif readiness.ready_for_validation %}Siap validasi{% else %}Perlu kelengkapan{% endif %}</strong></div>
+        </div>
+    </aside>
+</div>
+
+<div class="content-grid">
+    <main>
+        <section class="card">
+            <h3 class="section-title">Analisis Intelijen Singkat</h3>
+            <div class="info-box"><div class="subsection-title">Judgement</div><div class="text-block">{{ narrative.judgement }}</div></div>
+            <br>
+            <div class="info-box"><div class="subsection-title">Early Warning</div><div class="text-block">{{ narrative.early_warning }}</div></div>
+            <br>
+            <div class="info-box"><div class="subsection-title">Forecasting</div><div class="text-block">{{ narrative.forecasting }}</div></div>
+            <br>
+            <div class="info-box"><div class="subsection-title">Problem Solving</div><div class="text-block">{{ narrative.problem_solving }}</div></div>
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">Assessment 5W+1H</h3>
+            {% if signal.assessment_summary %}
+                <div class="info-box">
+                    <div class="subsection-title">Ringkasan</div>
+                    <div class="text-block">{{ signal.assessment_summary|linebreaksbr }}</div>
+                    <div class="small" style="margin-top:8px;">Quality: {{ assessment.assessment_quality|default:signal.assessment_status|default:"-" }} · Dibuat: {% if signal.assessment_generated_at %}{{ signal.assessment_generated_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</div>
+                </div>
+                <div class="assessment-grid" style="margin-top: 10px;">
+                    <div class="assessment-item"><strong>What</strong><br>{{ assessment.what|default:"-"|linebreaksbr }}</div>
+                    <div class="assessment-item"><strong>Where</strong><br>{{ assessment.where|default:"-"|linebreaksbr }}</div>
+                    <div class="assessment-item"><strong>When</strong><br>{{ assessment.when|default:"-"|linebreaksbr }}</div>
+                    <div class="assessment-item"><strong>Who</strong><br>{{ assessment.who|default:"-"|linebreaksbr }}</div>
+                    <div class="assessment-item"><strong>Why</strong><br>{{ assessment.why|default:"-"|linebreaksbr }}</div>
+                    <div class="assessment-item"><strong>How</strong><br>{{ assessment.how|default:"-"|linebreaksbr }}</div>
+                </div>
+            {% else %}
+                <div class="empty-box">Belum ada assessment. Gunakan tombol Generate 5W+1H agar signal siap dianalisis.</div>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">Saran Tindak Penyakit-Spesifik</h3>
+            <ul class="text-block">
+                {% for item in disease_actions %}
+                    <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">Teks Sumber / Konten</h3>
+            {% if signal.content %}
+                <details open>
+                    <summary>Lihat konten signal</summary>
+                    <div class="info-box raw-content">{{ signal.content }}</div>
+                </details>
+            {% else %}
+                <div class="empty-box">Konten signal tidak tersedia.</div>
+            {% endif %}
+        </section>
+    </main>
+
+    <aside>
+        <section class="card">
+            <h3 class="section-title">Potensi Duplikat</h3>
+            {% if duplicate_candidates %}
+                <table class="mini-table">
+                    <thead><tr><th>ID</th><th>Signal</th><th>Score</th></tr></thead>
+                    <tbody>
+                    {% for item in duplicate_candidates %}
+                        <tr>
+                            <td>#{{ item.id }}</td>
+                            <td><a href="{% url 'intel:signal_intelligence_brief' item.id %}">{{ item.title|truncatechars:70 }}</a><br><span class="small">{{ item.status }} · {{ item.published_at|date:"Y-m-d" }}</span></td>
+                            <td><strong>{{ item.duplicate_score|default:0 }}</strong><br><span class="small">{{ item.duplicate_label|default:"-" }}</span></td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                <div style="margin-top: 10px;"><a class="btn" href="{% url 'intel:signal_duplicate_review' signal.id %}">Buka Duplicate Review</a></div>
+            {% else %}
+                <div class="empty-box">Tidak ada kandidat duplikat menonjol pada rentang review.</div>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">Signal Terkait</h3>
+            {% if related_signals %}
+                <table class="mini-table">
+                    <thead><tr><th>ID</th><th>Signal</th><th>Skor</th></tr></thead>
+                    <tbody>
+                    {% for item in related_signals %}
+                        <tr>
+                            <td>#{{ item.id }}</td>
+                            <td><a href="{% url 'intel:signal_intelligence_brief' item.id %}">{{ item.title|truncatechars:70 }}</a><br><span class="small">{{ item.status }} · {{ item.published_at|date:"Y-m-d" }}</span></td>
+                            <td>{{ item.threat_score|default:0 }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-box">Belum ada signal terkait yang menonjol.</div>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">Konteks Cluster</h3>
+            {% if signal.cluster %}
+                <div class="info-box">
+                    <strong>{{ signal.cluster.disease_tag|default:"-" }} · {{ signal.cluster.location_name|default:"unknown_location" }}</strong><br>
+                    <span class="small">{{ signal.cluster.cluster_key }}</span><br>
+                    <span class="small">Total: {{ signal.cluster.signal_count }} · Raw: {{ signal.cluster.raw_count }} · Validated: {{ signal.cluster.validated_count }} · Approved: {{ signal.cluster.verified_count }}</span><br><br>
+                    <a class="btn" href="{% url 'intel:cluster_detail' signal.cluster.id %}">Buka Cluster Detail</a>
+                </div>
+                {% if cluster_signals %}
+                    <table class="mini-table" style="margin-top: 10px;">
+                        <thead><tr><th>ID</th><th>Signal</th><th>Skor</th></tr></thead>
+                        <tbody>
+                        {% for item in cluster_signals %}
+                            <tr>
+                                <td>#{{ item.id }}</td>
+                                <td><a href="{% url 'intel:signal_intelligence_brief' item.id %}">{{ item.title|truncatechars:70 }}</a></td>
+                                <td>{{ item.threat_score|default:0 }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+            {% else %}
+                <div class="empty-box">Signal belum masuk cluster.</div>
+            {% endif %}
+        </section>
+    </aside>
+</div>
+
+{% endblock %}

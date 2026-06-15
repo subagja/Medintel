@@ -113,9 +113,6 @@
     <div class="card">
         <div class="action-bar">
             <a class="btn" href="{% url 'intel:cluster_triage_queue' %}">← Kembali ke Cluster Queue</a>
-            <a class="btn btn-warning-soft" href="{% url 'intel:raw_signals' %}?disease={{ cluster.disease_tag|urlencode }}&search={{ cluster.location_name|urlencode }}">
-                Buka Raw Signals terkait
-            </a>
             <form method="post" action="{% url 'intel:cluster_signal_action' cluster.id %}">
                 {% csrf_token %}
                 <button type="submit" name="action" value="mark_cluster_reviewed" class="btn-review">Mark Cluster Reviewed</button>
@@ -338,6 +335,7 @@
                     </td>
                     <td>
                         <div class="action-stack">
+                            <a class="btn btn-review btn-small" href="{% url 'intel:signal_intelligence_brief' signal.id %}">Brief Signal</a>
                             {% if signal.has_duplicate_warning or signal.duplicate_count %}
                                 <a class="btn btn-warning-soft btn-small" href="{% url 'intel:signal_duplicate_review' signal.id %}">
                                     Duplicate Review ({{ signal.duplicate_count|default:0 }})
