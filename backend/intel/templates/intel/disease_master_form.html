@@ -1,0 +1,93 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<style>
+    .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px; max-width: 900px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-weight: 700; margin-bottom: 5px; }
+    input[type="text"], textarea, select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
+    textarea { min-height: 80px; }
+    .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0 14px; }
+    .check-item { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; background: #fafafa; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 7px 11px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: #4b0082; color: #fff; border-color: #4b0082; }
+    .errorlist { color: #b00020; margin: 4px 0 0; padding-left: 18px; font-size: 12px; }
+    .help { color: #666; font-size: 12px; margin-top: 4px; }
+    @media (max-width: 760px) { .grid, .checks { grid-template-columns: 1fr; } }
+</style>
+
+<h1 class="page-title">{{ page_title }}</h1>
+
+<div class="card">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="field">
+            <label for="{{ form.name.id_for_label }}">Nama Penyakit/Sindrom</label>
+            {{ form.name }}
+            {{ form.name.errors }}
+        </div>
+
+        <div class="field">
+            <label for="{{ form.aliases.id_for_label }}">Alias</label>
+            {{ form.aliases }}
+            {{ form.aliases.errors }}
+            <div class="help">Pisahkan alias dengan koma atau baris baru. Contoh: DBD, dengue, demam berdarah.</div>
+        </div>
+
+        <div class="grid">
+            <div class="field">
+                <label for="{{ form.skdr_code.id_for_label }}">Kode SKDR</label>
+                {{ form.skdr_code }}
+                {{ form.skdr_code.errors }}
+            </div>
+            <div class="field">
+                <label for="{{ form.disease_type.id_for_label }}">Tipe Penyakit</label>
+                {{ form.disease_type }}
+                {{ form.disease_type.errors }}
+            </div>
+            <div class="field">
+                <label for="{{ form.severity_weight.id_for_label }}">Bobot Keparahan</label>
+                {{ form.severity_weight }}
+                {{ form.severity_weight.errors }}
+            </div>
+            <div class="field">
+                <label for="{{ form.alert_rule.id_for_label }}">Alert Rule</label>
+                {{ form.alert_rule }}
+                {{ form.alert_rule.errors }}
+            </div>
+        </div>
+
+        <div class="checks">
+            <label class="check-item">{{ form.skdr_priority }} SKDR Priority</label>
+            <label class="check-item">{{ form.report_24h }} Immediate 24h</label>
+            <label class="check-item">{{ form.emerging_watchlist }} Emerging Watchlist</label>
+            <label class="check-item">{{ form.reemerging_watch }} Re-emerging Watch</label>
+            <label class="check-item">{{ form.is_active }} Aktif</label>
+        </div>
+
+        <div class="field">
+            <label for="{{ form.keyword_id.id_for_label }}">Keyword Indonesia</label>
+            {{ form.keyword_id }}
+            {{ form.keyword_id.errors }}
+        </div>
+
+        <div class="field">
+            <label for="{{ form.keyword_en.id_for_label }}">Keyword Inggris/Medis</label>
+            {{ form.keyword_en }}
+            {{ form.keyword_en.errors }}
+        </div>
+
+        <div class="field">
+            <label for="{{ form.notes.id_for_label }}">Notes</label>
+            {{ form.notes }}
+            {{ form.notes.errors }}
+        </div>
+
+        <button type="submit" class="btn-primary">Simpan</button>
+        <a class="btn" href="{% url 'intel:disease_master_manager' %}">Batal</a>
+    </form>
+</div>
+{% endblock %}

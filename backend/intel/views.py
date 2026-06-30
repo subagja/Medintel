@@ -5,6 +5,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 from intel.services.signal_assessment import build_assessment
+from intel.services.disease_master import sync_signal_disease_master
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse, FileResponse, Http404
 from django.contrib import messages
@@ -28,6 +29,7 @@ from .forms import (
     GeocodeManualUpdateForm,
     LocationForm,
     LocationAliasForm,
+    DiseaseMasterForm,
     ScoringRuleForm,
     SystemSettingForm,
     AlertStatusForm,
@@ -40,11 +42,22 @@ from .models import (
     AuditLog,
     Location,
     LocationAlias,
+    DiseaseMaster,
     ScoringRule,
     SystemSetting,
     Alert,
     PublisherDomainAlias,
 )
+
+
+ASSESSMENT_SOURCE_TEXT_MAX_CHARS = int(os.getenv("ASSESSMENT_SOURCE_TEXT_MAX_CHARS", "5000"))
+
+
+def compact_assessment_source_text(value):
+    value = value or ""
+    if ASSESSMENT_SOURCE_TEXT_MAX_CHARS <= 0 or len(value) <= ASSESSMENT_SOURCE_TEXT_MAX_CHARS:
+        return value
+    return value[:ASSESSMENT_SOURCE_TEXT_MAX_CHARS].rstrip() + "\n\n[TRUNCATED_FOR_STORAGE]"
 
 
 def _stable_disease_color(disease_name):
@@ -2785,7 +2798,8 @@ def _cluster_validate_signal(signal, user, cluster):
     signal.status = "validated"
     signal.validated_by = user
     signal.validated_at = timezone.now()
-    signal.save(update_fields=["status", "validated_by", "validated_at", "updated_at"])
+    sync_signal_disease_master(signal, save=False)
+    signal.save(update_fields=["status", "validated_by", "validated_at", "disease_master", "updated_at"])
 
     AuditLog.objects.create(
         user=user,
@@ -2813,11 +2827,13 @@ def _cluster_approve_signal(signal, user, cluster):
     signal.approved_for_mapping = True
     signal.validated_by = user
     signal.validated_at = timezone.now()
+    sync_signal_disease_master(signal, save=False)
     signal.save(update_fields=[
         "status",
         "approved_for_mapping",
         "validated_by",
         "validated_at",
+        "disease_master",
         "updated_at",
     ])
 
@@ -3327,7 +3343,7 @@ def signal_generate_assessment(request, pk):
         signal.assessment_status = result["status"]
         signal.assessment_summary = result["summary"]
         signal.assessment_5w1h = result["assessment"]
-        signal.assessment_source_text = result["source_text"][:12000]
+        signal.assessment_source_text = compact_assessment_source_text(result["source_text"])
         signal.assessment_error = result["error"]
         signal.assessment_generated_at = timezone.now()
         signal.validated_by = request.user
@@ -3449,7 +3465,7 @@ def signal_update_resolved_url(request, pk):
             signal.assessment_status = result["status"]
             signal.assessment_summary = result["summary"]
             signal.assessment_5w1h = result["assessment"]
-            signal.assessment_source_text = result["source_text"][:15000]
+            signal.assessment_source_text = compact_assessment_source_text(result["source_text"])
             signal.assessment_error = result["error"]
             signal.assessment_generated_at = timezone.now()
 
@@ -3646,7 +3662,8 @@ def signal_mark_validated(request, pk):
     }
 
     signal.status = "validated"
-    signal.save(update_fields=["status", "updated_at"])
+    sync_signal_disease_master(signal, save=False)
+    signal.save(update_fields=["status", "disease_master", "updated_at"])
 
     AuditLog.objects.create(
         user=request.user,
@@ -3707,7 +3724,8 @@ def signal_approve_mapping(request, pk):
 
     signal.status = "approved"
     signal.approved_for_mapping = True
-    signal.save(update_fields=["status", "approved_for_mapping", "updated_at"])
+    sync_signal_disease_master(signal, save=False)
+    signal.save(update_fields=["status", "approved_for_mapping", "disease_master", "updated_at"])
 
     AuditLog.objects.create(
         user=request.user,
@@ -4763,6 +4781,223 @@ def gazetteer_alias_create(request):
 
 
 @login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR, ROLE_ANALYST)
+def disease_master_manager(request):
+    q = request.GET.get("q", "").strip()
+    classification = request.GET.get("classification", "").strip()
+    disease_type = request.GET.get("disease_type", "").strip()
+    alert_rule = request.GET.get("alert_rule", "").strip()
+    is_active = request.GET.get("is_active", "").strip()
+
+    qs = DiseaseMaster.objects.all()
+
+    if q:
+        qs = qs.filter(
+            Q(name__icontains=q)
+            | Q(normalized_name__icontains=q)
+            | Q(aliases__icontains=q)
+            | Q(keyword_id__icontains=q)
+            | Q(keyword_en__icontains=q)
+            | Q(skdr_code__icontains=q)
+        )
+
+    if classification == "skdr":
+        qs = qs.filter(skdr_priority=True)
+    elif classification == "24h":
+        qs = qs.filter(report_24h=True)
+    elif classification == "emerging":
+        qs = qs.filter(emerging_watchlist=True)
+    elif classification == "reemerging":
+        qs = qs.filter(reemerging_watch=True)
+
+    if disease_type:
+        qs = qs.filter(disease_type=disease_type)
+
+    if alert_rule:
+        qs = qs.filter(alert_rule=alert_rule)
+
+    if is_active == "yes":
+        qs = qs.filter(is_active=True)
+    elif is_active == "no":
+        qs = qs.filter(is_active=False)
+
+    qs = qs.order_by("name")
+
+    paginator = Paginator(qs, 50)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    stats = {
+        "total": DiseaseMaster.objects.count(),
+        "skdr": DiseaseMaster.objects.filter(skdr_priority=True, is_active=True).count(),
+        "report_24h": DiseaseMaster.objects.filter(report_24h=True, is_active=True).count(),
+        "emerging": DiseaseMaster.objects.filter(emerging_watchlist=True, is_active=True).count(),
+        "reemerging": DiseaseMaster.objects.filter(reemerging_watch=True, is_active=True).count(),
+    }
+
+    return render(request, "intel/disease_master_manager.html", {
+        "page_title": "Disease Master",
+        "page_obj": page_obj,
+        "q": q,
+        "classification": classification,
+        "disease_type": disease_type,
+        "alert_rule": alert_rule,
+        "is_active": is_active,
+        "stats": stats,
+        "disease_type_choices": DiseaseMaster.DISEASE_TYPE_CHOICES,
+        "alert_rule_choices": DiseaseMaster.ALERT_RULE_CHOICES,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def disease_master_create(request):
+    if request.method == "POST":
+        form = DiseaseMasterForm(request.POST)
+        if form.is_valid():
+            obj = form.save()
+            AuditLog.objects.create(
+                user=request.user,
+                action="create",
+                model_name="DiseaseMaster",
+                object_id=str(obj.id),
+                notes="Disease master created from manager",
+                after_data={"name": obj.name, "skdr_code": obj.skdr_code},
+            )
+            messages.success(request, f'Disease "{obj.name}" berhasil ditambahkan.')
+            return redirect("intel:disease_master_manager")
+    else:
+        form = DiseaseMasterForm(initial={"is_active": True})
+
+    return render(request, "intel/disease_master_form.html", {
+        "page_title": "Tambah Disease Master",
+        "form": form,
+        "mode": "create",
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def disease_master_edit(request, pk):
+    obj = get_object_or_404(DiseaseMaster, pk=pk)
+
+    if request.method == "POST":
+        before_data = {
+            "name": obj.name,
+            "skdr_code": obj.skdr_code,
+            "skdr_priority": obj.skdr_priority,
+            "report_24h": obj.report_24h,
+            "emerging_watchlist": obj.emerging_watchlist,
+            "reemerging_watch": obj.reemerging_watch,
+            "alert_rule": obj.alert_rule,
+            "is_active": obj.is_active,
+        }
+        form = DiseaseMasterForm(request.POST, instance=obj)
+        if form.is_valid():
+            obj = form.save()
+            AuditLog.objects.create(
+                user=request.user,
+                action="update",
+                model_name="DiseaseMaster",
+                object_id=str(obj.id),
+                notes="Disease master updated from manager",
+                before_data=before_data,
+                after_data={
+                    "name": obj.name,
+                    "skdr_code": obj.skdr_code,
+                    "skdr_priority": obj.skdr_priority,
+                    "report_24h": obj.report_24h,
+                    "emerging_watchlist": obj.emerging_watchlist,
+                    "reemerging_watch": obj.reemerging_watch,
+                    "alert_rule": obj.alert_rule,
+                    "is_active": obj.is_active,
+                },
+            )
+            messages.success(request, f'Disease "{obj.name}" berhasil diperbarui.')
+            return redirect("intel:disease_master_manager")
+    else:
+        form = DiseaseMasterForm(instance=obj)
+
+    return render(request, "intel/disease_master_form.html", {
+        "page_title": "Edit Disease Master",
+        "form": form,
+        "mode": "edit",
+        "disease": obj,
+    })
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def disease_master_toggle_active(request, pk):
+    obj = get_object_or_404(DiseaseMaster, pk=pk)
+
+    if request.method != "POST":
+        return redirect("intel:disease_master_manager")
+
+    before_data = {"is_active": obj.is_active}
+    obj.is_active = not obj.is_active
+    obj.save(update_fields=["is_active", "updated_at"])
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="update",
+        model_name="DiseaseMaster",
+        object_id=str(obj.id),
+        notes="Disease master active status toggled",
+        before_data=before_data,
+        after_data={"is_active": obj.is_active},
+    )
+
+    status_label = "diaktifkan" if obj.is_active else "dinonaktifkan"
+    messages.success(request, f'Disease "{obj.name}" berhasil {status_label}.')
+    return redirect("intel:disease_master_manager")
+
+
+@login_required
+@role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
+def disease_master_delete(request, pk):
+    obj = get_object_or_404(DiseaseMaster, pk=pk)
+
+    if request.method != "POST":
+        return redirect("intel:disease_master_manager")
+
+    signal_count = obj.signals.count()
+    cluster_count = obj.clusters.count()
+
+    if signal_count or cluster_count:
+        messages.error(
+            request,
+            (
+                f'Disease "{obj.name}" belum bisa dihapus karena masih dipakai '
+                f"oleh {signal_count} signal dan {cluster_count} cluster. "
+                "Nonaktifkan saja atau sync/migrasikan signal ke disease pengganti lebih dulu."
+            ),
+        )
+        return redirect("intel:disease_master_manager")
+
+    before_data = {
+        "name": obj.name,
+        "skdr_code": obj.skdr_code,
+        "is_active": obj.is_active,
+    }
+    object_id = str(obj.id)
+    name = obj.name
+    obj.delete()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="delete",
+        model_name="DiseaseMaster",
+        object_id=object_id,
+        notes="Disease master deleted from manager",
+        before_data=before_data,
+    )
+
+    messages.success(request, f'Disease "{name}" berhasil dihapus.')
+    return redirect("intel:disease_master_manager")
+
+
+@login_required
 @role_required(ROLE_ADMIN, ROLE_ANALYST_SENIOR)
 def gazetteer_toggle_false_positive(request, pk):
     loc = get_object_or_404(Location, pk=pk)
@@ -5258,6 +5493,10 @@ def _alert_type_choices_extended():
         ("disease_spike_province", "Disease Spike Province"),
         ("disease_cluster_city", "Disease Cluster City"),
         ("new_disease_location", "New Disease Location"),
+        ("immediate_disease_signal", "Immediate Disease Signal"),
+        ("emerging_disease_signal", "Emerging Disease Signal"),
+        ("reemerging_disease_location", "Re-emerging Disease Location"),
+        ("unknown_cluster_signal", "Unknown Cluster Signal"),
     ]
     existing = {key for key, _ in base}
     for item in extra:
@@ -5490,6 +5729,10 @@ def alert_center(request):
         {"code": "disease_spike_province", "label": "Disease Spike Province", "meaning": "Peningkatan signal penyakit pada level provinsi dibanding periode baseline."},
         {"code": "disease_cluster_city", "label": "Disease Cluster City", "meaning": "Konsentrasi signal penyakit tertentu pada kabupaten/kota dalam periode terbaru."},
         {"code": "new_disease_location", "label": "New Disease-Location", "meaning": "Kombinasi penyakit dan lokasi baru yang perlu diverifikasi sebagai potensi indikasi awal."},
+        {"code": "immediate_disease_signal", "label": "Immediate Disease Signal", "meaning": "Penyakit yang masuk perhatian cepat 24 jam muncul sebagai signal tervalidasi."},
+        {"code": "emerging_disease_signal", "label": "Emerging Disease Signal", "meaning": "Signal penyakit emerging/watchlist yang tidak perlu menunggu tren tinggi untuk mendapat atensi."},
+        {"code": "reemerging_disease_location", "label": "Re-emerging Disease Location", "meaning": "Penyakit re-emerging muncul pada lokasi yang belum memiliki riwayat signal sejenis pada baseline."},
+        {"code": "unknown_cluster_signal", "label": "Unknown Cluster Signal", "meaning": "Klaster/gejala tidak lazim yang belum dapat diklasifikasikan sebagai penyakit spesifik."},
     ]
 
     return render(request, "intel/alert_center.html", {
@@ -5548,6 +5791,117 @@ def generate_alerts(request):
 
     created_count = 0
     updated_or_existing_count = 0
+
+    for signal in verified_window_qs.filter(disease_master__isnull=True).exclude(disease_tag="")[:500]:
+        sync_signal_disease_master(signal, save=True)
+
+    priority_signal_qs = (
+        verified_window_qs
+        .select_related("disease_master", "source")
+        .prefetch_related("locations__location")
+        .filter(disease_master__isnull=False)
+        .filter(
+            Q(disease_master__report_24h=True)
+            | Q(disease_master__emerging_watchlist=True)
+            | Q(disease_master__reemerging_watch=True)
+            | Q(disease_master__alert_rule="unknown_cluster")
+        )
+        .order_by("-threat_score", "-published_at")
+    )
+
+    for signal in priority_signal_qs:
+        disease = signal.disease_master
+        primary_link = None
+        try:
+            primary_link = signal.locations.filter(
+                is_primary=True,
+                location__isnull=False,
+            ).select_related("location").first()
+        except Exception:
+            primary_link = None
+
+        loc = primary_link.location if primary_link else None
+        loc_name = (
+            getattr(loc, "display_name", "") or getattr(loc, "name", "")
+            if loc else (signal.raw_location_text or signal.admin_kabkota or signal.admin_province or "Lokasi belum jelas")
+        )
+        score = signal.threat_score or 0
+
+        alert_type = ""
+        title = ""
+        description = ""
+        rule_key = ""
+
+        if disease.alert_rule == "unknown_cluster" or disease.disease_type == "unknown_cluster":
+            alert_type = "unknown_cluster_signal"
+            title = f"Klaster tidak lazim terdeteksi di {loc_name}"
+            description = (
+                f"Signal tervalidasi mengarah pada {disease.name} di {loc_name}. "
+                f"Perlu verifikasi analis karena kategori ini dapat menjadi indikasi awal kejadian tidak biasa."
+            )
+            rule_key = "unknown_cluster_signal"
+        elif disease.emerging_watchlist:
+            alert_type = "emerging_disease_signal"
+            title = f"Emerging disease signal: {disease.name}"
+            description = (
+                f"{disease.name} masuk emerging watchlist dan muncul sebagai signal tervalidasi "
+                f"di {loc_name}. Satu signal valid sudah cukup untuk atensi awal."
+            )
+            rule_key = "emerging_disease_signal"
+        elif disease.report_24h:
+            alert_type = "immediate_disease_signal"
+            title = f"Immediate attention: {disease.name}"
+            description = (
+                f"{disease.name} masuk kategori perhatian cepat 24 jam dan muncul "
+                f"sebagai signal tervalidasi di {loc_name}."
+            )
+            rule_key = "immediate_disease_signal"
+
+        if alert_type:
+            dedup_key = f"{alert_type}::{signal.id}::{disease.id}"
+            created = _create_or_update_alert(
+                alert_type=alert_type,
+                title=title,
+                description=description,
+                location=loc,
+                signal_count=1,
+                avg_score=score,
+                first_signal_at=signal.published_at,
+                last_signal_at=signal.published_at,
+                rule_key=rule_key,
+                dedup_key=dedup_key,
+            )
+            created_count += 1 if created else 0
+            updated_or_existing_count += 0 if created else 1
+
+        if disease.reemerging_watch and loc:
+            older_same_disease_exists = SignalLocation.objects.filter(
+                location_id=loc.id,
+                is_primary=True,
+                signal__disease_master_id=disease.id,
+                signal__published_at__lt=recent_start,
+                signal__status__in=["validated", "approved"],
+            ).exists()
+
+            if not older_same_disease_exists:
+                dedup_key = f"reemerging_disease_location::{loc.id}::{disease.id}::{recent_start.date()}"
+                created = _create_or_update_alert(
+                    alert_type="reemerging_disease_location",
+                    title=f"Re-emerging candidate: {disease.name} di {loc_name}",
+                    description=(
+                        f"{disease.name} masuk re-emerging watch dan muncul di {loc_name} "
+                        f"tanpa riwayat signal sejenis pada baseline sebelum {recent_start.date()}."
+                    ),
+                    location=loc,
+                    signal_count=1,
+                    avg_score=score,
+                    first_signal_at=signal.published_at,
+                    last_signal_at=signal.published_at,
+                    rule_key="reemerging_disease_location",
+                    dedup_key=dedup_key,
+                )
+                created_count += 1 if created else 0
+                updated_or_existing_count += 0 if created else 1
 
     # ------------------------------------------------------------
     # 1. Existing: Cluster in city within alert window

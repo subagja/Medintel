@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User, Group
-from .models import Location, Signal, SignalLocation, LocationAlias, ScoringRule, SystemSetting, Alert
+from .models import Location, Signal, SignalLocation, LocationAlias, ScoringRule, SystemSetting, Alert, DiseaseMaster
 
 CLEAN_GEOCODE_STATUS_CHOICES = [
     ("pending", "Pending"),
@@ -156,6 +156,39 @@ class LocationAliasForm(forms.ModelForm):
         self.fields["location"].queryset = Location.objects.filter(
             is_active=True, is_false_positive=False
         ).order_by("display_name", "name")
+
+
+class DiseaseMasterForm(forms.ModelForm):
+    class Meta:
+        model = DiseaseMaster
+        fields = [
+            "name",
+            "aliases",
+            "skdr_code",
+            "skdr_priority",
+            "report_24h",
+            "emerging_watchlist",
+            "reemerging_watch",
+            "disease_type",
+            "severity_weight",
+            "alert_rule",
+            "keyword_id",
+            "keyword_en",
+            "notes",
+            "is_active",
+        ]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "aliases": forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+            "skdr_code": forms.TextInput(attrs={"class": "form-control"}),
+            "disease_type": forms.Select(attrs={"class": "form-control"}),
+            "severity_weight": forms.Select(attrs={"class": "form-control"}),
+            "alert_rule": forms.Select(attrs={"class": "form-control"}),
+            "keyword_id": forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+            "keyword_en": forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+            "notes": forms.Textarea(attrs={"rows": 3, "class": "form-control"}),
+        }
+
 
 class ScoringRuleForm(forms.ModelForm):
     class Meta:

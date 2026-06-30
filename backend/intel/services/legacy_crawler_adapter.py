@@ -1,4 +1,5 @@
 import re
+import os
 from collections import OrderedDict
 from email.utils import parsedate_to_datetime
 
@@ -12,11 +13,23 @@ from intel.models import (
     Location,
     LocationAlias,
     ScoringRule,
+    DiseaseMaster,
 )
+from intel.services.disease_master import match_disease_master
 from intel.utils.location_resolver import normalize_text, resolve_location_from_text
 from intel.services.geojson_gazetteer import ensure_geojson_gazetteer
 from intel.services.legacy_crawler import MedIntelCrawler
 from intel.services.signal_dedup import should_skip_as_noise
+
+
+SIGNAL_CONTENT_MAX_CHARS = int(os.getenv("SIGNAL_CONTENT_MAX_CHARS", "5000"))
+
+
+def compact_text(value, max_chars=SIGNAL_CONTENT_MAX_CHARS):
+    value = value or ""
+    if max_chars <= 0 or len(value) <= max_chars:
+        return value
+    return value[:max_chars].rstrip() + "\n\n[TRUNCATED_FOR_STORAGE]"
 
 # =========================================================
 # STATUS NORMALIZATION
@@ -617,6 +630,7 @@ def ingest_legacy_row(row: dict):
 
     title = row.get("judul", "") or ""
     content = row.get("body") or row.get("combined_text") or row.get("summary", "") or ""
+    content = compact_text(content)
 
     raw_location_text = row.get("lokasi_mentah", "") or ""
     admin_province = row.get("admin_province", "") or ""
@@ -653,6 +667,7 @@ def ingest_legacy_row(row: dict):
 
     title = row.get("judul", "") or ""
     content = row.get("body") or row.get("combined_text") or row.get("summary", "") or ""
+    content = compact_text(content)
 
     raw_location_text = row.get("lokasi_mentah", "") or ""
     admin_province = row.get("admin_province", "") or ""
@@ -666,6 +681,16 @@ def ingest_legacy_row(row: dict):
             raw_location_text = admin_province
 
     disease_tag = row.get("penyakit_tag", "") or ""
+    disease_master = None
+    disease_master_id = row.get("disease_master_id")
+    if disease_master_id:
+        disease_master = DiseaseMaster.objects.filter(id=disease_master_id, is_active=True).first()
+    if not disease_master:
+        disease_master = match_disease_master(
+            disease_tag=disease_tag,
+            title=title,
+            content=content,
+        )
 
     try:
         threat_score = int(float(row.get("skor_ancaman", 0) or 0))
@@ -703,6 +728,7 @@ def ingest_legacy_row(row: dict):
             "crawled_at": timezone.now(),
 
             "disease_tag": disease_tag,
+            "disease_master": disease_master,
             "threat_score": threat_score,
             "risk_level": risk_level,
             "scoring_reason": scoring_reason,

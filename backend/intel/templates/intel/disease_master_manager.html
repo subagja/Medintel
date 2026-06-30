@@ -1,0 +1,158 @@
+{% extends "intel/base.html" %}
+
+{% block content %}
+<style>
+    .page-title { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .filters input, .filters select { min-width: 180px; padding: 7px 9px; border: 1px solid #bbb; border-radius: 4px; font-size: 13px; }
+    .btn, button { border: 1px solid #999; border-radius: 4px; background: #f7f7f7; padding: 6px 10px; font-size: 13px; cursor: pointer; text-decoration: none; color: #111; display: inline-block; }
+    .btn-primary { background: #4b0082; color: #fff; border-color: #4b0082; }
+    .table-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px; overflow-x: auto; margin-bottom: 16px; }
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th, .table td { border-bottom: 1px solid #e6e6e6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .table th { background: #f5f5f5; white-space: nowrap; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin: 0 3px 4px 0; }
+    .badge-blue { background: #e8f0ff; color: #1d4ed8; }
+    .badge-red { background: #fde8e8; color: #b00020; }
+    .badge-green { background: #e8f7ec; color: #08762a; }
+    .badge-purple { background: #f1e8ff; color: #5b21b6; }
+    .badge-gray { background: #eee; color: #444; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 10px; }
+    .stat { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; background: #fafafa; }
+    .stat-value { font-size: 22px; font-weight: 800; }
+    .stat-label { font-size: 12px; color: #666; }
+    .pagination { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #111; background: #fff; }
+    .pagination span { background: #f5f5f5; font-weight: 700; }
+</style>
+
+<h1 class="page-title">Disease Master</h1>
+
+<div class="card stats">
+    <div class="stat"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total disease</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.skdr }}</div><div class="stat-label">SKDR priority</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.report_24h }}</div><div class="stat-label">Immediate 24h</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.emerging }}</div><div class="stat-label">Emerging watchlist</div></div>
+    <div class="stat"><div class="stat-value">{{ stats.reemerging }}</div><div class="stat-label">Re-emerging watch</div></div>
+</div>
+
+<div class="card">
+    <form method="get" class="filters">
+        <input type="text" name="q" value="{{ q }}" placeholder="Cari penyakit, alias, keyword, kode SKDR">
+
+        <select name="classification">
+            <option value="">Semua klasifikasi</option>
+            <option value="skdr" {% if classification == "skdr" %}selected{% endif %}>SKDR Priority</option>
+            <option value="24h" {% if classification == "24h" %}selected{% endif %}>Immediate 24h</option>
+            <option value="emerging" {% if classification == "emerging" %}selected{% endif %}>Emerging</option>
+            <option value="reemerging" {% if classification == "reemerging" %}selected{% endif %}>Re-emerging</option>
+        </select>
+
+        <select name="disease_type">
+            <option value="">Semua tipe</option>
+            {% for key, label in disease_type_choices %}
+                <option value="{{ key }}" {% if disease_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="alert_rule">
+            <option value="">Semua alert rule</option>
+            {% for key, label in alert_rule_choices %}
+                <option value="{{ key }}" {% if alert_rule == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="is_active">
+            <option value="">Semua status</option>
+            <option value="yes" {% if is_active == "yes" %}selected{% endif %}>Aktif</option>
+            <option value="no" {% if is_active == "no" %}selected{% endif %}>Nonaktif</option>
+        </select>
+
+        <button type="submit" class="btn-primary">Filter</button>
+        <a class="btn" href="{% url 'intel:disease_master_manager' %}">Reset</a>
+        <a class="btn btn-primary" href="{% url 'intel:disease_master_create' %}">Tambah Disease</a>
+    </form>
+</div>
+
+<div class="table-card">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Penyakit</th>
+                <th>Klasifikasi</th>
+                <th>Tipe / Rule</th>
+                <th>Alias & Keyword</th>
+                <th>Status</th>
+                <th style="width: 160px;">Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in page_obj %}
+                <tr>
+                    <td>
+                        <strong>{{ item.name }}</strong><br>
+                        <small>Kode SKDR: {{ item.skdr_code|default:"-" }}</small>
+                    </td>
+                    <td>
+                        {% if item.skdr_priority %}<span class="badge badge-blue">SKDR</span>{% endif %}
+                        {% if item.report_24h %}<span class="badge badge-red">24h</span>{% endif %}
+                        {% if item.emerging_watchlist %}<span class="badge badge-purple">Emerging</span>{% endif %}
+                        {% if item.reemerging_watch %}<span class="badge badge-green">Re-emerging</span>{% endif %}
+                        {% if not item.skdr_priority and not item.report_24h and not item.emerging_watchlist and not item.reemerging_watch %}
+                            <span class="badge badge-gray">Monitoring</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ item.get_disease_type_display }}<br>
+                        <small>{{ item.get_alert_rule_display }} · {{ item.get_severity_weight_display }}</small>
+                    </td>
+                    <td>
+                        <small>
+                            <strong>Alias:</strong> {{ item.aliases|default:"-"|truncatechars:90 }}<br>
+                            <strong>ID:</strong> {{ item.keyword_id|default:"-"|truncatechars:90 }}<br>
+                            <strong>EN:</strong> {{ item.keyword_en|default:"-"|truncatechars:90 }}
+                        </small>
+                    </td>
+                    <td>
+                        {% if item.is_active %}
+                            <span class="badge badge-green">aktif</span>
+                        {% else %}
+                            <span class="badge badge-gray">nonaktif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a class="btn" href="{% url 'intel:disease_master_edit' item.id %}">Edit</a>
+                        <form method="post" action="{% url 'intel:disease_master_toggle_active' item.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit">{% if item.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}</button>
+                        </form>
+                        {% if not item.is_active %}
+                            <form method="post" action="{% url 'intel:disease_master_delete' item.id %}" style="display:inline;" onsubmit="return confirm('Hapus disease ini? Pastikan sudah tidak dipakai signal/cluster.');">
+                                {% csrf_token %}
+                                <button type="submit">Hapus</button>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6">Belum ada Disease Master.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page=1&q={{ q }}&classification={{ classification }}&disease_type={{ disease_type }}&alert_rule={{ alert_rule }}&is_active={{ is_active }}">Awal</a>
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}&classification={{ classification }}&disease_type={{ disease_type }}&alert_rule={{ alert_rule }}&is_active={{ is_active }}">Sebelumnya</a>
+    {% endif %}
+
+    <span>Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ q }}&classification={{ classification }}&disease_type={{ disease_type }}&alert_rule={{ alert_rule }}&is_active={{ is_active }}">Berikutnya</a>
+        <a href="?page={{ page_obj.paginator.num_pages }}&q={{ q }}&classification={{ classification }}&disease_type={{ disease_type }}&alert_rule={{ alert_rule }}&is_active={{ is_active }}">Akhir</a>
+    {% endif %}
+</div>
+{% endblock %}

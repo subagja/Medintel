@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 from intel.models import Location, LocationAlias
 from intel.utils.location_resolver import normalize_text
@@ -56,17 +57,41 @@ def add_alias(location, alias, created_counter):
     if not normalized_alias:
         return
 
-    obj, created = LocationAlias.objects.get_or_create(
-        location=location,
-        normalized_alias=normalized_alias,
-        defaults={
-            "alias": alias,
-            "is_primary": False,
-            "is_active": True,
-        },
+    existing = (
+        LocationAlias.objects
+        .filter(location=location)
+        .filter(Q(alias__iexact=alias) | Q(normalized_alias=normalized_alias))
+        .first()
     )
-    if created:
+
+    if existing:
+        update_fields = []
+        if existing.normalized_alias != normalized_alias:
+            existing.normalized_alias = normalized_alias
+            update_fields.append("normalized_alias")
+        if not existing.is_active:
+            existing.is_active = True
+            update_fields.append("is_active")
+        if update_fields:
+            existing.save(update_fields=update_fields + ["updated_at"])
+        return
+
+    try:
+        with transaction.atomic():
+            LocationAlias.objects.create(
+                location=location,
+                alias=alias,
+                normalized_alias=normalized_alias,
+                is_primary=False,
+                is_active=True,
+            )
         created_counter[0] += 1
+    except IntegrityError:
+        existing = LocationAlias.objects.filter(location=location, alias=alias).first()
+        if existing and existing.normalized_alias != normalized_alias:
+            existing.normalized_alias = normalized_alias
+            existing.is_active = True
+            existing.save(update_fields=["normalized_alias", "is_active", "updated_at"])
 
 
 class Command(BaseCommand):

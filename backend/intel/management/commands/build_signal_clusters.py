@@ -9,7 +9,7 @@ from intel.services.clustering import (
 
 
 class Command(BaseCommand):
-    help = "Build signal clusters from raw, validated, and verified signals"
+    help = "Build signal clusters from raw, validated, and approved signals"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -33,7 +33,7 @@ class Command(BaseCommand):
         qs = (
             Signal.objects
             .exclude(status="noise")
-            .filter(status__in=["raw", "validated", "verified"])
+            .filter(status__in=["raw", "validated", "approved"])
             .order_by("-published_at", "-id")
         )
 

@@ -6,6 +6,7 @@ from django.db.models import Avg, Max, Count, Q
 from django.utils.text import slugify
 
 from intel.models import Signal, SignalCluster
+from intel.services.disease_master import match_disease_master
 
 
 def _get_risk_score(signal):
@@ -136,7 +137,7 @@ def rebuild_cluster_aggregate(cluster):
     signal_count = qs.count()
     raw_count = qs.filter(status="raw").count()
     validated_count = qs.filter(status="validated").count()
-    verified_count = qs.filter(status="verified").count()
+    verified_count = qs.filter(status__in=["validated", "approved"]).count()
     noise_count = qs.filter(status="noise").count()
 
     non_noise_qs = qs.exclude(status="noise")
@@ -183,6 +184,9 @@ def rebuild_cluster_aggregate(cluster):
     cluster.recommendation = recommendation
     cluster.reason = reason
 
+    if not cluster.disease_master_id:
+        cluster.disease_master = match_disease_master(disease_tag=cluster.disease_tag)
+
     cluster.save()
 
     return cluster
@@ -193,11 +197,20 @@ def assign_signal_to_cluster(signal):
     disease = getattr(signal, "disease_tag", None) or ""
     location_name, location_level = _get_location_identity(signal)
     date_value = _get_cluster_date(signal)
+    disease_master = (
+        getattr(signal, "disease_master", None)
+        or match_disease_master(
+            disease_tag=disease,
+            title=getattr(signal, "title", "") or "",
+            content=getattr(signal, "content", "") or "",
+        )
+    )
 
     cluster, _created = SignalCluster.objects.get_or_create(
         cluster_key=cluster_key,
         defaults={
             "disease_tag": disease,
+            "disease_master": disease_master,
             "location_name": location_name,
             "location_level": location_level,
             "date_start": date_value,

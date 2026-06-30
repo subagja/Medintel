@@ -18,6 +18,7 @@ from geopy.exc import (
 )
 
 from intel.models import Location, LocationAlias
+from intel.services.disease_master import build_disease_crawler_queries
 
 
 # =========================
@@ -205,7 +206,7 @@ def validate_location(loc: str) -> Tuple[bool, str]:
 # =========================
 class MedIntelCrawler:
     def __init__(self):
-        self.keywords = [
+        fallback_keywords = [
             "DBD", "Mpox", "Flu Burung", "Antraks", "KLB Penyakit", "Campak",
             "Rubela", "Diare", "Kolera", "Demam Tifoid", "Chikungunya", "Superflu",
             "Avian Influenza", "Nipah", "TBC", "HIV", "AIDS", "IMS",
@@ -213,6 +214,22 @@ class MedIntelCrawler:
             "Pertusis", "Rabies", "Leptospirosis", "Antraks",
             "Hantavirus"
         ]
+        self.disease_queries = build_disease_crawler_queries()
+        if not self.disease_queries:
+            self.disease_queries = [
+                {
+                    "query": keyword,
+                    "disease_name": keyword,
+                    "disease_id": None,
+                    "alert_rule": "",
+                    "severity_weight": "",
+                    "skdr_priority": False,
+                    "report_24h": False,
+                    "emerging_watchlist": False,
+                    "reemerging_watch": False,
+                }
+                for keyword in fallback_keywords
+            ]
         self.rss_url = "https://news.google.com/rss/search?q={query}+when:7d&hl=id&gl=ID&ceid=ID:id"
 
         self.session = requests.Session()
@@ -770,7 +787,10 @@ class MedIntelCrawler:
         rows: List[Dict] = []
         seen = set()
 
-        for kw in self.keywords:
+        for query_item in self.disease_queries:
+            kw = query_item["query"]
+            disease_name = query_item.get("disease_name") or kw
+            disease_id = query_item.get("disease_id")
             print(f"🔎 Scanning {kw}...")
             feed = feedparser.parse(self.rss_url.format(query=kw.replace(" ", "+")))
 
@@ -811,7 +831,7 @@ class MedIntelCrawler:
                 score_result = self.score_with_reasoning(
                     title=title,
                     body=combined,
-                    disease_tag=kw,
+                    disease_tag=disease_name,
                     detected_diseases=detected_diseases,
                     event_types=event_types,
                     severity_nlp=severity_nlp,
@@ -835,7 +855,10 @@ class MedIntelCrawler:
                     "body": body,
                     "combined_text": combined,
                     "tanggal": tanggal,
-                    "penyakit_tag": kw,
+                    "penyakit_tag": disease_name,
+                    "crawler_query": kw,
+                    "matched_disease_alias": kw,
+                    "disease_master_id": disease_id,
                     "detected_diseases": "|".join(detected_diseases),
                     "event_types": "|".join(event_types),
                     "severity_nlp": severity_nlp,

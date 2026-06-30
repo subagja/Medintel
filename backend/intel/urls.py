@@ -29,6 +29,12 @@ urlpatterns = [
     path("gazetteer-aliases/", views.gazetteer_alias_manager, name="gazetteer_alias_manager"),
     path("gazetteer-aliases/create/", views.gazetteer_alias_create, name="gazetteer_alias_create"),
 
+    path("disease-master/", views.disease_master_manager, name="disease_master_manager"),
+    path("disease-master/create/", views.disease_master_create, name="disease_master_create"),
+    path("disease-master/<int:pk>/edit/", views.disease_master_edit, name="disease_master_edit"),
+    path("disease-master/<int:pk>/toggle-active/", views.disease_master_toggle_active, name="disease_master_toggle_active"),
+    path("disease-master/<int:pk>/delete/", views.disease_master_delete, name="disease_master_delete"),
+
     path("signals/<int:pk>/validate/", views.signal_mark_validated, name="signal_validate"),
     path("signals/<int:pk>/noise/", views.signal_mark_noise, name="signal_noise"),
     path("signals/<int:pk>/approve/", views.signal_approve_mapping, name="signal_approve"),

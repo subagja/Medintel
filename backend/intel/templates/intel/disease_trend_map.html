@@ -105,7 +105,7 @@
             <input type="date" name="date_to" value="{{ date_to }}">
         </div>
         <button type="submit">Tampilkan Peta</button>
-        <a class="btn" href="{% url 'intel:disease_trend_map' %}">Reset</a>
+        <a class="btn" href="{% url 'intel:disease_trends' %}">Reset</a>
         <a class="btn" href="{% url 'intel:disease_trends' %}?days={{ days }}&status_filter={{ status_filter }}&disease={{ selected_disease|urlencode }}&date_to={{ date_to }}">Lihat Disease Trends</a>
     </form>
 </div>

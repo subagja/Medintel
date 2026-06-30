@@ -10,6 +10,7 @@ from .models import (
     Alert,
     AuditLog,
     PublisherDomainAlias,
+    DiseaseMaster,
 )
 
 
@@ -24,6 +25,34 @@ class PublisherDomainAliasAdmin(admin.ModelAdmin):
     list_display = ("alias", "domain", "is_active", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("alias", "normalized_alias", "domain")
+
+
+@admin.register(DiseaseMaster)
+class DiseaseMasterAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "skdr_code",
+        "skdr_priority",
+        "report_24h",
+        "emerging_watchlist",
+        "reemerging_watch",
+        "disease_type",
+        "severity_weight",
+        "alert_rule",
+        "is_active",
+    )
+    search_fields = ("name", "normalized_name", "aliases", "keyword_id", "keyword_en", "skdr_code")
+    list_filter = (
+        "skdr_priority",
+        "report_24h",
+        "emerging_watchlist",
+        "reemerging_watch",
+        "disease_type",
+        "severity_weight",
+        "alert_rule",
+        "is_active",
+    )
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
@@ -63,6 +92,7 @@ class SignalAdmin(admin.ModelAdmin):
         "id",
         "title",
         "disease_tag",
+        "disease_master",
         "threat_score",
         "status",
         "geocode_status",
@@ -70,9 +100,9 @@ class SignalAdmin(admin.ModelAdmin):
         "is_high_risk",
         "published_at",
     )
-    search_fields = ("title", "source_url", "raw_location_text", "disease_tag")
+    search_fields = ("title", "source_url", "raw_location_text", "disease_tag", "disease_master__name")
     list_filter = ("status", "geocode_status", "approved_for_mapping", "is_high_risk", "disease_tag")
-    autocomplete_fields = ("source", "validated_by")
+    autocomplete_fields = ("source", "validated_by", "disease_master")
     inlines = [SignalLocationInline]
 
 

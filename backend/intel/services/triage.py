@@ -2,6 +2,12 @@
 
 from django.utils import timezone
 
+from intel.services.disease_master import (
+    disease_classification_flags,
+    match_disease_master,
+    sync_signal_disease_master,
+)
+
 
 HIGH_RISK_KEYWORDS = [
     "klb",
@@ -127,6 +133,12 @@ def classify_signal_triage(signal):
 
     has_disease = bool(getattr(signal, "disease_tag", None))
     has_location = _has_primary_location(signal)
+    disease_master = getattr(signal, "disease_master", None) or match_disease_master(
+        disease_tag=getattr(signal, "disease_tag", "") or "",
+        title=getattr(signal, "title", "") or "",
+        content=getattr(signal, "content", "") or "",
+    )
+    disease_flags = disease_classification_flags(disease_master)
 
     high_keyword_hits = [
         kw for kw in HIGH_RISK_KEYWORDS if kw in combined_text
@@ -162,11 +174,27 @@ def classify_signal_triage(signal):
             + ", ".join(low_value_hits[:5])
         )
 
+    if disease_master:
+        labels = disease_flags.get("labels") or []
+        if labels:
+            reasons.append("Klasifikasi penyakit: " + ", ".join(labels))
+        reasons.append(f"Alert rule: {disease_flags.get('alert_rule') or '-'}")
+
     # Rule utama
     if low_value_hits and risk_score < 45:
         priority = "noise_candidate"
         recommendation = "noise"
         reasons.append("Direkomendasikan sebagai kandidat noise")
+
+    elif disease_flags.get("report_24h") and confidence >= 45 and has_location:
+        priority = "urgent"
+        recommendation = "review"
+        reasons.append("Penyakit masuk perhatian cepat 24 jam; perlu review segera")
+
+    elif disease_flags.get("emerging_watchlist") and confidence >= 45:
+        priority = "urgent" if has_location else "high"
+        recommendation = "review" if has_location else "fix_location"
+        reasons.append("Penyakit masuk emerging watchlist; satu signal valid perlu atensi tinggi")
 
     elif risk_score >= 75 and confidence >= 70 and has_disease and has_location:
         priority = "urgent"
@@ -218,16 +246,19 @@ def apply_triage(signal, save=True):
     signal.approval_recommendation = result["approval_recommendation"]
     signal.triage_reason = result["triage_reason"]
     signal.triaged_at = timezone.now()
+    disease_master = sync_signal_disease_master(signal, save=False)
 
     if save:
-        signal.save(
-            update_fields=[
-                "confidence_score",
-                "triage_priority",
-                "approval_recommendation",
-                "triage_reason",
-                "triaged_at",
-            ]
-        )
+        update_fields = [
+            "confidence_score",
+            "triage_priority",
+            "approval_recommendation",
+            "triage_reason",
+            "triaged_at",
+        ]
+        if disease_master or getattr(signal, "disease_master_id", None):
+            update_fields.append("disease_master")
+
+        signal.save(update_fields=update_fields)
 
     return signal

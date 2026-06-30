@@ -146,6 +146,107 @@ class PublisherDomainAlias(TimeStampedModel):
     def __str__(self):
         return f"{self.alias} -> {self.domain}"
 
+
+class DiseaseMaster(TimeStampedModel):
+    DISEASE_TYPE_CHOICES = [
+        ("vector_borne", "Vector-borne"),
+        ("zoonosis", "Zoonosis"),
+        ("respiratory", "Respiratory"),
+        ("foodborne", "Foodborne"),
+        ("waterborne", "Waterborne"),
+        ("vaccine_preventable", "Vaccine-preventable"),
+        ("unknown_cluster", "Unknown Cluster"),
+        ("other", "Other"),
+    ]
+
+    SEVERITY_CHOICES = [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+        ("critical", "Critical"),
+    ]
+
+    ALERT_RULE_CHOICES = [
+        ("trend_based", "Trend-based"),
+        ("immediate", "Immediate"),
+        ("novelty_based", "Novelty-based"),
+        ("reemerging", "Re-emerging"),
+        ("unknown_cluster", "Unknown Cluster"),
+    ]
+
+    name = models.CharField(max_length=200, unique=True, db_index=True)
+    normalized_name = models.CharField(max_length=200, db_index=True, blank=True, default="")
+    aliases = models.TextField(blank=True, default="")
+
+    skdr_code = models.CharField(max_length=20, blank=True, default="", db_index=True)
+    skdr_priority = models.BooleanField(default=False, db_index=True)
+    report_24h = models.BooleanField(default=False, db_index=True)
+    emerging_watchlist = models.BooleanField(default=False, db_index=True)
+    reemerging_watch = models.BooleanField(default=False, db_index=True)
+
+    disease_type = models.CharField(
+        max_length=40,
+        choices=DISEASE_TYPE_CHOICES,
+        default="other",
+        db_index=True,
+    )
+    severity_weight = models.CharField(
+        max_length=20,
+        choices=SEVERITY_CHOICES,
+        default="medium",
+        db_index=True,
+    )
+    alert_rule = models.CharField(
+        max_length=40,
+        choices=ALERT_RULE_CHOICES,
+        default="trend_based",
+        db_index=True,
+    )
+
+    keyword_id = models.TextField(blank=True, default="")
+    keyword_en = models.TextField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [
+            models.Index(fields=["normalized_name"]),
+            models.Index(fields=["skdr_priority"]),
+            models.Index(fields=["report_24h"]),
+            models.Index(fields=["emerging_watchlist"]),
+            models.Index(fields=["reemerging_watch"]),
+            models.Index(fields=["alert_rule"]),
+            models.Index(fields=["is_active"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.normalized_name = normalize_region_code(self.name)
+        super().save(*args, **kwargs)
+
+    def split_values(self, field_name):
+        value = getattr(self, field_name, "") or ""
+        parts = re.split(r"[\n,;]+", value)
+        return [part.strip() for part in parts if part.strip()]
+
+    def classification_labels(self):
+        labels = []
+        if self.skdr_priority:
+            labels.append("SKDR Priority")
+        if self.report_24h:
+            labels.append("Immediate 24h")
+        if self.emerging_watchlist:
+            labels.append("Emerging")
+        if self.reemerging_watch:
+            labels.append("Re-emerging Watch")
+        if self.alert_rule == "unknown_cluster" or self.disease_type == "unknown_cluster":
+            labels.append("Unknown Cluster")
+        return labels
+
+    def __str__(self):
+        return self.name
+
+
 class Signal(TimeStampedModel):
     STATUS_CHOICES = [
         ("raw", "Raw"),
@@ -224,6 +325,14 @@ class Signal(TimeStampedModel):
 
     cluster = models.ForeignKey(
         "SignalCluster",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="signals",
+    )
+
+    disease_master = models.ForeignKey(
+        DiseaseMaster,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -328,6 +437,14 @@ class SignalCluster(TimeStampedModel):
         max_length=128,
         blank=True,
         db_index=True,
+    )
+
+    disease_master = models.ForeignKey(
+        DiseaseMaster,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="clusters",
     )
 
     location_name = models.CharField(
