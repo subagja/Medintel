@@ -1,5 +1,25 @@
+# Virtual environment
 venv/
+.venv/
+backend/venv/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Environment variables
 .env
-db.sqlite3
+.env.*
+
+# Django
+*.sqlite3
+staticfiles/
+media/
+
+# IDE
+.vscode/
+.idea/
+
+# Generated files
+structure.txt
+backend/structure.txt
