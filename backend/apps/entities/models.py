@@ -224,6 +224,42 @@ class Location(models.Model):
 
         return self.name
 
+class LocationAlias(models.Model):
+    location = models.ForeignKey(
+        Location,
+        on_delete=models.CASCADE,
+        related_name="aliases",
+    )
+
+    alias = models.CharField(
+        max_length=200,
+    )
+
+    language = models.CharField(
+        max_length=20,
+        default="id",
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["alias"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["location", "alias"],
+                name="unique_location_alias",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.alias} → {self.location.name}"
 
 class ArticleDisease(models.Model):
     id = models.UUIDField(
@@ -275,6 +311,10 @@ class ArticleDisease(models.Model):
         db_index=True,
     )
 
+    validation_notes = models.TextField(
+        blank=True,
+    )
+
     validated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -312,7 +352,6 @@ class ArticleDisease(models.Model):
 
     def __str__(self) -> str:
         return f"{self.article.title} — {self.disease.name}"
-
 
 class ArticleLocation(models.Model):
     id = models.UUIDField(
@@ -364,6 +403,10 @@ class ArticleLocation(models.Model):
         db_index=True,
     )
 
+    validation_notes = models.TextField(
+        blank=True,
+    )
+
     validated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -401,7 +444,6 @@ class ArticleLocation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.article.title} — {self.location.name}"
-
 
 class ArticleFact(models.Model):
     class Trend(models.TextChoices):
@@ -509,6 +551,10 @@ class ArticleFact(models.Model):
         db_index=True,
     )
 
+    validation_notes = models.TextField(
+        blank=True,
+    )
+
     validated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -548,3 +594,95 @@ class ArticleFact(models.Model):
         location = self.location.name if self.location else "Tanpa lokasi"
 
         return f"{disease} — {location}"
+
+class ExtractionReviewLog(models.Model):
+    class ObjectType(models.TextChoices):
+        ARTICLE_DISEASE = (
+            "article_disease",
+            "Penyakit Artikel",
+        )
+        ARTICLE_LOCATION = (
+            "article_location",
+            "Lokasi Artikel",
+        )
+        ARTICLE_FACT = (
+            "article_fact",
+            "Fakta Artikel",
+        )
+
+    class Action(models.TextChoices):
+        VALIDATE = "validate", "Validasi"
+        CORRECT = "correct", "Koreksi"
+        REJECT = "reject", "Penolakan"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    object_type = models.CharField(
+        max_length=30,
+        choices=ObjectType.choices,
+        db_index=True,
+    )
+
+    object_id = models.UUIDField(
+        db_index=True,
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        db_index=True,
+    )
+
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="entity_extraction_reviews",
+        null=True,
+        blank=True,
+    )
+
+    before_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    after_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    reviewed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-reviewed_at"]
+        indexes = [
+            models.Index(
+                fields=[
+                    "object_type",
+                    "object_id",
+                    "reviewed_at",
+                ],
+                name="extract_review_object_idx",
+            ),
+            models.Index(
+                fields=["reviewer", "reviewed_at"],
+                name="extract_review_user_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.get_object_type_display()} - "
+            f"{self.get_action_display()}"
+        )
