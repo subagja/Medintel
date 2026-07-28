@@ -1,10 +1,36 @@
 from django.contrib import admin
 
 from .models import Article
+from apps.entities.models import (
+    ArticleDisease,
+    ArticleFact,
+    ArticleLocation,
+)
+
+
+class ArticleDiseaseInline(admin.TabularInline):
+    model = ArticleDisease
+    extra = 0
+
+
+class ArticleLocationInline(admin.TabularInline):
+    model = ArticleLocation
+    extra = 0
+
+
+class ArticleFactInline(admin.TabularInline):
+    model = ArticleFact
+    extra = 0
 
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
+    inlines = [
+        ArticleDiseaseInline,
+        ArticleLocationInline,
+        ArticleFactInline,
+    ]
+
     list_display = (
         "title",
         "source",

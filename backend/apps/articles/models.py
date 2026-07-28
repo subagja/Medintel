@@ -26,6 +26,20 @@ class Article(models.Model):
         related_name="articles",
     )
 
+    diseases = models.ManyToManyField(
+        "entities.Disease",
+        through="entities.ArticleDisease",
+        related_name="articles",
+        blank=True,
+    )
+
+    locations = models.ManyToManyField(
+        "entities.Location",
+        through="entities.ArticleLocation",
+        related_name="articles",
+        blank=True,
+    )
+
     original_url = models.URLField(
         max_length=1000,
     )
