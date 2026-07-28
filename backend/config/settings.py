@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "apps.articles",
     "apps.ingestion",
     "apps.crawlers",
+    "apps.collection",
     "apps.signals",
     "apps.locations",
 ]

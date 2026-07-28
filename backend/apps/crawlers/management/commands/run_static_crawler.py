@@ -10,7 +10,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         crawler = StaticTestCrawler()
 
-        result = run_crawler(crawler)
+        result = run_crawler(
+		    crawler,
+		    trigger_type="management_command",
+		)
 
         self.stdout.write(
             self.style.SUCCESS(
