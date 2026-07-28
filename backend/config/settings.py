@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "apps.signals",
     "apps.locations",
     "apps.indicators",
+    "apps.requirements",
 ]
 
 MIDDLEWARE = [
