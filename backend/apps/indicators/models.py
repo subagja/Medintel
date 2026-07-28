@@ -328,3 +328,74 @@ class IndicatorEvidence(models.Model):
             f"{self.indicator.indicator_type.code} - "
             f"{self.article.title}"
         )
+
+
+class IndicatorReviewLog(models.Model):
+    class Action(models.TextChoices):
+        VALIDATE = "validate", "Validasi"
+        CORRECT = "correct", "Koreksi"
+        REJECT = "reject", "Penolakan"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    indicator = models.ForeignKey(
+        Indicator,
+        on_delete=models.CASCADE,
+        related_name="review_logs",
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        db_index=True,
+    )
+
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="indicator_reviews",
+        null=True,
+        blank=True,
+    )
+
+    before_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    after_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    reviewed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-reviewed_at"]
+        indexes = [
+            models.Index(
+                fields=["indicator", "reviewed_at"],
+                name="indreview_indicator_idx",
+            ),
+            models.Index(
+                fields=["reviewer", "reviewed_at"],
+                name="indreview_reviewer_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.indicator.indicator_type.code} - "
+            f"{self.get_action_display()}"
+        )

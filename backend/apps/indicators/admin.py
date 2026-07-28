@@ -3,9 +3,13 @@ from django.contrib import admin
 from .models import (
     Indicator,
     IndicatorEvidence,
+    IndicatorReviewLog,
     IndicatorType,
 )
-
+from .services import (
+    reject_indicator,
+    validate_indicator,
+)
 
 class IndicatorEvidenceInline(admin.TabularInline):
     model = IndicatorEvidence
@@ -60,6 +64,8 @@ class IndicatorAdmin(admin.ModelAdmin):
         "direction",
         "confidence_score",
         "status",
+        "validated_by",
+        "validated_at",
     )
 
     list_filter = (
@@ -68,10 +74,12 @@ class IndicatorAdmin(admin.ModelAdmin):
         "direction",
         "event_date",
         "created_by_system",
+        "validated_at",
     )
 
     search_fields = (
         "summary",
+        "validation_notes",
         "disease__name",
         "location__name",
         "indicator_type__name",
@@ -93,6 +101,68 @@ class IndicatorAdmin(admin.ModelAdmin):
     inlines = [
         IndicatorEvidenceInline,
     ]
+
+    actions = [
+        "validate_selected_indicators",
+        "reject_selected_indicators",
+    ]
+
+    @admin.action(
+        description="Validasi indikator terpilih"
+    )
+    def validate_selected_indicators(
+        self,
+        request,
+        queryset,
+    ):
+        validated_count = 0
+        skipped_count = 0
+
+        for indicator in queryset:
+            if indicator.status == Indicator.Status.REJECTED:
+                skipped_count += 1
+                continue
+
+            validate_indicator(
+                indicator=indicator,
+                reviewer=request.user,
+                notes="Indikator divalidasi melalui Django Admin.",
+            )
+
+            validated_count += 1
+
+        self.message_user(
+            request,
+            (
+                f"{validated_count} indikator berhasil divalidasi. "
+                f"{skipped_count} indikator dilewati."
+            ),
+        )
+
+
+    @admin.action(
+        description="Tolak indikator terpilih"
+    )
+    def reject_selected_indicators(
+        self,
+        request,
+        queryset,
+    ):
+        rejected_count = 0
+
+        for indicator in queryset:
+            reject_indicator(
+                indicator=indicator,
+                reviewer=request.user,
+                notes="Indikator ditolak melalui Django Admin.",
+            )
+
+            rejected_count += 1
+
+        self.message_user(
+            request,
+            f"{rejected_count} indikator berhasil ditolak.",
+        )
 
 
 @admin.register(IndicatorEvidence)
@@ -122,3 +192,62 @@ class IndicatorEvidenceAdmin(admin.ModelAdmin):
         "article",
         "article_fact",
     )
+
+
+@admin.register(IndicatorReviewLog)
+class IndicatorReviewLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "indicator",
+        "action",
+        "reviewer",
+        "reviewed_at",
+    )
+
+    list_filter = (
+        "action",
+        "reviewed_at",
+        "indicator__indicator_type",
+    )
+
+    search_fields = (
+        "indicator__summary",
+        "reviewer__username",
+        "notes",
+    )
+
+    readonly_fields = (
+        "id",
+        "indicator",
+        "action",
+        "reviewer",
+        "before_data",
+        "after_data",
+        "notes",
+        "reviewed_at",
+    )
+
+    list_select_related = (
+        "indicator",
+        "indicator__indicator_type",
+        "reviewer",
+    )
+
+    def has_add_permission(
+        self,
+        request,
+    ) -> bool:
+        return False
+
+    def has_change_permission(
+        self,
+        request,
+        obj=None,
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self,
+        request,
+        obj=None,
+    ) -> bool:
+        return False
