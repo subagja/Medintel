@@ -142,3 +142,65 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+import os
+
+
+DJANGO_LOG_LEVEL = os.getenv(
+    "DJANGO_LOG_LEVEL",
+    "INFO",
+)
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": (
+                "[{levelname}] "
+                "{asctime} "
+                "{name} "
+                "— {message}"
+            ),
+            "style": "{",
+        },
+        "simple": {
+            "format": (
+                "[{levelname}] "
+                "{message}"
+            ),
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "loggers": {
+        "apps.crawlers": {
+            "handlers": [
+                "console",
+            ],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps.sources": {
+            "handlers": [
+                "console",
+            ],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps.ingestion": {
+            "handlers": [
+                "console",
+            ],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}

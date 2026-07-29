@@ -166,6 +166,8 @@ def run_crawler(
             "Crawler gagal dijalankan: %s",
             crawler.__class__.__name__,
         )
+        
+        raise
 
     return CrawlExecutionResult(
         total_found=total_found,

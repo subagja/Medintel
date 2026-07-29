@@ -686,3 +686,291 @@ class ExtractionReviewLog(models.Model):
             f"{self.get_object_type_display()} - "
             f"{self.get_action_display()}"
         )
+
+
+class Symptom(models.Model):
+    name = models.CharField(
+        max_length=200,
+        unique=True,
+    )
+
+    code = models.SlugField(
+        max_length=100,
+        unique=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+class SymptomAlias(models.Model):
+    symptom = models.ForeignKey(
+        Symptom,
+        on_delete=models.CASCADE,
+        related_name="aliases",
+    )
+
+    alias = models.CharField(
+        max_length=200,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["alias"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "symptom",
+                    "alias",
+                ],
+                name="unique_symptom_alias",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.alias
+
+class DiseaseSymptom(models.Model):
+    disease = models.ForeignKey(
+        Disease,
+        on_delete=models.CASCADE,
+        related_name="disease_symptoms",
+    )
+
+    symptom = models.ForeignKey(
+        Symptom,
+        on_delete=models.CASCADE,
+        related_name="disease_links",
+    )
+
+    is_primary = models.BooleanField(
+        default=False,
+        help_text=(
+            "Tandai jika gejala merupakan gejala utama "
+            "dalam aturan surveilans."
+        ),
+    )
+
+    weight = models.FloatField(
+        default=1.0,
+    )
+
+    source_reference = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "Nama pedoman, regulasi, atau dokumen rujukan."
+        ),
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "disease",
+                    "symptom",
+                ],
+                name="unique_disease_symptom",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.disease.name} — "
+            f"{self.symptom.name}"
+        )
+
+class SurveillanceProgram(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Aktif"
+        HISTORICAL = "historical", "Historis"
+        DRAFT = "draft", "Draf"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    name = models.CharField(
+        max_length=255,
+        unique=True,
+    )
+
+    code = models.SlugField(
+        max_length=100,
+        unique=True,
+    )
+
+    legal_basis = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "Dasar hukum atau pedoman yang menjadi "
+            "rujukan program surveilans."
+        ),
+    )
+
+    document_number = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    document_year = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "-document_year",
+            "name",
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class SurveillanceDisease(models.Model):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    program = models.ForeignKey(
+        SurveillanceProgram,
+        on_delete=models.CASCADE,
+        related_name="surveillance_diseases",
+    )
+
+    disease = models.ForeignKey(
+        Disease,
+        on_delete=models.PROTECT,
+        related_name="surveillance_memberships",
+    )
+
+    official_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Nama penyakit sebagaimana tercantum "
+            "dalam dokumen rujukan."
+        ),
+    )
+
+    category = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "category",
+            "official_name",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "program",
+                    "disease",
+                ],
+                name="unique_surveillance_program_disease",
+            ),
+        ]
+
+        indexes = [
+            models.Index(
+                fields=[
+                    "program",
+                    "is_active",
+                ],
+                name="survdis_program_active_idx",
+            ),
+            models.Index(
+                fields=[
+                    "disease",
+                    "is_active",
+                ],
+                name="survdis_disease_active_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.program.name} — "
+            f"{self.disease.name}"
+        )
