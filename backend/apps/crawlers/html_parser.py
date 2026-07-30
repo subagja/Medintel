@@ -1,7 +1,11 @@
 import json
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from datetime import datetime
+from django.utils import timezone
 from typing import Any
 from urllib.parse import urljoin
 
@@ -48,7 +52,7 @@ def parse_datetime(
         return None
 
     try:
-        return date_parser.parse(
+        parsed = date_parser.parse(
             value
         )
     except (
@@ -57,6 +61,16 @@ def parse_datetime(
         OverflowError,
     ):
         return None
+
+    if timezone.is_naive(
+        parsed
+    ):
+        parsed = timezone.make_aware(
+            parsed,
+            timezone.get_current_timezone(),
+        )
+
+    return parsed
 
 
 def extract_json_ld_items(
@@ -160,10 +174,17 @@ def extract_title(
     soup: BeautifulSoup,
     json_ld: dict[str, Any],
 ) -> str:
-    candidates = [
-        json_ld.get("headline"),
-        json_ld.get("name"),
-    ]
+    candidates: list[str | None] = []
+
+    h1 = soup.find("h1")
+
+    if h1:
+        candidates.append(
+            h1.get_text(
+                " ",
+                strip=True,
+            )
+        )
 
     meta_selectors = [
         (
@@ -176,6 +197,12 @@ def extract_title(
             "meta",
             {
                 "name": "twitter:title",
+            },
+        ),
+        (
+            "meta",
+            {
+                "name": "title",
             },
         ),
     ]
@@ -191,15 +218,12 @@ def extract_title(
                 tag.get("content")
             )
 
-    h1 = soup.find("h1")
-
-    if h1:
-        candidates.append(
-            h1.get_text(
-                " ",
-                strip=True,
-            )
-        )
+    candidates.extend(
+        [
+            json_ld.get("headline"),
+            json_ld.get("name"),
+        ]
+    )
 
     if soup.title:
         candidates.append(
@@ -209,14 +233,24 @@ def extract_title(
             )
         )
 
+    ignored_titles = {
+        "generasi sehat, masa depan hebat",
+        "kementerian kesehatan republik indonesia",
+        "kementerian kesehatan ri",
+    }
+
     for candidate in candidates:
         title = clean_text(candidate)
 
-        if title:
-            return title
+        if not title:
+            continue
+
+        if title.casefold() in ignored_titles:
+            continue
+
+        return title
 
     return ""
-
 
 def extract_canonical_url(
     soup: BeautifulSoup,
@@ -436,6 +470,19 @@ def parse_article_html(
         "html.parser",
     )
 
+    logger.info(
+        (
+            "Parser artikel url=%s "
+            "html_length=%s "
+            "paragraph_count=%s "
+            "article_count=%s"
+        ),
+        page_url,
+        len(html),
+        len(soup.find_all("p")),
+        len(soup.find_all("article")),
+    )
+
     json_ld = find_article_json_ld(
         soup
     )
@@ -449,6 +496,25 @@ def parse_article_html(
         soup,
         json_ld,
     )
+
+    if len(content) < 100:
+        fallback_content = (
+            extract_fallback_paragraphs(
+                soup
+            )
+        )
+
+        logger.info(
+            (
+                "Fallback paragraf digunakan "
+                "url=%s content_length=%s"
+            ),
+            page_url,
+            len(fallback_content),
+        )
+
+        if len(fallback_content) >= 100:
+            content = fallback_content
 
     published_at = extract_published_at(
         soup,
@@ -479,6 +545,55 @@ def parse_article_html(
         canonical_url=canonical_url,
         metadata=metadata,
     )
+
+
+def extract_fallback_paragraphs(
+    soup: BeautifulSoup,
+) -> str:
+    ignored_parent_tags = {
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "form",
+    }
+
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+
+    for paragraph in soup.find_all("p"):
+        inside_ignored_element = any(
+            getattr(parent, "name", None)
+            in ignored_parent_tags
+            for parent in paragraph.parents
+        )
+
+        if inside_ignored_element:
+            continue
+
+        text = paragraph.get_text(
+            " ",
+            strip=True,
+        )
+
+        normalized_text = " ".join(
+            text.split()
+        )
+
+        if len(normalized_text) < 30:
+            continue
+
+        if normalized_text in seen:
+            continue
+
+        seen.add(normalized_text)
+        paragraphs.append(
+            normalized_text
+        )
+
+    return "\n\n".join(
+        paragraphs
+    ).strip()
 
 
 def discover_article_links(

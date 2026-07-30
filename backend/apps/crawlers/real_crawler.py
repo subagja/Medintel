@@ -25,6 +25,8 @@ from .http_client import (
     CrawlerHttpError,
     RobotsDeniedError,
 )
+from pathlib import Path
+from urllib.parse import urlparse
 
 
 logger = logging.getLogger(__name__)
@@ -148,6 +150,34 @@ class GenericHtmlCrawler(BaseCrawler):
             )
 
             return None
+
+        debug_dir = Path("debug_html")
+        debug_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        slug = (
+            urlparse(page.final_url)
+            .path
+            .strip("/")
+            .replace("/", "_")
+        )
+
+        debug_file = (
+            debug_dir
+            / f"{source.code}_{slug}.html"
+        )
+
+        debug_file.write_text(
+            page.text,
+            encoding="utf-8",
+        )
+
+        logger.info(
+            "HTML debug disimpan path=%s",
+            debug_file,
+        )
 
         redirected_url_validation = (
             validate_source_url(
