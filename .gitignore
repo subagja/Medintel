@@ -23,3 +23,6 @@ media/
 # Generated files
 structure.txt
 backend/structure.txt
+
+data/legacy/*.csv
+backend/debug_html/

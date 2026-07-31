@@ -1,0 +1,25 @@
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" `
+    -h localhost `
+    -p 5432 `
+    -U isur `
+    -d medintel_db `
+    -v ON_ERROR_STOP=1 `
+    -f ".\backups\medintel_surveillance_baseline_patch.sql"
+
+
+
+    python manage.py import_intel_locations `
+    data\legacy\data_intel_geo.csv
+
+   python manage.py extract_entities --article-id  42f5a27c-ad0c-4bdd-b9ee-20f873c73c7a
+
+
+command untuk aktifin 
+python manage.py add_crawl_source `
+    --name "Radio Republik Indonesia" `
+    --code rri `
+    --url "https://rri.co.id/bandar-lampung/kesehatan/2389760/malaria-penyakit-menular-yang-perlu-diwaspadai-dan-dicegah" `
+    --type national_media `
+    --seed-type direct `
+    --crawl `
+    --limit 1

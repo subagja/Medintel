@@ -1,0 +1,268 @@
+import json
+from pathlib import Path
+from typing import Any
+
+from django.core.management.base import (
+    BaseCommand,
+    CommandError,
+)
+from django.db import transaction
+
+from apps.entities.models import Location
+
+
+def compute_representative_point(
+    geometry: dict[str, Any],
+) -> tuple[float | None, float | None]:
+    """
+    Menghasilkan latitude dan longitude representatif
+    menggunakan rata-rata titik polygon.
+
+    Ini bukan centroid geospasial presisi, tetapi cukup
+    sebagai titik awal marker administratif.
+    """
+    if not geometry:
+        return None, None
+
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+
+    points: list[list[float]] = []
+
+    if geometry_type == "Polygon":
+        if coordinates:
+            points.extend(
+                coordinates[0]
+            )
+
+    elif geometry_type == "MultiPolygon":
+        for polygon in coordinates:
+            if polygon:
+                points.extend(
+                    polygon[0]
+                )
+
+    valid_points = [
+        point
+        for point in points
+        if (
+            isinstance(point, list)
+            and len(point) >= 2
+        )
+    ]
+
+    if not valid_points:
+        return None, None
+
+    longitude = sum(
+        float(point[0])
+        for point in valid_points
+    ) / len(valid_points)
+
+    latitude = sum(
+        float(point[1])
+        for point in valid_points
+    ) / len(valid_points)
+
+    return latitude, longitude
+
+
+class Command(BaseCommand):
+    help = (
+        "Mengimpor master provinsi Indonesia "
+        "dari GeoJSON ke Location."
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--file",
+            required=True,
+            type=str,
+        )
+
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+        )
+
+        parser.add_argument(
+            "--update-existing",
+            action="store_true",
+        )
+
+    @transaction.atomic
+    def handle(
+        self,
+        *args: Any,
+        **options: Any,
+    ) -> None:
+        file_path = Path(
+            options["file"]
+        )
+
+        if not file_path.exists():
+            raise CommandError(
+                f"File tidak ditemukan: {file_path}"
+            )
+
+        with file_path.open(
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+        features = data.get(
+            "features",
+            [],
+        )
+
+        if not features:
+            raise CommandError(
+                "GeoJSON tidak memiliki feature."
+            )
+
+        indonesia, _ = Location.objects.get_or_create(
+            name="Indonesia",
+            administrative_level=(
+                Location.AdministrativeLevel.COUNTRY
+            ),
+            parent=None,
+            country_code="ID",
+            defaults={
+                "code": "ID",
+                "is_active": True,
+            },
+        )
+
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+
+        for index, feature in enumerate(
+            features,
+            start=1,
+        ):
+            properties = (
+                feature.get("properties")
+                or {}
+            )
+
+            geometry = (
+                feature.get("geometry")
+                or {}
+            )
+
+            name = (
+                properties.get("display_name")
+                or properties.get("name")
+                or properties.get("province_name")
+                or ""
+            ).strip()
+
+            code = (
+                properties.get("bps_code")
+                or properties.get("province_code")
+                or ""
+            ).strip()
+
+            if not name:
+                skipped_count += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[SKIP {index}] nama kosong"
+                    )
+                )
+                continue
+
+            latitude, longitude = (
+                compute_representative_point(
+                    geometry
+                )
+            )
+
+            location = (
+                Location.objects.filter(
+                    administrative_level=(
+                        Location.AdministrativeLevel.PROVINCE
+                    ),
+                    name__iexact=name,
+                    parent=indonesia,
+                    country_code="ID",
+                ).first()
+            )
+
+            if location is not None:
+                if not options["update_existing"]:
+                    skipped_count += 1
+                    self.stdout.write(
+                        f"[EXISTS] {name}"
+                    )
+                    continue
+
+                if not options["dry_run"]:
+                    location.code = code
+                    location.latitude = latitude
+                    location.longitude = longitude
+                    location.is_active = True
+
+                    location.save(
+                        update_fields=[
+                            "code",
+                            "latitude",
+                            "longitude",
+                            "is_active",
+                            "updated_at",
+                        ]
+                    )
+
+                updated_count += 1
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"[UPDATED] {name}"
+                    )
+                )
+                continue
+
+            if not options["dry_run"]:
+                Location.objects.create(
+                    name=name,
+                    code=code,
+                    administrative_level=(
+                        Location.AdministrativeLevel.PROVINCE
+                    ),
+                    parent=indonesia,
+                    latitude=latitude,
+                    longitude=longitude,
+                    country_code="ID",
+                    is_active=True,
+                )
+
+            created_count += 1
+
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"[CREATED] {name}"
+                )
+            )
+
+        if options["dry_run"]:
+            transaction.set_rollback(True)
+
+        self.stdout.write("")
+        self.stdout.write(
+            self.style.SUCCESS(
+                "=== RINGKASAN IMPORT PROVINSI ==="
+            )
+        )
+        self.stdout.write(
+            f"Created : {created_count}"
+        )
+        self.stdout.write(
+            f"Updated : {updated_count}"
+        )
+        self.stdout.write(
+            f"Skipped : {skipped_count}"
+        )
+        self.stdout.write(
+            f"Dry run : {options['dry_run']}"
+        )
