@@ -1,0 +1,59 @@
+{
+  "summary": {
+    "total_sources": 1,
+    "config_ready": 1,
+    "live_passed": 1,
+    "needs_config": 0,
+    "manual_review": 0,
+    "keep_disabled": 0
+  },
+  "sources": [
+    {
+      "code": "kemkes",
+      "name": "Kementerian Kesehatan RI",
+      "domain": "kemkes.go.id",
+      "source_type": "government",
+      "is_active": true,
+      "is_verified": true,
+      "crawl_enabled": true,
+      "crawl_strategy": "html",
+      "readiness_ok": true,
+      "readiness_errors": [],
+      "active_seed_count": 2,
+      "active_allow_pattern_count": 2,
+      "active_deny_pattern_count": 5,
+      "live_status": "PASS",
+      "recommendation": "KEEP_ENABLED",
+      "seeds": [
+        {
+          "url": "https://kemkes.go.id/id/wamenkes-benny-usulkan-kota-bogor-jadi-percontohan-nasional-penanggulangan-tbc-terintegrasi-",
+          "seed_type": "direct",
+          "is_active": true,
+          "fetch_ok": true,
+          "final_url": "https://kemkes.go.id/id/wamenkes-benny-usulkan-kota-bogor-jadi-percontohan-nasional-penanggulangan-tbc-terintegrasi-",
+          "discovered_links": 0,
+          "valid_article_candidates": 1,
+          "sample_article_url": "https://kemkes.go.id/id/wamenkes-benny-usulkan-kota-bogor-jadi-percontohan-nasional-penanggulangan-tbc-terintegrasi-",
+          "sample_title": "Wamenkes Benny Usulkan Kota Bogor Jadi Percontohan Nasional Penanggulangan TBC Terintegrasi",
+          "sample_content_length": 7019,
+          "parser_ok": true,
+          "error": ""
+        },
+        {
+          "url": "https://kemkes.go.id/id/category/rilis-berita",
+          "seed_type": "listing",
+          "is_active": true,
+          "fetch_ok": true,
+          "final_url": "https://kemkes.go.id/id/category/rilis-berita",
+          "discovered_links": 58,
+          "valid_article_candidates": 29,
+          "sample_article_url": "https://kemkes.go.id/id/home",
+          "sample_title": "Selamat Datang di Situs Resmi Kementerian Kesehatan Republik Indonesia",
+          "sample_content_length": 789,
+          "parser_ok": true,
+          "error": ""
+        }
+      ]
+    }
+  ]
+}

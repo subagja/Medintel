@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "code": "tvri",
+      "crawl_enabled": false,
+      "replace_active_seeds": true,
+      "seeds": [
+        {
+          "url": "https://tvri.go.id/berita/kategori/informasi",
+          "seed_type": "listing",
+          "priority": 10,
+          "is_active": true,
+          "notes": "Listing berita TVRI untuk pengujian crawler."
+        }
+      ],
+      "replace_active_allow_patterns": true,
+      "allow_patterns": [
+        {
+          "match_type": "regex",
+          "pattern": "^/berita/(?!kategori/)[A-Za-z0-9][A-Za-z0-9%-]*(?:-[A-Za-z0-9%-]+)*/?$",
+          "priority": 10,
+          "description": "Artikel berita TVRI."
+        }
+      ],
+      "activation_condition": "AUDIT_PASS"
+    },
+    {
+      "code": "cnn-indonesia",
+      "crawl_enabled": false,
+      "replace_active_seeds": true,
+      "seeds": [
+        {
+          "url": "https://www.cnnindonesia.com/gaya-hidup",
+          "seed_type": "listing",
+          "priority": 10,
+          "is_active": true,
+          "notes": "Kanal gaya hidup dan kesehatan CNN Indonesia."
+        },
+        {
+          "url": "https://www.cnnindonesia.com/nasional",
+          "seed_type": "listing",
+          "priority": 20,
+          "is_active": true,
+          "notes": "Kanal nasional untuk isu kesehatan masyarakat."
+        }
+      ],
+      "replace_active_allow_patterns": true,
+      "allow_patterns": [
+        {
+          "match_type": "regex",
+          "pattern": "^/(?:gaya-hidup|nasional|internasional|edukasi|ekonomi)/\\d{14}-\\d+-\\d+/[a-z0-9-]+/?$",
+          "priority": 10,
+          "description": "Artikel CNN Indonesia."
+        }
+      ],
+      "activation_condition": "AUDIT_PASS"
+    }
+  ]
+}

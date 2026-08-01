@@ -1,8 +1,11 @@
 import logging
+
+from django.conf import settings
 from collections.abc import Iterable
 
-from apps.entities.surveillance import (
-    match_text_to_surveillance,
+from apps.entities.eligibility import (
+    evaluate_cheap_filter,
+    evaluate_surveillance_eligibility,
 )
 from apps.ingestion.dto import ArticlePayload
 from apps.sources.models import (
@@ -33,6 +36,52 @@ logger = logging.getLogger(__name__)
 
 
 MINIMUM_ARTICLE_CONTENT_LENGTH = 100
+
+
+def _safe_debug_slug(url: str) -> str:
+    slug = (
+        urlparse(url)
+        .path
+        .strip("/")
+        .replace("/", "_")
+    )
+
+    return slug[:180] or "homepage"
+
+
+def save_debug_html(
+    *,
+    source_code: str,
+    url: str,
+    html: str,
+    category: str,
+) -> None:
+    debug_dir = (
+        Path("debug_html")
+        / category
+    )
+    debug_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    debug_file = (
+        debug_dir
+        / (
+            f"{source_code}_"
+            f"{_safe_debug_slug(url)}.html"
+        )
+    )
+
+    debug_file.write_text(
+        html,
+        encoding="utf-8",
+    )
+
+    logger.info(
+        "HTML debug disimpan path=%s",
+        debug_file,
+    )
 
 
 class GenericHtmlCrawler(BaseCrawler):
@@ -151,34 +200,6 @@ class GenericHtmlCrawler(BaseCrawler):
 
             return None
 
-        debug_dir = Path("debug_html")
-        debug_dir.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        slug = (
-            urlparse(page.final_url)
-            .path
-            .strip("/")
-            .replace("/", "_")
-        )
-
-        debug_file = (
-            debug_dir
-            / f"{source.code}_{slug}.html"
-        )
-
-        debug_file.write_text(
-            page.text,
-            encoding="utf-8",
-        )
-
-        logger.info(
-            "HTML debug disimpan path=%s",
-            debug_file,
-        )
-
         redirected_url_validation = (
             validate_source_url(
                 source,
@@ -232,32 +253,87 @@ class GenericHtmlCrawler(BaseCrawler):
 
             return None
 
-        article_text = "\n".join(
-            [
-                parsed.title,
-                parsed.content,
-            ]
-        )
-
-        surveillance_match = (
-            match_text_to_surveillance(
-                article_text
+        preview_chars = int(
+            getattr(
+                settings,
+                "CRAWLER_CHEAP_FILTER_CHARS",
+                5000,
             )
         )
 
-        if not surveillance_match.is_relevant:
-            logger.warning(
+        cheap_result = evaluate_cheap_filter(
+            title=parsed.title,
+            content=parsed.content,
+            preview_chars=preview_chars,
+        )
+
+        if not cheap_result.passed:
+            logger.info(
                 (
-                    "Artikel dilewati karena tidak sesuai "
-                    "cakupan penyakit surveilans. "
+                    "Artikel ditolak filter murah "
                     "source=%s url=%s reason=%s"
                 ),
                 source.code,
                 page.final_url,
-                surveillance_match.reason,
+                cheap_result.reason,
             )
 
+            if getattr(
+                settings,
+                "CRAWLER_SAVE_REJECTED_DEBUG_HTML",
+                False,
+            ):
+                save_debug_html(
+                    source_code=source.code,
+                    url=page.final_url,
+                    html=page.text,
+                    category="rejected",
+                )
+
             return None
+
+        eligibility = evaluate_surveillance_eligibility(
+            title=parsed.title,
+            content=parsed.content,
+            cheap_result=cheap_result,
+        )
+
+        if not eligibility.is_eligible:
+            logger.info(
+                (
+                    "Artikel ditolak filter lengkap "
+                    "source=%s url=%s reason=%s"
+                ),
+                source.code,
+                page.final_url,
+                eligibility.reason,
+            )
+
+            if getattr(
+                settings,
+                "CRAWLER_SAVE_REJECTED_DEBUG_HTML",
+                False,
+            ):
+                save_debug_html(
+                    source_code=source.code,
+                    url=page.final_url,
+                    html=page.text,
+                    category="rejected",
+                )
+
+            return None
+
+        if getattr(
+            settings,
+            "CRAWLER_SAVE_ACCEPTED_DEBUG_HTML",
+            False,
+        ):
+            save_debug_html(
+                source_code=source.code,
+                url=page.final_url,
+                html=page.text,
+                category="accepted",
+            )
 
         canonical_url = (
             parsed.canonical_url
@@ -281,26 +357,32 @@ class GenericHtmlCrawler(BaseCrawler):
             )
 
         surveillance_metadata = {
-            "is_relevant": (
-                surveillance_match.is_relevant
-            ),
-            "reason": (
-                surveillance_match.reason
-            ),
+            "is_relevant": True,
+            "reason": eligibility.reason,
             "diseases": [
                 {
-                    "disease_id": (
-                        match.disease_id
-                    ),
-                    "disease_name": (
-                        match.disease_name
-                    ),
-                    "matched_terms": list(
-                        match.matched_terms
-                    ),
+                    "disease_id": mention.disease_id,
+                    "disease_name": mention.disease_name,
+                    "matched_text": mention.matched_text,
                 }
-                for match in surveillance_match.matches
+                for mention in eligibility.disease_mentions
             ],
+            "counts": [
+                {
+                    "value": mention.value,
+                    "matched_text": mention.matched_text,
+                }
+                for mention in eligibility.count_mentions
+            ],
+            "locations": [
+                {
+                    "location_id": mention.location_id,
+                    "location_name": mention.location_name,
+                    "matched_text": mention.matched_text,
+                }
+                for mention in eligibility.location_mentions
+            ],
+            "evidence_text": eligibility.evidence_text,
         }
 
         return ArticlePayload(

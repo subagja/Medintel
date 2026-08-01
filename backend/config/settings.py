@@ -143,10 +143,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
-import os
-
-
 DJANGO_LOG_LEVEL = os.getenv(
     "DJANGO_LOG_LEVEL",
     "INFO",
@@ -204,3 +200,8 @@ LOGGING = {
         },
     },
 }
+
+CRAWLER_CHEAP_FILTER_CHARS = 5000
+
+CRAWLER_SAVE_ACCEPTED_DEBUG_HTML = False
+CRAWLER_SAVE_REJECTED_DEBUG_HTML = False

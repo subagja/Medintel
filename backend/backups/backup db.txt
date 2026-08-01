@@ -23,3 +23,39 @@ python manage.py add_crawl_source `
     --seed-type direct `
     --crawl `
     --limit 1
+
+python manage.py add_crawl_source `
+    --name "ANTARA News" `
+    --code antara `
+    --url "https://www.antaranews.com/berita/5643756/menkes-kejar-deteksi-kasus-kusta-sebanyak-37-ribu-percepat-eliminasi" `
+    --type national_media `
+    --seed-type direct `
+    --crawl `
+    --limit 1
+
+
+python manage.py add_crawl_source `
+    --name "Kementerian Kesehatan RI" `
+    --code kemkes `
+    --url "https://kemkes.go.id/id/category/rilis-berita" `
+    --type government `
+    --seed-type listing `
+    --article-path "/id" `
+    --crawl `
+    --limit 1
+
+python manage.py run_html_crawler --source rri --limit 5
+
+
+# Satu source
+python manage.py run_html_crawler --source kemkes --limit 1
+
+# Semua source yang siap
+python manage.py run_html_crawler --limit 1
+
+
+#audit source
+python manage.py audit_crawl_sources `
+    --output data\exports\crawl_source_audit.json `
+    --max-seeds 1 `
+    --max-links 100

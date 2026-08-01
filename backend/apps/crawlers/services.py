@@ -62,25 +62,93 @@ def run_crawler(
         },
     )
 
+    # Menyimpan URL yang sudah ditemukan dalam satu eksekusi crawler.
+    # URL yang sama tidak akan dibuat sebagai CollectionJobItem.
+    seen_urls: set[str] = set()
+
     try:
         payloads = crawler.crawl()
 
         for payload in payloads:
             total_found += 1
 
-            item = CollectionJobItem.objects.create(
-                collection_job=job,
-                original_url=payload.url,
-                title=payload.title,
-                status=CollectionJobItem.Status.FOUND,
-                metadata={
-                    "source_code": payload.source_code,
-                    "payload_metadata": payload.metadata,
-                },
+            original_url = (payload.url or "").strip()
+
+            if not original_url:
+                total_failed += 1
+
+                logger.warning(
+                    "Payload crawler tidak memiliki URL "
+                    "source=%s title=%s",
+                    payload.source_code,
+                    payload.title,
+                )
+                continue
+
+            # Duplikat dalam hasil crawler pada job yang sama.
+            # Tidak disimpan ke database.
+            if original_url in seen_urls:
+                total_duplicate += 1
+
+                logger.info(
+                    "URL duplikat dalam job tidak disimpan "
+                    "job=%s source=%s url=%s",
+                    job.id,
+                    payload.source_code,
+                    original_url,
+                )
+                continue
+
+            seen_urls.add(original_url)
+
+            # Perlindungan database apabila URL yang sama sudah pernah
+            # tercatat pada CollectionJob yang sedang berjalan.
+            item, item_created = (
+                CollectionJobItem.objects.get_or_create(
+                    collection_job=job,
+                    original_url=original_url,
+                    defaults={
+                        "title": payload.title,
+                        "status": CollectionJobItem.Status.FOUND,
+                        "metadata": {
+                            "source_code": payload.source_code,
+                            "payload_metadata": payload.metadata,
+                        },
+                    },
+                )
             )
+
+            if not item_created:
+                total_duplicate += 1
+
+                logger.info(
+                    "Collection item duplikat tidak diproses "
+                    "job=%s source=%s url=%s",
+                    job.id,
+                    payload.source_code,
+                    original_url,
+                )
+                continue
 
             try:
                 result = ingest_article(payload)
+
+                # Artikel yang sudah ada pada articles_article tidak disimpan
+                # sebagai CollectionJobItem berstatus DUPLICATE.
+                if result.status == "duplicate":
+                    total_duplicate += 1
+
+                    logger.info(
+                        "Artikel duplikat tidak disimpan "
+                        "job=%s source=%s url=%s reason=%s",
+                        job.id,
+                        payload.source_code,
+                        original_url,
+                        result.reason,
+                    )
+
+                    item.delete()
+                    continue
 
                 item.article = result.article
                 item.reason = result.reason
@@ -89,10 +157,6 @@ def run_crawler(
                 if result.status == "created":
                     total_created += 1
                     item.status = CollectionJobItem.Status.CREATED
-
-                elif result.status == "duplicate":
-                    total_duplicate += 1
-                    item.status = CollectionJobItem.Status.DUPLICATE
 
                 elif result.status == "rejected":
                     total_rejected += 1
@@ -103,7 +167,9 @@ def run_crawler(
                     item.status = CollectionJobItem.Status.FAILED
 
                 if result.article:
-                    item.normalized_url = result.article.normalized_url
+                    item.normalized_url = (
+                        result.article.normalized_url
+                    )
 
                 item.save(
                     update_fields=[
@@ -117,7 +183,8 @@ def run_crawler(
                 )
 
                 logger.info(
-                    "Collection item source=%s status=%s reason=%s",
+                    "Collection item source=%s "
+                    "status=%s reason=%s",
                     payload.source_code,
                     result.status,
                     result.reason,
@@ -140,9 +207,10 @@ def run_crawler(
                 )
 
                 logger.exception(
-                    "Gagal memproses artikel source=%s url=%s",
+                    "Gagal memproses artikel "
+                    "source=%s url=%s",
                     payload.source_code,
-                    payload.url,
+                    original_url,
                 )
 
         complete_collection_job(
@@ -166,7 +234,7 @@ def run_crawler(
             "Crawler gagal dijalankan: %s",
             crawler.__class__.__name__,
         )
-        
+
         raise
 
     return CrawlExecutionResult(
