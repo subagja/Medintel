@@ -1,0 +1,848 @@
+{% extends "base.html" %}
+
+{% block title %}
+Validasi Artikel | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                Pengumpulan dan Pengolahan
+            </div>
+
+            <h2 class="page-title">
+                Validasi Artikel
+            </h2>
+
+            <div class="text-secondary mt-1">
+                Pemeriksaan relevansi, kelengkapan, serta kualitas
+                informasi artikel OSINT.
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% if messages %}
+    {% for message in messages %}
+        <div
+            class="alert
+            {% if message.tags == 'success' %}
+                alert-success
+            {% elif message.tags == 'error' %}
+                alert-danger
+            {% else %}
+                alert-info
+            {% endif %}
+            alert-dismissible"
+            role="alert"
+        >
+            <div>
+                {{ message }}
+            </div>
+
+            <a
+                class="btn-close"
+                data-bs-dismiss="alert"
+                aria-label="Tutup"
+            ></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+
+<div class="row row-deck row-cards mb-3">
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Artikel Masuk
+                </div>
+
+                <div class="h1 mb-0">
+                    {{ summary.total|default:0 }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Perlu Tinjau
+                </div>
+
+                <div class="h1 text-warning mb-0">
+                    {{ summary.pending|default:0 }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Tervalidasi
+                </div>
+
+                <div class="h1 text-success mb-0">
+                    {{ summary.validated|default:0 }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Tidak Relevan
+                </div>
+
+                <div class="h1 text-danger mb-0">
+                    {{ summary.rejected|default:0 }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+<div class="row row-cards">
+
+    <!-- Daftar artikel -->
+    <div class="col-lg-5">
+        <div class="card">
+
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title">
+                        Daftar Artikel
+                    </h3>
+
+                    <div class="text-secondary small">
+                        Pilih artikel untuk diperiksa.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body border-bottom py-3">
+                <div class="row g-2">
+
+                    <div class="col">
+                        <input
+                            type="search"
+                            id="article-search"
+                            class="form-control"
+                            placeholder="Cari judul atau sumber"
+                            autocomplete="off"
+                        >
+                    </div>
+
+                    <div class="col-auto">
+                        <select
+                            id="article-status-filter"
+                            class="form-select"
+                        >
+                            <option value="">
+                                Semua status
+                            </option>
+
+                            <option value="pending">
+                                Perlu tinjau
+                            </option>
+
+                            <option value="validated">
+                                Tervalidasi
+                            </option>
+
+                            <option value="rejected">
+                                Tidak relevan
+                            </option>
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+
+            <div
+                class="list-group list-group-flush medintel-article-list"
+                id="article-list"
+            >
+
+                {% for article in articles %}
+
+                    {% with article_assessment=article.validation_assessment %}
+
+                        <a
+                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}"
+                            class="
+                                list-group-item
+                                list-group-item-action
+                                medintel-article-item
+                                {% if selected_article and article.id == selected_article.id %}
+                                    active
+                                {% endif %}
+                            "
+                            data-title="{{ article.title|lower }}"
+                            data-source="{{ article.source|stringformat:'s'|lower }}"
+                            data-status="{{ article_assessment.validation_status|default:'pending' }}"
+                        >
+                            <div class="d-flex align-items-start gap-2">
+
+                                <div class="flex-fill">
+
+                                    <div class="fw-semibold mb-1">
+                                        {{ article.title }}
+                                    </div>
+
+                                    <div class="small opacity-75">
+                                        {{ article.source }}
+
+                                        {% if article.published_at %}
+                                            ·
+                                            {{ article.published_at|date:"d M Y, H:i" }}
+                                        {% else %}
+                                            · Waktu publikasi tidak tersedia
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="small mt-2">
+
+                                        {% for disease in article.diseases.all|slice:":2" %}
+                                            <span class="badge bg-blue-lt me-1">
+                                                {{ disease }}
+                                            </span>
+                                        {% empty %}
+                                            <span class="text-secondary">
+                                                Penyakit belum diekstraksi
+                                            </span>
+                                        {% endfor %}
+
+                                    </div>
+
+                                </div>
+
+                                <div class="ms-2 text-end">
+
+                                    {% if article_assessment.validation_status == "validated" %}
+                                        <span class="badge bg-success-lt">
+                                            Valid
+                                        </span>
+
+                                    {% elif article_assessment.validation_status == "rejected" %}
+                                        <span class="badge bg-danger-lt">
+                                            Tidak relevan
+                                        </span>
+
+                                    {% else %}
+                                        <span class="badge bg-warning-lt">
+                                            Tinjau
+                                        </span>
+                                    {% endif %}
+
+                                    {% if article_assessment %}
+                                        <div class="small fw-bold mt-2">
+                                            {{ article_assessment.admiralty_code }}
+                                        </div>
+                                    {% endif %}
+
+                                </div>
+
+                            </div>
+                        </a>
+
+                    {% endwith %}
+
+                {% empty %}
+
+                    <div class="empty py-5">
+                        <div class="empty-icon">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="40"
+                                height="40"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
+                            </svg>
+                        </div>
+
+                        <p class="empty-title">
+                            Belum ada artikel
+                        </p>
+
+                        <p class="empty-subtitle text-secondary">
+                            Artikel hasil crawling akan ditampilkan di sini.
+                        </p>
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- Detail artikel -->
+    <div class="col-lg-7">
+
+        {% if selected_article and assessment_form %}
+
+            <form method="post">
+                {% csrf_token %}
+
+                <input
+                    type="hidden"
+                    name="article_id"
+                    value="{{ selected_article.id }}"
+                >
+
+                <div class="card">
+
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">
+                                Detail Pemeriksaan
+                            </h3>
+
+                            <div class="text-secondary small">
+                                Artikel terpilih
+                            </div>
+                        </div>
+
+                        <div class="card-actions">
+
+                            {% if assessment.validation_status == "validated" %}
+                                <span class="badge bg-success-lt">
+                                    Tervalidasi
+                                </span>
+
+                            {% elif assessment.validation_status == "rejected" %}
+                                <span class="badge bg-danger-lt">
+                                    Tidak Relevan
+                                </span>
+
+                            {% else %}
+                                <span class="badge bg-warning-lt">
+                                    Perlu Tinjau
+                                </span>
+                            {% endif %}
+
+                        </div>
+                    </div>
+
+
+                    <div class="card-body">
+
+                        <h2 class="h3 mb-2">
+                            {{ selected_article.title }}
+                        </h2>
+
+                        <div class="text-secondary mb-4">
+                            {{ selected_article.source }}
+
+                            {% if selected_article.author %}
+                                · {{ selected_article.author }}
+                            {% endif %}
+
+                            {% if selected_article.published_at %}
+                                ·
+                                {{ selected_article.published_at|date:"d M Y, H:i" }}
+                            {% endif %}
+                        </div>
+
+
+                        <div class="row g-3 mb-4">
+
+                            <div class="col-md-6">
+                                <div class="text-secondary small mb-1">
+                                    Penyakit
+                                </div>
+
+                                <div>
+                                    {% for disease in selected_article.diseases.all %}
+                                        <span class="badge bg-blue-lt me-1 mb-1">
+                                            {{ disease }}
+                                        </span>
+                                    {% empty %}
+                                        <span class="text-secondary">
+                                            Belum diekstraksi
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+
+                            <div class="col-md-6">
+                                <div class="text-secondary small mb-1">
+                                    Lokasi
+                                </div>
+
+                                <div>
+                                    {% for location in selected_article.locations.all %}
+                                        <span class="badge bg-azure-lt me-1 mb-1">
+                                            {{ location }}
+                                        </span>
+                                    {% empty %}
+                                        <span class="text-secondary">
+                                            Belum ditemukan
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+
+                            <div class="col-md-6">
+                                <div class="text-secondary small mb-1">
+                                    Status pemrosesan
+                                </div>
+
+                                <div class="fw-semibold">
+                                    {{ selected_article.get_processing_status_display }}
+                                </div>
+                            </div>
+
+
+                            <div class="col-md-6">
+                                <div class="text-secondary small mb-1">
+                                    Waktu crawling
+                                </div>
+
+                                <div class="fw-semibold">
+                                    {{ selected_article.crawled_at|date:"d M Y, H:i" }}
+                                </div>
+                            </div>
+
+                        </div>
+
+
+                        <div class="mb-4">
+                            <div class="text-secondary small mb-1">
+                                Ringkasan artikel
+                            </div>
+
+                            <div class="medintel-article-excerpt">
+                                {% if selected_article.excerpt %}
+                                    {{ selected_article.excerpt }}
+                                {% else %}
+                                    {{ selected_article.content_text|truncatewords:80 }}
+                                {% endif %}
+                            </div>
+
+                            <div class="mt-2">
+                                <a
+                                    href="{{ selected_article.original_url }}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="btn btn-sm btn-outline-primary"
+                                >
+                                    Buka Artikel Asli
+                                </a>
+                            </div>
+                        </div>
+
+
+                        {% if assessment_form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in assessment_form.non_field_errors %}
+                                    <div>
+                                        {{ error }}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+
+                        <ul
+                            class="nav nav-tabs mb-3"
+                            role="tablist"
+                        >
+
+                            <li class="nav-item">
+                                <button
+                                    class="nav-link active"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-validation"
+                                    type="button"
+                                    role="tab"
+                                >
+                                    Validasi
+                                </button>
+                            </li>
+
+                            <li class="nav-item">
+                                <button
+                                    class="nav-link"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-information-assessment"
+                                    type="button"
+                                    role="tab"
+                                >
+                                    Neraca Informasi
+                                </button>
+                            </li>
+
+                            <li class="nav-item">
+                                <button
+                                    class="nav-link"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-history"
+                                    type="button"
+                                    role="tab"
+                                >
+                                    Riwayat
+                                </button>
+                            </li>
+
+                        </ul>
+
+
+                        <div class="tab-content">
+
+                            <!-- Tab Validasi -->
+                            <div
+                                class="tab-pane fade active show"
+                                id="tab-validation"
+                                role="tabpanel"
+                            >
+                                <div class="row g-3">
+
+                                    <div class="col-md-6">
+                                        <label
+                                            class="form-label"
+                                            for="{{ assessment_form.validation_status.id_for_label }}"
+                                        >
+                                            {{ assessment_form.validation_status.label }}
+                                        </label>
+
+                                        {{ assessment_form.validation_status }}
+
+                                        {% for error in assessment_form.validation_status.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+
+                                    <div class="col-md-6">
+                                        <label class="form-label">
+                                            Status artikel
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            value="{{ selected_article.get_processing_status_display }}"
+                                            disabled
+                                        >
+                                    </div>
+
+
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ assessment_form.relevance_notes.id_for_label }}"
+                                        >
+                                            {{ assessment_form.relevance_notes.label }}
+                                        </label>
+
+                                        {{ assessment_form.relevance_notes }}
+
+                                        {% for error in assessment_form.relevance_notes.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                </div>
+                            </div>
+
+
+                            <!-- Tab Neraca Informasi -->
+                            <div
+                                class="tab-pane fade"
+                                id="tab-information-assessment"
+                                role="tabpanel"
+                            >
+                                <div class="row g-3">
+
+                                    <div class="col-md-6">
+                                        <label
+                                            class="form-label"
+                                            for="{{ assessment_form.source_reliability.id_for_label }}"
+                                        >
+                                            {{ assessment_form.source_reliability.label }}
+                                        </label>
+
+                                        {{ assessment_form.source_reliability }}
+
+                                        {% for error in assessment_form.source_reliability.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+
+                                        <div class="form-hint">
+                                            Penilaian terhadap reliabilitas
+                                            sumber penerbit artikel.
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-md-6">
+                                        <label
+                                            class="form-label"
+                                            for="{{ assessment_form.information_credibility.id_for_label }}"
+                                        >
+                                            {{ assessment_form.information_credibility.label }}
+                                        </label>
+
+                                        {{ assessment_form.information_credibility }}
+
+                                        {% for error in assessment_form.information_credibility.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+
+                                        <div class="form-hint">
+                                            Penilaian terhadap kebenaran dan
+                                            dukungan bukti atas isi informasi.
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-12">
+                                        <div class="medintel-assessment-result">
+
+                                            <div>
+                                                <div class="text-secondary small">
+                                                    Nilai akhir
+                                                </div>
+
+                                                <div
+                                                    class="medintel-assessment-code"
+                                                    id="admiralty-code-preview"
+                                                >
+                                                    {{ assessment.admiralty_code }}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div class="fw-semibold">
+                                                    Neraca Penilaian Informasi
+                                                </div>
+
+                                                <div
+                                                    class="text-secondary"
+                                                    id="admiralty-code-description"
+                                                >
+                                                    Reliabilitas sumber dan
+                                                    kredibilitas informasi
+                                                    dinilai secara terpisah.
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ assessment_form.assessment_notes.id_for_label }}"
+                                        >
+                                            {{ assessment_form.assessment_notes.label }}
+                                        </label>
+
+                                        {{ assessment_form.assessment_notes }}
+
+                                        {% for error in assessment_form.assessment_notes.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                </div>
+                            </div>
+
+
+                            <!-- Tab Riwayat -->
+                            <div
+                                class="tab-pane fade"
+                                id="tab-history"
+                                role="tabpanel"
+                            >
+
+                                {% if assessment_history %}
+
+                                    <div class="table-responsive">
+                                        <table class="table table-vcenter">
+
+                                            <thead>
+                                                <tr>
+                                                    <th>Waktu</th>
+                                                    <th>Analis</th>
+                                                    <th>Nilai Lama</th>
+                                                    <th>Nilai Baru</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+
+                                                {% for history in assessment_history %}
+                                                    <tr>
+
+                                                        <td class="text-nowrap">
+                                                            {{ history.changed_at|date:"d M Y H:i" }}
+                                                        </td>
+
+                                                        <td>
+                                                            {% if history.changed_by %}
+                                                                {{ history.changed_by.get_username }}
+                                                            {% else %}
+                                                                Sistem
+                                                            {% endif %}
+                                                        </td>
+
+                                                        <td>
+                                                            {% if history.previous_source_reliability %}
+                                                                <span class="badge bg-secondary-lt">
+                                                                    {{ history.previous_source_reliability }}{{ history.previous_information_credibility }}
+                                                                </span>
+                                                            {% else %}
+                                                                —
+                                                            {% endif %}
+                                                        </td>
+
+                                                        <td>
+                                                            <span class="badge bg-blue-lt">
+                                                                {{ history.new_source_reliability }}{{ history.new_information_credibility }}
+                                                            </span>
+                                                        </td>
+
+                                                        <td>
+                                                            {{ history.get_new_status_display }}
+                                                        </td>
+
+                                                    </tr>
+
+                                                    {% if history.change_notes %}
+                                                        <tr>
+                                                            <td></td>
+
+                                                            <td
+                                                                colspan="4"
+                                                                class="text-secondary small pt-0"
+                                                            >
+                                                                {{ history.change_notes }}
+                                                            </td>
+                                                        </tr>
+                                                    {% endif %}
+
+                                                {% endfor %}
+
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                {% else %}
+
+                                    <div class="empty py-5">
+                                        <div class="empty-header">
+                                            0
+                                        </div>
+
+                                        <p class="empty-title">
+                                            Belum ada riwayat penilaian
+                                        </p>
+
+                                        <p class="empty-subtitle text-secondary">
+                                            Perubahan nilai dan keputusan analis
+                                            akan ditampilkan di bagian ini.
+                                        </p>
+                                    </div>
+
+                                {% endif %}
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="card-footer d-flex justify-content-end">
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            Simpan Penilaian
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+
+        {% else %}
+
+            <div class="card">
+                <div class="card-body">
+
+                    <div class="empty py-5">
+                        <div class="empty-icon">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="48"
+                                height="48"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
+                            </svg>
+                        </div>
+
+                        <p class="empty-title">
+                            Belum ada artikel yang dapat diperiksa
+                        </p>
+
+                        <p class="empty-subtitle text-secondary">
+                            Jalankan crawler terlebih dahulu atau pastikan
+                            data artikel sudah tersedia.
+                        </p>
+                    </div>
+
+                </div>
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% endblock %}

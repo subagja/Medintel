@@ -1,0 +1,106 @@
+:root {
+    --medintel-navy: #082f63;
+    --medintel-navy-dark: #05234b;
+    --medintel-blue: #1266d6;
+    --medintel-background: #f5f7fb;
+    --medintel-border: #e4eaf2;
+}
+
+body {
+    background: var(--medintel-background);
+}
+
+.navbar-vertical {
+    background:
+        linear-gradient(
+            180deg,
+            var(--medintel-navy) 0%,
+            var(--medintel-navy-dark) 100%
+        );
+}
+
+.medintel-brand {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.navbar-vertical .nav-link {
+    border-radius: 0.5rem;
+    margin: 0.125rem 0.5rem;
+}
+
+.navbar-vertical .nav-link.active {
+    background: var(--medintel-blue);
+}
+
+.card {
+    border-color: var(--medintel-border);
+    border-radius: 0.875rem;
+    box-shadow:
+        0 4px 18px rgba(15, 45, 80, 0.05);
+}
+
+.medintel-menu-label {
+    padding: 0.5rem 1rem 0.25rem;
+    color: rgba(255, 255, 255, 0.55) !important;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    pointer-events: none;
+}
+
+.navbar-vertical .nav-link-icon {
+    opacity: 0.85;
+}
+
+.navbar-vertical .nav-link.active .nav-link-icon,
+.navbar-vertical .nav-link:hover .nav-link-icon {
+    opacity: 1;
+}
+
+.navbar-vertical .navbar-nav {
+    padding-bottom: 1.5rem;
+}
+
+.navbar-vertical .nav-link {
+    min-height: 2.5rem;
+}
+
+.medintel-article-excerpt {
+    padding: 1rem;
+    background: #f6f8fb;
+    border: 1px solid var(--medintel-border);
+    border-radius: 0.75rem;
+    line-height: 1.65;
+}
+
+.medintel-assessment-result {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1rem;
+    background: #eef6ff;
+    border: 1px solid #cfe4ff;
+    border-radius: 0.75rem;
+}
+
+.medintel-assessment-code {
+    min-width: 4rem;
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--medintel-blue);
+}
+
+.list-group-item.active {
+    background: #eef6ff;
+    border-color: #cfe4ff;
+    color: inherit;
+}
+
+.list-group-item.active .text-secondary {
+    color: #5d6b82 !important;
+}

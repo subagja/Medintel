@@ -248,7 +248,7 @@ class Signal(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.code} â€” {self.title}"
+        return f"{self.code} — {self.title}"
 
 
 class SignalIndicator(models.Model):
@@ -298,7 +298,7 @@ class SignalIndicator(models.Model):
 
     def __str__(self) -> str:
         return (
-            f"{self.signal.code} â€” "
+            f"{self.signal.code} — "
             f"{self.indicator.indicator_type.code}"
         )
 
@@ -363,7 +363,7 @@ class SignalArticle(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.signal.code} â€” {self.article.title}"
+        return f"{self.signal.code} — {self.article.title}"
 
 
 class SignalRequirement(models.Model):
@@ -407,7 +407,7 @@ class SignalRequirement(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.signal.code} â€” {self.requirement.code}"
+        return f"{self.signal.code} — {self.requirement.code}"
 
 
 class SignalDisease(models.Model):
@@ -440,7 +440,7 @@ class SignalDisease(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.signal.code} â€” {self.disease.name}"
+        return f"{self.signal.code} — {self.disease.name}"
 
 
 class SignalLocation(models.Model):
@@ -473,7 +473,7 @@ class SignalLocation(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.signal.code} â€” {self.location.name}"
+        return f"{self.signal.code} — {self.location.name}"
 
 
 class SignalHistory(models.Model):

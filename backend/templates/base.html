@@ -1,0 +1,49 @@
+{% load static %}
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>{% block title %}MEDINTEL OSINT{% endblock %}</title>
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{% static 'css/medintel.css' %}"
+    >
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <div class="page">
+        {% include "includes/sidebar.html" %}
+
+        <div class="page-wrapper">
+            {% include "includes/topbar.html" %}
+
+            <div class="page-body">
+                <div class="container-xl">
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"
+    ></script>
+
+    <script src="{% static 'js/medintel.js' %}"></script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

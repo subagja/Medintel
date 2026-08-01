@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}
+Dashboard | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header d-print-none">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                MEDINTEL OSINT
+            </div>
+
+            <h2 class="page-title">
+                Dashboard Ringkasan
+            </h2>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards">
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Sinyal Terdeteksi
+                </div>
+
+                <div class="h1 mb-0">
+                    1.248
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Artikel Tervalidasi
+                </div>
+
+                <div class="h1 mb-0">
+                    312
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Wilayah Prioritas
+                </div>
+
+                <div class="h1 mb-0">
+                    18
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Level Ancaman
+                </div>
+
+                <div class="h1 text-danger mb-0">
+                    Tinggi
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    Fondasi UI MEDINTEL
+                </h3>
+            </div>
+
+            <div class="card-body">
+                Tabler berhasil terhubung ke Django.
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

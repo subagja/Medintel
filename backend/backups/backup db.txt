@@ -58,4 +58,8 @@ python manage.py run_html_crawler --limit 1
 python manage.py audit_crawl_sources `
     --output data\exports\crawl_source_audit.json `
     --max-seeds 1 `
-    --max-links 100
+    --max-links 100\
+
+
+psql -U isur -d medintel_db `
+    -f "C:\Users\nubik\Downloads\seed_location_aliases_indonesia.sql"

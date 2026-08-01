@@ -1,0 +1,416 @@
+<aside
+    class="navbar navbar-vertical navbar-expand-lg"
+    data-bs-theme="dark"
+>
+    <div class="container-fluid">
+
+        <!-- Tombol sidebar pada layar kecil -->
+        <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#sidebar-menu"
+            aria-controls="sidebar-menu"
+            aria-expanded="false"
+            aria-label="Buka navigasi"
+        >
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- Identitas aplikasi -->
+        <h1 class="navbar-brand navbar-brand-autodark">
+            <a href="{% url 'dashboard:overview' %}">
+                <span class="medintel-brand">
+                    MEDINTEL OSINT
+                </span>
+            </a>
+        </h1>
+
+        <div
+            class="collapse navbar-collapse"
+            id="sidebar-menu"
+        >
+            <ul class="navbar-nav pt-lg-3">
+
+                <!-- Dashboard -->
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'dashboard' %} active{% endif %}"
+                        href="{% url 'dashboard:overview' %}"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 4h6v6H4z"></path>
+                                <path d="M14 4h6v6h-6z"></path>
+                                <path d="M4 14h6v6H4z"></path>
+                                <path d="M14 14h6v6h-6z"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Dashboard Ringkasan
+                        </span>
+                    </a>
+                </li>
+
+                <!-- Intelijen dan peringatan -->
+                <li class="nav-item mt-3">
+                    <span class="nav-link disabled medintel-menu-label">
+                        Intelijen & Peringatan
+                    </span>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'early_warning' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M10 5a2 2 0 0 1 4 0"></path>
+                                <path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"></path>
+                                <path d="M10 21h4"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Peringatan Dini
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'threat_map' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z"></path>
+                                <path d="M9 3v15"></path>
+                                <path d="M15 6v15"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Peta Ancaman
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'disease_priority' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M9 12h6"></path>
+                                <path d="M12 9v6"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Penyakit Prioritas
+                        </span>
+                    </a>
+                </li>
+
+                <!-- Pengumpulan dan pengolahan -->
+                <li class="nav-item mt-3">
+                    <span class="nav-link disabled medintel-menu-label">
+                        Pengumpulan & Pengolahan
+                    </span>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'sources' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="12" cy="12" r="9"></circle>
+                                <path d="M3.6 9h16.8"></path>
+                                <path d="M3.6 15h16.8"></path>
+                                <path d="M11.5 3a17 17 0 0 0 0 18"></path>
+                                <path d="M12.5 3a17 17 0 0 1 0 18"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Sumber OSINT
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'crawler' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                                <path d="M9 9h6v6H9z"></path>
+                                <path d="M9 1v3"></path>
+                                <path d="M15 1v3"></path>
+                                <path d="M9 20v3"></path>
+                                <path d="M15 20v3"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Crawler Artikel/Web
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'article_validation' %} active{% endif %}"
+                        href="{% url 'dashboard:article-validation' %}"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2h-5"></path>
+                                <path d="M3 15l2 2 4-4"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Validasi Artikel
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'entity_extraction' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 6h16"></path>
+                                <path d="M4 12h10"></path>
+                                <path d="M4 18h6"></path>
+                                <circle cx="18" cy="16" r="3"></circle>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Ekstraksi Entitas
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'geocoding' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="12" cy="11" r="3"></circle>
+                                <path d="M12 21c4-4 7-7.5 7-11a7 7 0 1 0-14 0c0 3.5 3 7 7 11"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Geocoding & Lokasi
+                        </span>
+                    </a>
+                </li>
+
+                <!-- Analisis dan produk intelijen -->
+                <li class="nav-item mt-3">
+                    <span class="nav-link disabled medintel-menu-label">
+                        Analisis & Produk Intelijen
+                    </span>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'assessment' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 19V9"></path>
+                                <path d="M10 19V5"></path>
+                                <path d="M16 19v-7"></path>
+                                <path d="M22 19H2"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Assessment Ancaman
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'recommendations' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M9 18h6"></path>
+                                <path d="M10 22h4"></path>
+                                <path d="M8 14a7 7 0 1 1 8 0c-1 1-1 2-1 3H9c0-1 0-2-1-3"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Rekomendasi
+                        </span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'reports' %} active{% endif %}"
+                        href="#"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
+                                <path d="M9 13h6"></path>
+                                <path d="M9 17h6"></path>
+                            </svg>
+                        </span>
+
+                        <span class="nav-link-title">
+                            Laporan & Arsip
+                        </span>
+                    </a>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+</aside>

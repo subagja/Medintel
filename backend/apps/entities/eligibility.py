@@ -11,26 +11,47 @@ from apps.entities.models import (
 )
 
 
+SCALED_NUMBER_PATTERN = (
+    r"(?P<count>"
+    r"(?:\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)"
+    r")"
+    r"\s*(?P<multiplier>ribu|juta|miliar)?"
+)
+
 COUNT_PATTERNS = (
     re.compile(
-        r"\b(?P<count>\d{1,3}(?:[.,]\d{3})*|\d+)\s+"
-        r"(?:kasus|pasien|penderita|orang\s+terinfeksi|"
-        r"orang\s+positif|korban|kematian|orang\s+meninggal)\b",
+        rf"\b{SCALED_NUMBER_PATTERN}\s+"
+        r"(?:kasus|pasien|penderita|korban|kematian|"
+        r"orang\s+terinfeksi|orang\s+positif|orang\s+meninggal)\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:sebanyak|tercatat|ditemukan|mencapai|melaporkan)\s+"
-        r"(?P<count>\d{1,3}(?:[.,]\d{3})*|\d+)\s+"
-        r"(?:kasus|pasien|penderita|orang|korban|kematian)\b",
+        rf"\b(?:sebanyak|tercatat|ditemukan|mencapai|sekitar|"
+        rf"melaporkan|mencatat)\s+{SCALED_NUMBER_PATTERN}\s+"
+        r"(?:kasus|pasien|penderita|korban|kematian|orang)\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"\bjumlah\s+(?:kasus|pasien|penderita|kematian)\s+"
-        r"(?:mencapai|menjadi|sebanyak)?\s*"
-        r"(?P<count>\d{1,3}(?:[.,]\d{3})*|\d+)\b",
+        rf"\bjumlah\s+(?:kasus|pasien|penderita|kematian)\s+"
+        rf"(?:mencapai|menjadi|sebanyak|sekitar)?\s*"
+        rf"{SCALED_NUMBER_PATTERN}\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b(?:kasus|pasien|penderita|kematian)\s+"
+        rf"[\wÀ-ÿ/-]+(?:\s+[\wÀ-ÿ/-]+){{0,8}}\s+"
+        rf"(?:sebanyak|mencapai|sekitar|tercatat)\s+"
+        rf"{SCALED_NUMBER_PATTERN}\b",
         flags=re.IGNORECASE,
     ),
 )
+
+
+NUMBER_MULTIPLIERS = {
+    "ribu": 1_000,
+    "juta": 1_000_000,
+    "miliar": 1_000_000_000,
+}
 
 
 @dataclass(frozen=True)
@@ -78,18 +99,29 @@ class SurveillanceEligibilityResult:
 
 
 def normalize_text(value: str) -> str:
-    normalized = value.casefold()
+    """
+    Normalisasi untuk disease, count, location, dan pengukuran konteks.
+
+    Titik dan koma dipertahankan agar angka seperti 1.538 dan
+    1,5 juta tidak berubah menjadi "1 538" atau "1 5 juta".
+    Semua extractor memakai teks normalisasi yang sama sehingga
+    posisi mention tetap berada pada sistem koordinat yang sama.
+    """
+    normalized = (value or "").casefold()
+
     normalized = re.sub(
-        r"[\W_]+",
+        r"[^\w\s.,]+",
         " ",
         normalized,
         flags=re.UNICODE,
     )
+
     normalized = re.sub(
         r"\s+",
         " ",
         normalized,
     )
+
     return normalized.strip()
 
 
@@ -123,14 +155,10 @@ def get_disease_term_index() -> tuple[
     )
 
     for disease in diseases:
-        terms = {
-            disease.name,
-        }
+        terms = {disease.name}
 
         if disease.canonical_name:
-            terms.add(
-                disease.canonical_name
-            )
+            terms.add(disease.canonical_name)
 
         terms.update(
             disease.aliases.filter(
@@ -179,9 +207,7 @@ def get_location_term_index() -> tuple[
     )
 
     for location in locations:
-        terms = {
-            location.name,
-        }
+        terms = {location.name}
 
         terms.update(
             location.aliases.filter(
@@ -212,6 +238,15 @@ def get_location_term_index() -> tuple[
     )
 
     return tuple(rows)
+
+
+def clear_eligibility_caches() -> None:
+    """
+    Dipanggil bila master penyakit/lokasi/alias berubah saat proses aktif.
+    Pada command crawler baru, cache otomatis baru saat proses berikutnya.
+    """
+    get_disease_term_index.cache_clear()
+    get_location_term_index.cache_clear()
 
 
 def extract_disease_mentions(
@@ -258,20 +293,46 @@ def extract_disease_mentions(
     )
 
 
-def _parse_count(raw_value: str) -> int:
+def parse_scaled_count(
+    raw_value: str,
+    multiplier: str | None,
+) -> int:
+    raw = raw_value.strip()
+    multiplier_key = (
+        multiplier.casefold()
+        if multiplier
+        else None
+    )
+
+    if multiplier_key:
+        # Bentuk desimal berskala:
+        # 1,5 juta / 1.5 juta.
+        decimal_value = float(
+            raw.replace(",", ".")
+        )
+        return int(
+            decimal_value
+            * NUMBER_MULTIPLIERS[multiplier_key]
+        )
+
+    # Tanpa multiplier, titik dan koma diperlakukan
+    # sebagai pemisah ribuan: 1.538 / 1,538.
     return int(
-        raw_value.replace(".", "").replace(",", "")
+        raw.replace(".", "").replace(",", "")
     )
 
 
 def extract_count_mentions(
     text: str,
 ) -> tuple[CountMention, ...]:
+    normalized_text = normalize_text(text)
     mentions: list[CountMention] = []
     occupied: list[tuple[int, int]] = []
 
     for pattern in COUNT_PATTERNS:
-        for match in pattern.finditer(text):
+        for match in pattern.finditer(
+            normalized_text
+        ):
             start, end = match.span()
 
             if any(
@@ -280,11 +341,20 @@ def extract_count_mentions(
             ):
                 continue
 
+            try:
+                value = parse_scaled_count(
+                    match.group("count"),
+                    match.groupdict().get("multiplier"),
+                )
+            except (
+                ValueError,
+                KeyError,
+            ):
+                continue
+
             mentions.append(
                 CountMention(
-                    value=_parse_count(
-                        match.group("count")
-                    ),
+                    value=value,
                     matched_text=match.group(0),
                     start=start,
                     end=end,
@@ -350,13 +420,6 @@ def evaluate_cheap_filter(
     content: str,
     preview_chars: int = 5000,
 ) -> CheapFilterResult:
-    """
-    Filter murah:
-    1. Hanya membaca judul + awal isi artikel.
-    2. Mencari penyakit.
-    3. Mencari angka epidemiologis.
-    4. Belum mencocokkan master lokasi.
-    """
     preview = (
         f"{title}\n"
         f"{content[:preview_chars]}"
@@ -404,21 +467,18 @@ def evaluate_cheap_filter(
 
 def _build_evidence(
     *,
-    text: str,
+    normalized_text: str,
     start: int,
     end: int,
     radius: int = 350,
 ) -> str:
     left = max(0, start - radius)
-    right = min(len(text), end + radius)
+    right = min(
+        len(normalized_text),
+        end + radius,
+    )
 
-    evidence = re.sub(
-        r"\s+",
-        " ",
-        text[left:right],
-    ).strip()
-
-    return evidence[:900]
+    return normalized_text[left:right].strip()[:900]
 
 
 def evaluate_surveillance_eligibility(
@@ -428,11 +488,6 @@ def evaluate_surveillance_eligibility(
     cheap_result: CheapFilterResult | None = None,
     max_context_distance: int = 900,
 ) -> SurveillanceEligibilityResult:
-    """
-    Filter mahal baru dijalankan setelah filter murah lolos.
-    Tahap ini mencocokkan lokasi dari master Location dan
-    memeriksa kedekatan disease + count + location.
-    """
     if cheap_result is None:
         cheap_result = evaluate_cheap_filter(
             title=title,
@@ -454,17 +509,16 @@ def evaluate_surveillance_eligibility(
         )
 
     full_text = f"{title}\n{content}".strip()
+    normalized_text = normalize_text(full_text)
 
-    # Penyakit dan angka dihitung ulang pada teks penuh
-    # hanya untuk artikel yang sudah lolos filter murah.
     diseases = extract_disease_mentions(
-        full_text
+        normalized_text
     )
     counts = extract_count_mentions(
-        full_text
+        normalized_text
     )
     locations = extract_location_mentions(
-        full_text
+        normalized_text
     )
 
     if not locations:
@@ -528,7 +582,7 @@ def evaluate_surveillance_eligibility(
         count_mentions=counts,
         location_mentions=locations,
         evidence_text=_build_evidence(
-            text=full_text,
+            normalized_text=normalized_text,
             start=best_span[0],
             end=best_span[1],
         ),

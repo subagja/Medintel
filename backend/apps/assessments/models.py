@@ -33,6 +33,226 @@ class AssessmentLevel(models.TextChoices):
     UNASSESSED = "unassessed", "Belum Dinilai"
 
 
+class ArticleValidationAssessment(models.Model):
+    """
+    Penilaian awal artikel sebelum artikel digunakan untuk membentuk
+    atau mendukung suatu sinyal intelijen.
+
+    Penilaian menggunakan Admiralty Code:
+    - A–F untuk reliabilitas sumber;
+    - 1–6 untuk kredibilitas informasi.
+    """
+
+    class ValidationStatus(models.TextChoices):
+        PENDING = "pending", "Perlu Tinjau"
+        VALIDATED = "validated", "Tervalidasi"
+        REJECTED = "rejected", "Tidak Relevan"
+
+    class SourceReliability(models.TextChoices):
+        A = "A", "Sepenuhnya dapat dipercaya"
+        B = "B", "Biasanya dapat dipercaya"
+        C = "C", "Cukup dapat dipercaya"
+        D = "D", "Biasanya tidak dapat dipercaya"
+        E = "E", "Tidak dapat dipercaya"
+        F = "F", "Belum dapat dinilai"
+
+    class InformationCredibility(models.IntegerChoices):
+        CONFIRMED = 1, "Dikonfirmasi oleh sumber lain"
+        PROBABLY_TRUE = 2, "Kemungkinan besar benar"
+        POSSIBLY_TRUE = 3, "Mungkin benar"
+        DOUBTFUL = 4, "Diragukan"
+        IMPROBABLE = 5, "Kemungkinan tidak benar"
+        UNASSESSABLE = 6, "Belum dapat dinilai"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    article = models.OneToOneField(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="validation_assessment",
+    )
+
+    validation_status = models.CharField(
+        max_length=20,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.PENDING,
+        db_index=True,
+    )
+
+    source_reliability = models.CharField(
+        max_length=1,
+        choices=SourceReliability.choices,
+        default=SourceReliability.F,
+        db_index=True,
+    )
+
+    information_credibility = models.PositiveSmallIntegerField(
+        choices=InformationCredibility.choices,
+        default=InformationCredibility.UNASSESSABLE,
+        db_index=True,
+    )
+
+    relevance_notes = models.TextField(
+        blank=True,
+    )
+
+    assessment_notes = models.TextField(
+        blank=True,
+    )
+
+    supporting_factors = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    limiting_factors = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    evaluated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="article_validation_assessments",
+        null=True,
+        blank=True,
+    )
+
+    evaluated_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(
+                fields=[
+                    "validation_status",
+                    "updated_at",
+                ],
+                name="article_validation_status_idx",
+            ),
+            models.Index(
+                fields=[
+                    "source_reliability",
+                    "information_credibility",
+                ],
+                name="article_admiralty_code_idx",
+            ),
+        ]
+
+    @property
+    def admiralty_code(self) -> str:
+        return (
+            f"{self.source_reliability}"
+            f"{self.information_credibility}"
+        )
+
+    def __str__(self) -> str:
+        return (
+            f"{self.article.title} — "
+            f"{self.admiralty_code}"
+        )
+
+
+class ArticleValidationHistory(models.Model):
+    """
+    Audit trail perubahan validasi dan neraca penilaian artikel.
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    assessment = models.ForeignKey(
+        ArticleValidationAssessment,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+
+    previous_status = models.CharField(
+        max_length=20,
+        choices=ArticleValidationAssessment.ValidationStatus.choices,
+        blank=True,
+    )
+
+    new_status = models.CharField(
+        max_length=20,
+        choices=ArticleValidationAssessment.ValidationStatus.choices,
+    )
+
+    previous_source_reliability = models.CharField(
+        max_length=1,
+        choices=ArticleValidationAssessment.SourceReliability.choices,
+        blank=True,
+    )
+
+    new_source_reliability = models.CharField(
+        max_length=1,
+        choices=ArticleValidationAssessment.SourceReliability.choices,
+    )
+
+    previous_information_credibility = (
+        models.PositiveSmallIntegerField(
+            choices=(
+                ArticleValidationAssessment
+                .InformationCredibility
+                .choices
+            ),
+            null=True,
+            blank=True,
+        )
+    )
+
+    new_information_credibility = (
+        models.PositiveSmallIntegerField(
+            choices=(
+                ArticleValidationAssessment
+                .InformationCredibility
+                .choices
+            ),
+        )
+    )
+
+    change_notes = models.TextField(
+        blank=True,
+    )
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="article_validation_history",
+        null=True,
+        blank=True,
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-changed_at"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.assessment.article.title} — "
+            f"{self.new_source_reliability}"
+            f"{self.new_information_credibility}"
+        )
+        
+
 class SourceEvaluation(models.Model):
     """
     Penilaian terhadap reliabilitas sumber dalam konteks sinyal tertentu.

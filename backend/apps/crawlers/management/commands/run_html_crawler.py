@@ -61,6 +61,17 @@ class Command(BaseCommand):
         )
 
         parser.add_argument(
+            "--candidate-limit",
+            type=int,
+            default=None,
+            help=(
+                "Batas maksimum kandidat listing yang benar-benar "
+                "diunduh per source. Default menggunakan setting "
+                "CRAWLER_CANDIDATE_LIMIT atau 30."
+            ),
+        )
+
+        parser.add_argument(
             "--list-ready",
             action="store_true",
             help=(
@@ -94,6 +105,7 @@ class Command(BaseCommand):
     ):
         source_code = options["source"]
         limit = options["limit"]
+        candidate_limit = options["candidate_limit"]
         list_ready = options["list_ready"]
         show_not_ready = options["show_not_ready"]
         stop_on_error = options["stop_on_error"]
@@ -101,6 +113,14 @@ class Command(BaseCommand):
         if limit is not None and limit < 1:
             raise CommandError(
                 "--limit minimal bernilai 1."
+            )
+
+        if (
+            candidate_limit is not None
+            and candidate_limit < 1
+        ):
+            raise CommandError(
+                "--candidate-limit minimal bernilai 1."
             )
 
         candidates = self._get_candidates(
@@ -230,6 +250,7 @@ class Command(BaseCommand):
             crawler = GenericHtmlCrawler(
                 source_code=source.code,
                 limit=effective_limit,
+                candidate_limit=candidate_limit,
             )
 
             try:

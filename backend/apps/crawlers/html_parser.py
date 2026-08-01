@@ -23,6 +23,13 @@ ARTICLE_JSONLD_TYPES = {
 
 
 @dataclass(frozen=True)
+class ArticleLinkCandidate:
+    url: str
+    anchor_text: str
+    context_text: str
+
+
+@dataclass(frozen=True)
 class ParsedArticle:
     title: str
     content: str
@@ -596,17 +603,131 @@ def extract_fallback_paragraphs(
     ).strip()
 
 
+def _extract_anchor_context(
+    anchor,
+) -> str:
+    """
+    Mengambil konteks kartu berita tanpa memakai container besar.
+
+    Prioritas:
+    1. elemen article terdekat;
+    2. elemen li terdekat;
+    3. parent langsung bila ukurannya masih kecil.
+    """
+    parts: list[str] = []
+
+    anchor_text = clean_text(
+        anchor.get_text(
+            " ",
+            strip=True,
+        )
+    )
+
+    if anchor_text:
+        parts.append(anchor_text)
+
+    title_attribute = clean_text(
+        anchor.get("title")
+    )
+
+    if (
+        title_attribute
+        and title_attribute not in parts
+    ):
+        parts.append(title_attribute)
+
+    image = anchor.find("img")
+
+    if image:
+        for attribute in ("alt", "title"):
+            image_text = clean_text(
+                image.get(attribute)
+            )
+
+            if (
+                image_text
+                and image_text not in parts
+            ):
+                parts.append(image_text)
+
+    card = (
+        anchor.find_parent("article")
+        or anchor.find_parent("li")
+    )
+
+    if card is None:
+        direct_parent = anchor.parent
+
+        if direct_parent is not None:
+            parent_text = clean_text(
+                direct_parent.get_text(
+                    " ",
+                    strip=True,
+                )
+            )
+            parent_link_count = len(
+                direct_parent.find_all(
+                    "a",
+                    href=True,
+                )
+            )
+
+            if (
+                len(parent_text) <= 1200
+                and parent_link_count <= 8
+            ):
+                card = direct_parent
+
+    if card is not None:
+        for selector in (
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            ".title",
+            ".headline",
+            ".summary",
+            ".description",
+            ".excerpt",
+            "p",
+        ):
+            node = card.select_one(selector)
+
+            if not node:
+                continue
+
+            text = clean_text(
+                node.get_text(
+                    " ",
+                    strip=True,
+                )
+            )
+
+            if (
+                text
+                and text not in parts
+            ):
+                parts.append(text)
+
+            if len(" ".join(parts)) >= 700:
+                break
+
+    return clean_text(
+        " ".join(parts)
+    )[:1000]
+
+
 def discover_article_links(
     *,
     html: str,
     page_url: str,
-) -> list[str]:
+) -> list[ArticleLinkCandidate]:
     soup = BeautifulSoup(
         html,
         "html.parser",
     )
 
-    discovered: list[str] = []
+    discovered: list[ArticleLinkCandidate] = []
     seen: set[str] = set()
 
     for anchor in soup.find_all(
@@ -644,7 +765,18 @@ def discover_article_links(
         )
 
         discovered.append(
-            absolute_url
+            ArticleLinkCandidate(
+                url=absolute_url,
+                anchor_text=clean_text(
+                    anchor.get_text(
+                        " ",
+                        strip=True,
+                    )
+                ),
+                context_text=_extract_anchor_context(
+                    anchor
+                ),
+            )
         )
 
     return discovered

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from apps.entities.eligibility import (
     evaluate_cheap_filter,
     evaluate_surveillance_eligibility,
+    extract_disease_mentions,
 )
 from apps.ingestion.dto import ArticlePayload
 from apps.sources.models import (
@@ -20,6 +21,7 @@ from apps.sources.services import (
 
 from .base import BaseCrawler
 from .html_parser import (
+    ArticleLinkCandidate,
     discover_article_links,
     parse_article_html,
 )
@@ -36,6 +38,89 @@ logger = logging.getLogger(__name__)
 
 
 MINIMUM_ARTICLE_CONTENT_LENGTH = 100
+
+
+STRONG_EPIDEMIOLOGICAL_TERMS = (
+    "wabah",
+    "klb",
+    "outbreak",
+    "terinfeksi",
+    "penularan",
+    "dinas kesehatan",
+    "kementerian kesehatan",
+)
+
+
+def listing_candidate_is_relevant(
+    candidate: ArticleLinkCandidate,
+) -> tuple[bool, str]:
+    url_path = (
+        urlparse(candidate.url)
+        .path
+        .replace("-", " ")
+        .replace("_", " ")
+    )
+
+    listing_text = " ".join(
+        value
+        for value in (
+            candidate.anchor_text,
+            candidate.context_text,
+            url_path,
+        )
+        if value
+    ).strip()
+
+    if not listing_text:
+        return (
+            False,
+            "Teks kandidat listing kosong.",
+        )
+
+    disease_mentions = extract_disease_mentions(
+        listing_text
+    )
+
+    if disease_mentions:
+        names = ", ".join(
+            sorted(
+                {
+                    mention.disease_name
+                    for mention in disease_mentions
+                }
+            )
+        )
+
+        return (
+            True,
+            f"Penyakit terdeteksi pada listing: {names}.",
+        )
+
+    normalized = listing_text.casefold()
+
+    strong_matches = [
+        term
+        for term in STRONG_EPIDEMIOLOGICAL_TERMS
+        if term in normalized
+    ]
+
+    if strong_matches:
+        return (
+            True,
+            (
+                "Istilah epidemiologis kuat terdeteksi: "
+                + ", ".join(strong_matches[:5])
+                + "."
+            ),
+        )
+
+    return (
+        False,
+        (
+            "Tidak ada penyakit atau istilah "
+            "epidemiologis kuat pada listing."
+        ),
+    )
 
 
 def _safe_debug_slug(url: str) -> str:
@@ -105,9 +190,12 @@ class GenericHtmlCrawler(BaseCrawler):
         *,
         source_code: str,
         limit: int | None = None,
+        candidate_limit: int | None = None,
     ) -> None:
         self.source_code = source_code
         self.limit = limit
+        self.candidate_limit = candidate_limit
+        self._candidate_checked = 0
 
     def _get_source(self) -> Source:
         try:
@@ -154,6 +242,25 @@ class GenericHtmlCrawler(BaseCrawler):
             self.limit,
             configured_limit,
         )
+
+    def _get_candidate_limit(self) -> int:
+        configured_limit = int(
+            getattr(
+                settings,
+                "CRAWLER_CANDIDATE_LIMIT",
+                30,
+            )
+        )
+
+        if self.candidate_limit is None:
+            return max(configured_limit, 1)
+
+        if self.candidate_limit < 1:
+            raise ValueError(
+                "Candidate limit minimal bernilai 1."
+            )
+
+        return self.candidate_limit
 
     def _parse_article(
         self,
@@ -452,7 +559,6 @@ class GenericHtmlCrawler(BaseCrawler):
                 seed.url,
                 exc,
             )
-
             return
 
         logger.info(
@@ -481,10 +587,11 @@ class GenericHtmlCrawler(BaseCrawler):
 
         yielded_count = 0
         rejected_count = 0
+        prefilter_rejected_count = 0
         duplicate_candidate_count = 0
         invalid_url_count = 0
 
-        for discovered_url in discovered_links:
+        for candidate in discovered_links:
             if yielded_count >= remaining_limit:
                 logger.info(
                     (
@@ -498,20 +605,18 @@ class GenericHtmlCrawler(BaseCrawler):
 
             try:
                 normalized_candidate = normalize_url(
-                    discovered_url
+                    candidate.url
                 )
             except ValueError as exc:
                 invalid_url_count += 1
-
                 logger.debug(
                     (
                         "URL kandidat tidak valid "
                         "url=%s error=%s"
                     ),
-                    discovered_url,
+                    candidate.url,
                     exc,
                 )
-
                 continue
 
             if normalized_candidate in processed_urls:
@@ -529,7 +634,6 @@ class GenericHtmlCrawler(BaseCrawler):
 
             if not validation.is_valid:
                 rejected_count += 1
-
                 logger.debug(
                     (
                         "Link kandidat ditolak "
@@ -539,16 +643,56 @@ class GenericHtmlCrawler(BaseCrawler):
                     normalized_candidate,
                     validation.reason,
                 )
-
                 continue
+
+            prefilter_passed, prefilter_reason = (
+                listing_candidate_is_relevant(
+                    candidate
+                )
+            )
+
+            if not prefilter_passed:
+                prefilter_rejected_count += 1
+                logger.debug(
+                    (
+                        "Link ditolak prefilter listing "
+                        "source=%s url=%s reason=%s"
+                    ),
+                    source.code,
+                    validation.normalized_url,
+                    prefilter_reason,
+                )
+                continue
+
+            if (
+                self._candidate_checked
+                >= self._get_candidate_limit()
+            ):
+                logger.info(
+                    (
+                        "Batas kandidat tercapai "
+                        "source=%s candidate_limit=%s"
+                    ),
+                    source.code,
+                    self._get_candidate_limit(),
+                )
+                break
+
+            # Counter bertambah hanya untuk URL valid yang
+            # benar-benar akan diunduh.
+            self._candidate_checked += 1
 
             logger.info(
                 (
-                    "Link kandidat diizinkan "
-                    "source=%s url=%s"
+                    "Link lolos prefilter listing "
+                    "source=%s checked=%s/%s "
+                    "url=%s reason=%s"
                 ),
                 source.code,
+                self._candidate_checked,
+                self._get_candidate_limit(),
                 validation.normalized_url,
+                prefilter_reason,
             )
 
             payload = self._parse_article(
@@ -566,7 +710,6 @@ class GenericHtmlCrawler(BaseCrawler):
                     source.code,
                     validation.normalized_url,
                 )
-
                 continue
 
             yielded_count += 1
@@ -587,18 +730,22 @@ class GenericHtmlCrawler(BaseCrawler):
                 "Ringkasan seed listing "
                 "source=%s discovered=%s "
                 "yielded=%s rejected=%s "
+                "prefilter_rejected=%s checked=%s "
                 "duplicate_candidates=%s invalid_urls=%s"
             ),
             source.code,
             len(discovered_links),
             yielded_count,
             rejected_count,
+            prefilter_rejected_count,
+            self._candidate_checked,
             duplicate_candidate_count,
             invalid_url_count,
         )
 
     def crawl(self) -> Iterable[ArticlePayload]:
         source = self._get_source()
+        self._candidate_checked = 0
 
         article_limit = self._get_article_limit(
             source
@@ -617,12 +764,13 @@ class GenericHtmlCrawler(BaseCrawler):
             (
                 "Crawler dimulai "
                 "source=%s strategy=%s "
-                "seed_count=%s limit=%s"
+                "seed_count=%s limit=%s candidate_limit=%s"
             ),
             source.code,
             source.crawl_strategy,
             seed_count,
             article_limit,
+            self._get_candidate_limit(),
         )
 
         if seed_count == 0:
