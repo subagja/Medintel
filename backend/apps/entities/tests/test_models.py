@@ -46,18 +46,20 @@ class EntityModelTests(TestCase):
             processing_status=Article.ProcessingStatus.VALIDATED,
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            canonical_name="Dengue Hemorrhagic Fever",
-            code="demam-berdarah-dengue",
-            category="Vector-borne",
-            is_priority=True,
+            defaults={
+                "canonical_name": "Dengue Hemorrhagic Fever",
+                "code": "demam-berdarah-dengue",
+                "category": "Vector-borne",
+                "is_priority": True,
+            },
         )
 
-        DiseaseAlias.objects.create(
+        DiseaseAlias.objects.get_or_create(
             disease=self.disease,
             alias="DBD",
-            language="id",
+            defaults={"language": "id"},
         )
 
         self.indonesia = Location.objects.create(

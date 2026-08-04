@@ -5,3 +5,6 @@ class EntitiesConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.entities"
     verbose_name = "Extracted Entities"
+
+    def ready(self) -> None:
+        from . import signals  # noqa: F401

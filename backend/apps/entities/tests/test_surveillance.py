@@ -23,21 +23,29 @@ class SurveillanceMatchingTests(TestCase):
             )
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            canonical_name="Dengue",
-            code="dbd-surveillance-test",
-            category="Penyakit Menular",
-            is_priority=True,
-            is_active=True,
+            defaults={
+                "canonical_name": "Dengue",
+                "code": "dbd-surveillance-test",
+                "category": "Penyakit Menular",
+                "is_priority": True,
+                "is_active": True,
+            },
         )
 
-        DiseaseAlias.objects.create(
+        DiseaseAlias.objects.get_or_create(
             disease=self.disease,
             alias="DBD",
-            language="id",
-            is_active=True,
+            defaults={
+                "language": "id",
+                "is_active": True,
+            },
         )
+
+        SurveillanceDisease.objects.filter(
+            disease=self.disease,
+        ).update(is_active=False)
 
         SurveillanceDisease.objects.create(
             program=self.program,

@@ -34,11 +34,13 @@ class RuleBasedFactExtractionTests(TestCase):
             is_active=True,
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            canonical_name="Dengue",
-            code="dbd-fact",
-            is_active=True,
+            defaults={
+                "canonical_name": "Dengue",
+                "code": "dbd-fact",
+                "is_active": True,
+            },
         )
 
         indonesia = Location.objects.create(

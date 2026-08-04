@@ -27,19 +27,21 @@ class RuleBasedEntityExtractionTests(TestCase):
             is_active=True,
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            canonical_name="Dengue",
-            code="dbd-extraction",
-            is_active=True,
+            defaults={
+                "canonical_name": "Dengue",
+                "code": "dbd-extraction",
+                "is_active": True,
+            },
         )
 
-        DiseaseAlias.objects.create(
+        DiseaseAlias.objects.get_or_create(
             disease=self.disease,
             alias="DBD",
         )
 
-        DiseaseAlias.objects.create(
+        DiseaseAlias.objects.get_or_create(
             disease=self.disease,
             alias="demam berdarah",
         )

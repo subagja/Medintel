@@ -5,6 +5,10 @@ from django.db import transaction
 
 from apps.articles.models import Article
 
+from ..geolocation import (
+    IndonesiaGeolocationResult,
+    resolve_indonesia_locations,
+)
 from ..models import (
     ArticleDisease,
     ArticleLocation,
@@ -25,6 +29,14 @@ class EntityMention:
     start: int
     end: int
     mention_count: int = 1
+    confidence_score: float | None = None
+    is_primary: bool = False
+    administrative_level: str = ""
+    country_code: str = ""
+    code: str = ""
+    parent_name: str = ""
+    latitude: str | None = None
+    longitude: str | None = None
 
 
 @dataclass
@@ -40,6 +52,59 @@ class EntityExtractionResult:
     diseases_updated: int = 0
     locations_created: int = 0
     locations_updated: int = 0
+    geolocation_scope: str = "unresolved"
+    ambiguous_location_terms: tuple[str, ...] = ()
+
+    @property
+    def primary_location(self) -> EntityMention | None:
+        return next(
+            (
+                mention
+                for mention in self.location_mentions
+                if mention.is_primary
+            ),
+            None,
+        )
+
+    def geolocation_metadata(self) -> dict:
+        primary = self.primary_location
+
+        return {
+            "scope": self.geolocation_scope,
+            "status": (
+                "resolved"
+                if primary
+                and primary.latitude is not None
+                and primary.longitude is not None
+                and not self.ambiguous_location_terms
+                else "needs_review"
+            ),
+            "primary_location": (
+                {
+                    "location_id": primary.entity_id,
+                    "name": primary.canonical_name,
+                    "code": primary.code,
+                    "administrative_level": (
+                        primary.administrative_level
+                    ),
+                    "parent_name": primary.parent_name,
+                    "latitude": primary.latitude,
+                    "longitude": primary.longitude,
+                    "confidence_score": (
+                        primary.confidence_score
+                    ),
+                    "is_mappable": bool(
+                        primary.latitude is not None
+                        and primary.longitude is not None
+                    ),
+                }
+                if primary
+                else None
+            ),
+            "ambiguous_terms": list(
+                self.ambiguous_location_terms
+            ),
+        }
 
 
 def normalize_for_matching(value: str) -> str:
@@ -214,43 +279,47 @@ def extract_disease_mentions(
     return mentions
 
 
-def extract_location_mentions(
+def _extract_location_geolocation(
     article: Article,
-) -> list[EntityMention]:
+) -> tuple[list[EntityMention], IndonesiaGeolocationResult]:
     text = normalize_for_matching(
         f"{article.title}\n{article.content_text}"
     )
-
-    mentions: list[EntityMention] = []
-
-    locations = Location.objects.filter(
-        is_active=True,
-    ).prefetch_related(
-        "aliases",
+    geolocation = resolve_indonesia_locations(
+        text,
+        title_length=len(article.title),
     )
-
-    for location in locations:
-        matches = collect_phrase_matches(
-            text=text,
-            phrases=get_location_phrases(location),
+    mentions = [
+        EntityMention(
+            entity_id=item.location_id,
+            canonical_name=item.location_name,
+            matched_text=item.matched_text,
+            start=item.start,
+            end=item.end,
+            mention_count=item.mention_count,
+            confidence_score=item.confidence_score,
+            is_primary=item.is_primary,
+            administrative_level=(
+                item.administrative_level
+            ),
+            country_code=item.country_code,
+            code=item.code,
+            parent_name=item.parent_name,
+            latitude=item.latitude,
+            longitude=item.longitude,
         )
+        for item in geolocation.mentions
+    ]
 
-        if not matches:
-            continue
+    return mentions, geolocation
 
-        first_match = matches[0]
 
-        mentions.append(
-            EntityMention(
-                entity_id=str(location.id),
-                canonical_name=location.name,
-                matched_text=first_match[0],
-                start=first_match[1],
-                end=first_match[2],
-                mention_count=len(matches),
-            )
-        )
-
+def extract_location_mentions(
+    article: Article,
+) -> list[EntityMention]:
+    mentions, _ = _extract_location_geolocation(
+        article
+    )
     return mentions
 
 
@@ -290,7 +359,7 @@ def extract_article_entities(
     disease_mentions = extract_disease_mentions(
         article
     )
-    location_mentions = extract_location_mentions(
+    location_mentions, geolocation = _extract_location_geolocation(
         article
     )
 
@@ -298,6 +367,10 @@ def extract_article_entities(
         article=article,
         disease_mentions=disease_mentions,
         location_mentions=location_mentions,
+        geolocation_scope=geolocation.scope,
+        ambiguous_location_terms=(
+            geolocation.ambiguous_terms
+        ),
     )
 
     for mention in disease_mentions:
@@ -326,17 +399,44 @@ def extract_article_entities(
         else:
             result.diseases_updated += 1
 
+    manual_primary_exists = ArticleLocation.objects.filter(
+        article=article,
+        is_primary=True,
+    ).exclude(
+        extraction_method=ExtractionMethod.RULE_BASED,
+        validation_status=ValidationStatus.UNREVIEWED,
+    ).exists()
+
+    if not manual_primary_exists:
+        ArticleLocation.objects.filter(
+            article=article,
+            extraction_method=ExtractionMethod.RULE_BASED,
+            validation_status=ValidationStatus.UNREVIEWED,
+            is_primary=True,
+        ).update(
+            is_primary=False,
+        )
+
+    detected_location_ids: set[str] = set()
+
     for mention in location_mentions:
         location = Location.objects.get(
             id=mention.entity_id,
         )
 
-        confidence = calculate_rule_confidence(
-            mention_count=mention.mention_count,
-            found_in_title=mention.start <= title_length,
+        detected_location_ids.add(str(location.id))
+        confidence = (
+            mention.confidence_score
+            if mention.confidence_score is not None
+            else calculate_rule_confidence(
+                mention_count=mention.mention_count,
+                found_in_title=(
+                    mention.start <= title_length
+                ),
+            )
         )
 
-        relation, created = ArticleLocation.objects.update_or_create(
+        relation, created = ArticleLocation.objects.get_or_create(
             article=article,
             location=location,
             defaults={
@@ -344,12 +444,45 @@ def extract_article_entities(
                 "confidence_score": confidence,
                 "extraction_method": ExtractionMethod.RULE_BASED,
                 "validation_status": ValidationStatus.UNREVIEWED,
+                "is_primary": (
+                    mention.is_primary
+                    and not manual_primary_exists
+                ),
             },
         )
 
         if created:
             result.locations_created += 1
         else:
+            if (
+                relation.extraction_method
+                == ExtractionMethod.RULE_BASED
+                and relation.validation_status
+                == ValidationStatus.UNREVIEWED
+            ):
+                relation.mention_text = mention.matched_text
+                relation.confidence_score = confidence
+                relation.is_primary = (
+                    mention.is_primary
+                    and not manual_primary_exists
+                )
+                relation.save(
+                    update_fields=[
+                        "mention_text",
+                        "confidence_score",
+                        "is_primary",
+                        "updated_at",
+                    ]
+                )
+
             result.locations_updated += 1
+
+    ArticleLocation.objects.filter(
+        article=article,
+        extraction_method=ExtractionMethod.RULE_BASED,
+        validation_status=ValidationStatus.UNREVIEWED,
+    ).exclude(
+        location_id__in=detected_location_ids,
+    ).delete()
 
     return result

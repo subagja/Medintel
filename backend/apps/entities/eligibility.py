@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
+from apps.entities.geolocation import (
+    clear_geolocation_cache,
+    resolve_indonesia_locations,
+)
 from apps.entities.models import (
     Disease,
     Location,
@@ -108,6 +112,12 @@ class LocationMention:
     matched_text: str
     start: int
     end: int
+    administrative_level: str = ""
+    country_code: str = "ID"
+    confidence_score: float = 0.0
+    is_primary: bool = False
+    latitude: str | None = None
+    longitude: str | None = None
 
 
 @dataclass(frozen=True)
@@ -277,6 +287,7 @@ def clear_eligibility_caches() -> None:
     """
     get_disease_term_index.cache_clear()
     get_location_term_index.cache_clear()
+    clear_geolocation_cache()
 
 
 def extract_disease_mentions(
@@ -589,45 +600,33 @@ def extract_count_mentions(
 
 def extract_location_mentions(
     text: str,
+    *,
+    title_length: int = 0,
+    anchor_spans: tuple[tuple[int, int], ...] = (),
 ) -> tuple[LocationMention, ...]:
-    normalized_text = normalize_text(text)
-    mentions: list[LocationMention] = []
-    occupied: list[tuple[int, int]] = []
-
-    for term, location_id, location_name in (
-        get_location_term_index()
-    ):
-        match = _phrase_pattern(term).search(
-            normalized_text
-        )
-
-        if match is None:
-            continue
-
-        start, end = match.span()
-
-        if any(
-            start < used_end and end > used_start
-            for used_start, used_end in occupied
-        ):
-            continue
-
-        mentions.append(
-            LocationMention(
-                location_id=location_id,
-                location_name=location_name,
-                matched_text=match.group(0),
-                start=start,
-                end=end,
-            )
-        )
-        occupied.append((start, end))
+    result = resolve_indonesia_locations(
+        text,
+        title_length=title_length,
+        anchor_spans=anchor_spans,
+    )
 
     return tuple(
-        sorted(
-            mentions,
-            key=lambda item: item.start,
+        LocationMention(
+            location_id=item.location_id,
+            location_name=item.location_name,
+            matched_text=item.matched_text,
+            start=item.start,
+            end=item.end,
+            administrative_level=(
+                item.administrative_level
+            ),
+            country_code=item.country_code,
+            confidence_score=item.confidence_score,
+            is_primary=item.is_primary,
+            latitude=item.latitude,
+            longitude=item.longitude,
         )
+        for item in result.mentions
     )
 
 
@@ -736,8 +735,14 @@ def evaluate_surveillance_eligibility(
     counts = extract_count_mentions(
         normalized_text
     )
+    anchor_spans = tuple(
+        (mention.start, mention.end)
+        for mention in (*diseases, *counts)
+    )
     locations = extract_location_mentions(
-        normalized_text
+        normalized_text,
+        title_length=len(normalize_text(title)),
+        anchor_spans=anchor_spans,
     )
 
     if not locations:
@@ -748,8 +753,8 @@ def evaluate_surveillance_eligibility(
             location_mentions=(),
             evidence_text="",
             reason=(
-                "Filter lokasi: lokasi kejadian "
-                "tidak teridentifikasi."
+                "Filter lokasi: lokasi kejadian Indonesia "
+                "belum dapat dinormalisasi."
             ),
         )
 
@@ -807,6 +812,6 @@ def evaluate_surveillance_eligibility(
         ),
         reason=(
             "Artikel memuat penyakit, jumlah kejadian, "
-            "dan lokasi dalam konteks yang berdekatan."
+            "dan lokasi Indonesia dalam konteks yang berdekatan."
         ),
     )

@@ -46,6 +46,7 @@ def evaluate_article_eligibility(
 
     has_location = ArticleLocation.objects.filter(
         article=article,
+        location__country_code="ID",
     ).exists()
 
     facts = ArticleFact.objects.filter(
@@ -304,6 +305,9 @@ class Command(BaseCommand):
 
         pipeline_metadata = {
             **(article.raw_metadata or {}),
+            "geolocation": (
+                entity_result.geolocation_metadata()
+            ),
             "processing_pipeline": {
                 "processed_at": timezone.now().isoformat(),
                 "eligibility": (
@@ -314,6 +318,9 @@ class Command(BaseCommand):
                 "reason": eligibility.reason,
                 "has_disease": eligibility.has_disease,
                 "has_location": eligibility.has_location,
+                "geographic_scope": (
+                    entity_result.geolocation_scope
+                ),
                 "has_numeric_fact": (
                     eligibility.has_numeric_fact
                 ),

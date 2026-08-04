@@ -63,9 +63,9 @@ class ExtractionReviewTests(TestCase):
             ),
         )
 
-        self.dbd = Disease.objects.create(
+        self.dbd, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-review",
+            defaults={"code": "dbd-review"},
         )
 
         self.polio = Disease.objects.create(

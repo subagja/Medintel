@@ -625,9 +625,20 @@ class GenericHtmlCrawler(BaseCrawler):
                     "location_id": mention.location_id,
                     "location_name": mention.location_name,
                     "matched_text": mention.matched_text,
+                    "administrative_level": (
+                        mention.administrative_level
+                    ),
+                    "country_code": mention.country_code,
+                    "confidence_score": (
+                        mention.confidence_score
+                    ),
+                    "is_primary": mention.is_primary,
+                    "latitude": mention.latitude,
+                    "longitude": mention.longitude,
                 }
                 for mention in eligibility.location_mentions
             ],
+            "geographic_scope": "domestic",
             "evidence_text": eligibility.evidence_text,
         }
 
