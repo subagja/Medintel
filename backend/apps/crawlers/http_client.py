@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import ssl
 import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
-import certifi
 import requests
+import truststore
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -34,6 +35,59 @@ class RobotsDeniedError(CrawlerHttpError):
     """URL tidak diizinkan oleh robots.txt."""
 
 
+class SystemTrustStoreAdapter(HTTPAdapter):
+    """
+    Adapter HTTPS yang memvalidasi sertifikat melalui trust store OS.
+
+    Pada Windows, truststore memakai CryptoAPI sehingga rantai sertifikat
+    yang dipercaya oleh sistem dan intermediate certificate yang diperlukan
+    dapat digunakan tanpa menonaktifkan verifikasi TLS.
+    """
+
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ) -> None:
+        self.ssl_context = truststore.SSLContext(
+            ssl.PROTOCOL_TLS_CLIENT
+        )
+        super().__init__(
+            *args,
+            **kwargs,
+        )
+
+    def init_poolmanager(
+        self,
+        connections,
+        maxsize,
+        block=False,
+        **pool_kwargs,
+    ):
+        pool_kwargs["ssl_context"] = (
+            self.ssl_context
+        )
+        return super().init_poolmanager(
+            connections,
+            maxsize,
+            block=block,
+            **pool_kwargs,
+        )
+
+    def proxy_manager_for(
+        self,
+        proxy,
+        **proxy_kwargs,
+    ):
+        proxy_kwargs["ssl_context"] = (
+            self.ssl_context
+        )
+        return super().proxy_manager_for(
+            proxy,
+            **proxy_kwargs,
+        )
+
+
 @dataclass(frozen=True)
 class HttpPage:
     requested_url: str
@@ -47,7 +101,7 @@ class CrawlerHttpClient:
     """
     HTTP client crawler yang:
     - menghormati robots.txt;
-    - memakai CA bundle certifi;
+    - memakai trust store sistem operasi;
     - menerapkan delay per source;
     - melakukan retry terbatas untuk gangguan sementara;
     - tidak menonaktifkan verifikasi SSL;
@@ -66,10 +120,6 @@ class CrawlerHttpClient:
         )
 
         self.session = requests.Session()
-
-        # Gunakan CA bundle yang konsisten lintas OS,
-        # terutama untuk instalasi Python pada Windows.
-        self.session.verify = certifi.where()
 
         self.session.headers.update(
             {
@@ -113,7 +163,13 @@ class CrawlerHttpClient:
             raise_on_status=False,
         )
 
-        adapter = HTTPAdapter(
+        https_adapter = SystemTrustStoreAdapter(
+            max_retries=retry,
+            pool_connections=10,
+            pool_maxsize=10,
+        )
+
+        http_adapter = HTTPAdapter(
             max_retries=retry,
             pool_connections=10,
             pool_maxsize=10,
@@ -121,11 +177,11 @@ class CrawlerHttpClient:
 
         self.session.mount(
             "https://",
-            adapter,
+            https_adapter,
         )
         self.session.mount(
             "http://",
-            adapter,
+            http_adapter,
         )
 
         self._last_request_time: float | None = None
@@ -196,8 +252,8 @@ class CrawlerHttpClient:
                 (
                     "Verifikasi SSL gagal untuk "
                     f"{url}: {exc}. "
-                    "CA bundle yang digunakan: "
-                    f"{certifi.where()}"
+                    "Sertifikat telah diperiksa "
+                    "menggunakan trust store sistem operasi."
                 )
             ) from exc
 

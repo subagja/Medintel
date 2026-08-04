@@ -12,11 +12,9 @@ Validasi Artikel | MEDINTEL OSINT
             <div class="page-pretitle">
                 Pengumpulan dan Pengolahan
             </div>
-
             <h2 class="page-title">
                 Validasi Artikel
             </h2>
-
             <div class="text-secondary mt-1">
                 Pemeriksaan relevansi, kelengkapan, serta kualitas
                 informasi artikel OSINT.
@@ -24,7 +22,6 @@ Validasi Artikel | MEDINTEL OSINT
         </div>
     </div>
 </div>
-
 
 {% if messages %}
     {% for message in messages %}
@@ -40,10 +37,7 @@ Validasi Artikel | MEDINTEL OSINT
             alert-dismissible"
             role="alert"
         >
-            <div>
-                {{ message }}
-            </div>
-
+            <div>{{ message }}</div>
             <a
                 class="btn-close"
                 data-bs-dismiss="alert"
@@ -53,16 +47,11 @@ Validasi Artikel | MEDINTEL OSINT
     {% endfor %}
 {% endif %}
 
-
 <div class="row row-deck row-cards mb-3">
-
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <div class="card">
             <div class="card-body">
-                <div class="text-secondary">
-                    Artikel Masuk
-                </div>
-
+                <div class="text-secondary">Artikel Ditampilkan</div>
                 <div class="h1 mb-0">
                     {{ summary.total|default:0 }}
                 </div>
@@ -70,72 +59,67 @@ Validasi Artikel | MEDINTEL OSINT
         </div>
     </div>
 
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <div class="card">
             <div class="card-body">
-                <div class="text-secondary">
-                    Perlu Tinjau
-                </div>
-
-                <div class="h1 text-warning mb-0">
-                    {{ summary.pending|default:0 }}
+                <div class="text-secondary">Eligible</div>
+                <div class="h1 text-success mb-0">
+                    {{ summary.eligible|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <div class="card">
             <div class="card-body">
-                <div class="text-secondary">
-                    Tervalidasi
+                <div class="text-secondary">Data Belum Lengkap</div>
+                <div class="h1 text-warning mb-0">
+                    {{ summary.needs_review|default:0 }}
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <div class="h1 text-success mb-0">
+    <div class="col-sm-6 col-xl">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">Tervalidasi</div>
+                <div class="h1 text-primary mb-0">
                     {{ summary.validated|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <div class="card">
             <div class="card-body">
-                <div class="text-secondary">
-                    Tidak Relevan
-                </div>
-
+                <div class="text-secondary">Tidak Relevan</div>
                 <div class="h1 text-danger mb-0">
                     {{ summary.rejected|default:0 }}
                 </div>
             </div>
         </div>
     </div>
-
 </div>
-
 
 <div class="row row-cards">
 
-    <!-- Daftar artikel -->
     <div class="col-lg-5">
         <div class="card">
 
             <div class="card-header">
                 <div>
-                    <h3 class="card-title">
-                        Daftar Artikel
-                    </h3>
-
+                    <h3 class="card-title">Daftar Artikel</h3>
                     <div class="text-secondary small">
-                        Pilih artikel untuk diperiksa.
+                        Pilih artikel untuk diperiksa analis.
                     </div>
                 </div>
             </div>
 
             <div class="card-body border-bottom py-3">
-                <div class="row g-2">
-
+                <div class="row g-2 mb-2">
                     <div class="col">
                         <input
                             type="search"
@@ -151,24 +135,50 @@ Validasi Artikel | MEDINTEL OSINT
                             id="article-status-filter"
                             class="form-select"
                         >
-                            <option value="">
-                                Semua status
-                            </option>
-
-                            <option value="pending">
-                                Perlu tinjau
-                            </option>
-
-                            <option value="validated">
-                                Tervalidasi
-                            </option>
-
-                            <option value="rejected">
-                                Tidak relevan
-                            </option>
+                            <option value="">Semua status</option>
+                            <option value="pending">Perlu tinjau</option>
+                            <option value="validated">Tervalidasi</option>
+                            <option value="rejected">Tidak relevan</option>
                         </select>
                     </div>
+                </div>
 
+                <div class="btn-group w-100" role="group">
+                    <a
+                        href="{% url 'dashboard:article-validation' %}?eligibility=all"
+                        class="btn btn-sm
+                        {% if eligibility_filter == 'all' %}
+                            btn-primary
+                        {% else %}
+                            btn-outline-primary
+                        {% endif %}"
+                    >
+                        Semua
+                    </a>
+
+                    <a
+                        href="{% url 'dashboard:article-validation' %}?eligibility=eligible"
+                        class="btn btn-sm
+                        {% if eligibility_filter == 'eligible' %}
+                            btn-success
+                        {% else %}
+                            btn-outline-success
+                        {% endif %}"
+                    >
+                        Eligible
+                    </a>
+
+                    <a
+                        href="{% url 'dashboard:article-validation' %}?eligibility=needs_review"
+                        class="btn btn-sm
+                        {% if eligibility_filter == 'needs_review' %}
+                            btn-warning
+                        {% else %}
+                            btn-outline-warning
+                        {% endif %}"
+                    >
+                        Data Belum Lengkap
+                    </a>
                 </div>
             </div>
 
@@ -176,13 +186,10 @@ Validasi Artikel | MEDINTEL OSINT
                 class="list-group list-group-flush medintel-article-list"
                 id="article-list"
             >
-
                 {% for article in articles %}
-
                     {% with article_assessment=article.validation_assessment %}
-
                         <a
-                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}"
+                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}&eligibility={{ eligibility_filter }}"
                             class="
                                 list-group-item
                                 list-group-item-action
@@ -196,26 +203,21 @@ Validasi Artikel | MEDINTEL OSINT
                             data-status="{{ article_assessment.validation_status|default:'pending' }}"
                         >
                             <div class="d-flex align-items-start gap-2">
-
                                 <div class="flex-fill">
-
                                     <div class="fw-semibold mb-1">
                                         {{ article.title }}
                                     </div>
 
                                     <div class="small opacity-75">
                                         {{ article.source }}
-
                                         {% if article.published_at %}
-                                            ·
-                                            {{ article.published_at|date:"d M Y, H:i" }}
+                                            · {{ article.published_at|date:"d M Y, H:i" }}
                                         {% else %}
                                             · Waktu publikasi tidak tersedia
                                         {% endif %}
                                     </div>
 
                                     <div class="small mt-2">
-
                                         {% for disease in article.diseases.all|slice:":2" %}
                                             <span class="badge bg-blue-lt me-1">
                                                 {{ disease }}
@@ -225,23 +227,30 @@ Validasi Artikel | MEDINTEL OSINT
                                                 Penyakit belum diekstraksi
                                             </span>
                                         {% endfor %}
-
                                     </div>
 
+                                    <div class="small mt-2">
+                                        {% if article.has_extracted_disease and article.has_extracted_location and article.has_numeric_fact %}
+                                            <span class="badge bg-success-lt">
+                                                Eligible
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-warning-lt">
+                                                Data belum lengkap
+                                            </span>
+                                        {% endif %}
+                                    </div>
                                 </div>
 
                                 <div class="ms-2 text-end">
-
                                     {% if article_assessment.validation_status == "validated" %}
                                         <span class="badge bg-success-lt">
                                             Valid
                                         </span>
-
                                     {% elif article_assessment.validation_status == "rejected" %}
                                         <span class="badge bg-danger-lt">
                                             Tidak relevan
                                         </span>
-
                                     {% else %}
                                         <span class="badge bg-warning-lt">
                                             Tinjau
@@ -253,56 +262,26 @@ Validasi Artikel | MEDINTEL OSINT
                                             {{ article_assessment.admiralty_code }}
                                         </div>
                                     {% endif %}
-
                                 </div>
-
                             </div>
                         </a>
-
                     {% endwith %}
-
                 {% empty %}
-
                     <div class="empty py-5">
-                        <div class="empty-icon">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="40"
-                                height="40"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
-                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
-                            </svg>
-                        </div>
-
                         <p class="empty-title">
                             Belum ada artikel
                         </p>
-
                         <p class="empty-subtitle text-secondary">
                             Artikel hasil crawling akan ditampilkan di sini.
                         </p>
                     </div>
-
                 {% endfor %}
-
             </div>
-
         </div>
     </div>
 
-
-    <!-- Detail artikel -->
     <div class="col-lg-7">
-
         {% if selected_article and assessment_form %}
-
             <form method="post">
                 {% csrf_token %}
 
@@ -313,123 +292,284 @@ Validasi Artikel | MEDINTEL OSINT
                 >
 
                 <div class="card">
-
                     <div class="card-header">
                         <div>
                             <h3 class="card-title">
                                 Detail Pemeriksaan
                             </h3>
-
                             <div class="text-secondary small">
                                 Artikel terpilih
                             </div>
                         </div>
 
                         <div class="card-actions">
-
                             {% if assessment.validation_status == "validated" %}
                                 <span class="badge bg-success-lt">
                                     Tervalidasi
                                 </span>
-
                             {% elif assessment.validation_status == "rejected" %}
                                 <span class="badge bg-danger-lt">
                                     Tidak Relevan
                                 </span>
-
                             {% else %}
                                 <span class="badge bg-warning-lt">
                                     Perlu Tinjau
                                 </span>
                             {% endif %}
-
                         </div>
                     </div>
 
-
                     <div class="card-body">
-
                         <h2 class="h3 mb-2">
                             {{ selected_article.title }}
                         </h2>
 
-                        <div class="text-secondary mb-4">
+                        <div class="text-secondary mb-3">
                             {{ selected_article.source }}
-
                             {% if selected_article.author %}
                                 · {{ selected_article.author }}
                             {% endif %}
-
                             {% if selected_article.published_at %}
-                                ·
-                                {{ selected_article.published_at|date:"d M Y, H:i" }}
+                                · {{ selected_article.published_at|date:"d M Y, H:i" }}
                             {% endif %}
                         </div>
 
+                        {% if selected_eligibility.is_eligible %}
+                            <div class="alert alert-success">
+                                <div class="fw-semibold">
+                                    Artikel eligible untuk divalidasi
+                                </div>
+                                <div class="small">
+                                    Penyakit, lokasi, dan fakta numerik
+                                    telah ditemukan.
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <div class="fw-semibold">
+                                    Data ekstraksi belum lengkap
+                                </div>
+                                <div class="small">
+                                    Pemeriksaan analis tetap dapat dilakukan,
+                                    tetapi unsur yang belum ditemukan perlu
+                                    dikoreksi pada modul ekstraksi.
+                                </div>
+                            </div>
+                        {% endif %}
 
                         <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <div class="card card-sm h-100">
+                                    <div class="card-body">
+                                        <div class="text-secondary small mb-2">
+                                            Penyakit
+                                        </div>
 
-                            <div class="col-md-6">
-                                <div class="text-secondary small mb-1">
-                                    Penyakit
-                                </div>
+                                        {% for relation in selected_diseases %}
+                                            <div class="mb-2">
+                                                <span class="badge bg-blue-lt">
+                                                    {{ relation.disease.name }}
+                                                </span>
 
-                                <div>
-                                    {% for disease in selected_article.diseases.all %}
-                                        <span class="badge bg-blue-lt me-1 mb-1">
-                                            {{ disease }}
-                                        </span>
-                                    {% empty %}
-                                        <span class="text-secondary">
-                                            Belum diekstraksi
-                                        </span>
-                                    {% endfor %}
-                                </div>
-                            </div>
+                                                {% if relation.is_primary %}
+                                                    <span class="badge bg-primary-lt">
+                                                        Utama
+                                                    </span>
+                                                {% endif %}
 
+                                                <div class="small text-secondary mt-1">
+                                                    {% if relation.mention_text %}
+                                                        {{ relation.mention_text }}
+                                                    {% endif %}
 
-                            <div class="col-md-6">
-                                <div class="text-secondary small mb-1">
-                                    Lokasi
-                                </div>
-
-                                <div>
-                                    {% for location in selected_article.locations.all %}
-                                        <span class="badge bg-azure-lt me-1 mb-1">
-                                            {{ location }}
-                                        </span>
-                                    {% empty %}
-                                        <span class="text-secondary">
-                                            Belum ditemukan
-                                        </span>
-                                    {% endfor %}
-                                </div>
-                            </div>
-
-
-                            <div class="col-md-6">
-                                <div class="text-secondary small mb-1">
-                                    Status pemrosesan
-                                </div>
-
-                                <div class="fw-semibold">
-                                    {{ selected_article.get_processing_status_display }}
+                                                    {% if relation.confidence_score != None %}
+                                                        · Conf.
+                                                        {{ relation.confidence_score|floatformat:2 }}
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% empty %}
+                                            <span class="text-secondary">
+                                                Belum ditemukan
+                                            </span>
+                                        {% endfor %}
+                                    </div>
                                 </div>
                             </div>
 
+                            <div class="col-md-4">
+                                <div class="card card-sm h-100">
+                                    <div class="card-body">
+                                        <div class="text-secondary small mb-2">
+                                            Lokasi
+                                        </div>
 
-                            <div class="col-md-6">
-                                <div class="text-secondary small mb-1">
-                                    Waktu crawling
-                                </div>
+                                        {% for relation in selected_locations %}
+                                            <div class="mb-2">
+                                                <span class="badge bg-azure-lt">
+                                                    {{ relation.location.name }}
+                                                </span>
 
-                                <div class="fw-semibold">
-                                    {{ selected_article.crawled_at|date:"d M Y, H:i" }}
+                                                {% if relation.is_primary %}
+                                                    <span class="badge bg-primary-lt">
+                                                        Utama
+                                                    </span>
+                                                {% endif %}
+
+                                                <div class="small text-secondary mt-1">
+                                                    {% if relation.mention_text %}
+                                                        {{ relation.mention_text }}
+                                                    {% endif %}
+
+                                                    {% if relation.confidence_score != None %}
+                                                        · Conf.
+                                                        {{ relation.confidence_score|floatformat:2 }}
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        {% empty %}
+                                            <span class="text-secondary">
+                                                Belum ditemukan
+                                            </span>
+                                        {% endfor %}
+                                    </div>
                                 </div>
                             </div>
 
+                            <div class="col-md-4">
+                                <div class="card card-sm h-100">
+                                    <div class="card-body">
+                                        <div class="text-secondary small mb-2">
+                                            Kelengkapan
+                                        </div>
+
+                                        <div class="mb-2">
+                                            {% if selected_eligibility.has_disease %}
+                                                <span class="badge bg-success-lt">
+                                                    Penyakit ✓
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger-lt">
+                                                    Penyakit ×
+                                                </span>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="mb-2">
+                                            {% if selected_eligibility.has_location %}
+                                                <span class="badge bg-success-lt">
+                                                    Lokasi ✓
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger-lt">
+                                                    Lokasi ×
+                                                </span>
+                                            {% endif %}
+                                        </div>
+
+                                        <div>
+                                            {% if selected_eligibility.has_numeric_fact %}
+                                                <span class="badge bg-success-lt">
+                                                    Jumlah ✓
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-danger-lt">
+                                                    Jumlah ×
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
+                        <div class="mb-4">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <div>
+                                    <div class="fw-semibold">
+                                        Fakta Terekstraksi
+                                    </div>
+                                    <div class="text-secondary small">
+                                        Fakta numerik dan bukti pendukung artikel.
+                                    </div>
+                                </div>
+                                <span class="badge bg-secondary-lt">
+                                    {{ selected_facts|length }} fakta
+                                </span>
+                            </div>
+
+                            {% if selected_facts %}
+                                <div class="table-responsive">
+                                    <table class="table table-vcenter">
+                                        <thead>
+                                            <tr>
+                                                <th>Penyakit</th>
+                                                <th>Lokasi</th>
+                                                <th>Kasus</th>
+                                                <th>Kematian</th>
+                                                <th>Rawat Inap</th>
+                                                <th>Tren</th>
+                                                <th>Confidence</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for fact in selected_facts %}
+                                                <tr>
+                                                    <td>
+                                                        {% if fact.disease %}
+                                                            {{ fact.disease.name }}
+                                                        {% else %}
+                                                            —
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if fact.location %}
+                                                            {{ fact.location.name }}
+                                                        {% else %}
+                                                            —
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {{ fact.case_count|default_if_none:"—" }}
+                                                    </td>
+                                                    <td>
+                                                        {{ fact.death_count|default_if_none:"—" }}
+                                                    </td>
+                                                    <td>
+                                                        {{ fact.hospitalized_count|default_if_none:"—" }}
+                                                    </td>
+                                                    <td>
+                                                        {{ fact.get_trend_display }}
+                                                    </td>
+                                                    <td>
+                                                        {% if fact.confidence_score != None %}
+                                                            {{ fact.confidence_score|floatformat:2 }}
+                                                        {% else %}
+                                                            —
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+
+                                                {% if fact.fact_text %}
+                                                    <tr>
+                                                        <td colspan="7" class="pt-0">
+                                                            <div class="small text-secondary">
+                                                                <strong>Bukti:</strong>
+                                                                {{ fact.fact_text }}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning mb-0">
+                                    Belum ada fakta numerik yang dapat ditampilkan.
+                                </div>
+                            {% endif %}
+                        </div>
 
                         <div class="mb-4">
                             <div class="text-secondary small mb-1">
@@ -440,7 +580,7 @@ Validasi Artikel | MEDINTEL OSINT
                                 {% if selected_article.excerpt %}
                                     {{ selected_article.excerpt }}
                                 {% else %}
-                                    {{ selected_article.content_text|truncatewords:80 }}
+                                    {{ selected_article.content_text|truncatewords:100 }}
                                 {% endif %}
                             </div>
 
@@ -456,23 +596,15 @@ Validasi Artikel | MEDINTEL OSINT
                             </div>
                         </div>
 
-
                         {% if assessment_form.non_field_errors %}
                             <div class="alert alert-danger">
                                 {% for error in assessment_form.non_field_errors %}
-                                    <div>
-                                        {{ error }}
-                                    </div>
+                                    <div>{{ error }}</div>
                                 {% endfor %}
                             </div>
                         {% endif %}
 
-
-                        <ul
-                            class="nav nav-tabs mb-3"
-                            role="tablist"
-                        >
-
+                        <ul class="nav nav-tabs mb-3" role="tablist">
                             <li class="nav-item">
                                 <button
                                     class="nav-link active"
@@ -508,20 +640,15 @@ Validasi Artikel | MEDINTEL OSINT
                                     Riwayat
                                 </button>
                             </li>
-
                         </ul>
 
-
                         <div class="tab-content">
-
-                            <!-- Tab Validasi -->
                             <div
                                 class="tab-pane fade active show"
                                 id="tab-validation"
                                 role="tabpanel"
                             >
                                 <div class="row g-3">
-
                                     <div class="col-md-6">
                                         <label
                                             class="form-label"
@@ -539,12 +666,10 @@ Validasi Artikel | MEDINTEL OSINT
                                         {% endfor %}
                                     </div>
 
-
                                     <div class="col-md-6">
                                         <label class="form-label">
-                                            Status artikel
+                                            Status pipeline
                                         </label>
-
                                         <input
                                             type="text"
                                             class="form-control"
@@ -552,7 +677,6 @@ Validasi Artikel | MEDINTEL OSINT
                                             disabled
                                         >
                                     </div>
-
 
                                     <div class="col-12">
                                         <label
@@ -570,19 +694,15 @@ Validasi Artikel | MEDINTEL OSINT
                                             </div>
                                         {% endfor %}
                                     </div>
-
                                 </div>
                             </div>
 
-
-                            <!-- Tab Neraca Informasi -->
                             <div
                                 class="tab-pane fade"
                                 id="tab-information-assessment"
                                 role="tabpanel"
                             >
                                 <div class="row g-3">
-
                                     <div class="col-md-6">
                                         <label
                                             class="form-label"
@@ -598,13 +718,7 @@ Validasi Artikel | MEDINTEL OSINT
                                                 {{ error }}
                                             </div>
                                         {% endfor %}
-
-                                        <div class="form-hint">
-                                            Penilaian terhadap reliabilitas
-                                            sumber penerbit artikel.
-                                        </div>
                                     </div>
-
 
                                     <div class="col-md-6">
                                         <label
@@ -621,48 +735,16 @@ Validasi Artikel | MEDINTEL OSINT
                                                 {{ error }}
                                             </div>
                                         {% endfor %}
-
-                                        <div class="form-hint">
-                                            Penilaian terhadap kebenaran dan
-                                            dukungan bukti atas isi informasi.
-                                        </div>
                                     </div>
-
 
                                     <div class="col-12">
-                                        <div class="medintel-assessment-result">
-
-                                            <div>
-                                                <div class="text-secondary small">
-                                                    Nilai akhir
-                                                </div>
-
-                                                <div
-                                                    class="medintel-assessment-code"
-                                                    id="admiralty-code-preview"
-                                                >
-                                                    {{ assessment.admiralty_code }}
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <div class="fw-semibold">
-                                                    Neraca Penilaian Informasi
-                                                </div>
-
-                                                <div
-                                                    class="text-secondary"
-                                                    id="admiralty-code-description"
-                                                >
-                                                    Reliabilitas sumber dan
-                                                    kredibilitas informasi
-                                                    dinilai secara terpisah.
-                                                </div>
-                                            </div>
-
+                                        <div class="alert alert-info">
+                                            Nilai Admiralty Code:
+                                            <strong>
+                                                {{ assessment.admiralty_code }}
+                                            </strong>
                                         </div>
                                     </div>
-
 
                                     <div class="col-12">
                                         <label
@@ -680,23 +762,17 @@ Validasi Artikel | MEDINTEL OSINT
                                             </div>
                                         {% endfor %}
                                     </div>
-
                                 </div>
                             </div>
 
-
-                            <!-- Tab Riwayat -->
                             <div
                                 class="tab-pane fade"
                                 id="tab-history"
                                 role="tabpanel"
                             >
-
                                 {% if assessment_history %}
-
                                     <div class="table-responsive">
                                         <table class="table table-vcenter">
-
                                             <thead>
                                                 <tr>
                                                     <th>Waktu</th>
@@ -706,16 +782,12 @@ Validasi Artikel | MEDINTEL OSINT
                                                     <th>Status</th>
                                                 </tr>
                                             </thead>
-
                                             <tbody>
-
                                                 {% for history in assessment_history %}
                                                     <tr>
-
                                                         <td class="text-nowrap">
                                                             {{ history.changed_at|date:"d M Y H:i" }}
                                                         </td>
-
                                                         <td>
                                                             {% if history.changed_by %}
                                                                 {{ history.changed_by.get_username }}
@@ -723,73 +795,34 @@ Validasi Artikel | MEDINTEL OSINT
                                                                 Sistem
                                                             {% endif %}
                                                         </td>
-
                                                         <td>
                                                             {% if history.previous_source_reliability %}
-                                                                <span class="badge bg-secondary-lt">
-                                                                    {{ history.previous_source_reliability }}{{ history.previous_information_credibility }}
-                                                                </span>
+                                                                {{ history.previous_source_reliability }}{{ history.previous_information_credibility }}
                                                             {% else %}
                                                                 —
                                                             {% endif %}
                                                         </td>
-
                                                         <td>
-                                                            <span class="badge bg-blue-lt">
-                                                                {{ history.new_source_reliability }}{{ history.new_information_credibility }}
-                                                            </span>
+                                                            {{ history.new_source_reliability }}{{ history.new_information_credibility }}
                                                         </td>
-
                                                         <td>
                                                             {{ history.get_new_status_display }}
                                                         </td>
-
                                                     </tr>
-
-                                                    {% if history.change_notes %}
-                                                        <tr>
-                                                            <td></td>
-
-                                                            <td
-                                                                colspan="4"
-                                                                class="text-secondary small pt-0"
-                                                            >
-                                                                {{ history.change_notes }}
-                                                            </td>
-                                                        </tr>
-                                                    {% endif %}
-
                                                 {% endfor %}
-
                                             </tbody>
                                         </table>
                                     </div>
-
                                 {% else %}
-
                                     <div class="empty py-5">
-                                        <div class="empty-header">
-                                            0
-                                        </div>
-
                                         <p class="empty-title">
                                             Belum ada riwayat penilaian
                                         </p>
-
-                                        <p class="empty-subtitle text-secondary">
-                                            Perubahan nilai dan keputusan analis
-                                            akan ditampilkan di bagian ini.
-                                        </p>
                                     </div>
-
                                 {% endif %}
-
                             </div>
-
                         </div>
-
                     </div>
-
 
                     <div class="card-footer d-flex justify-content-end">
                         <button
@@ -799,50 +832,58 @@ Validasi Artikel | MEDINTEL OSINT
                             Simpan Penilaian
                         </button>
                     </div>
-
                 </div>
             </form>
-
         {% else %}
-
             <div class="card">
                 <div class="card-body">
-
                     <div class="empty py-5">
-                        <div class="empty-icon">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="48"
-                                height="48"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
-                                <path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path>
-                            </svg>
-                        </div>
-
                         <p class="empty-title">
                             Belum ada artikel yang dapat diperiksa
                         </p>
-
-                        <p class="empty-subtitle text-secondary">
-                            Jalankan crawler terlebih dahulu atau pastikan
-                            data artikel sudah tersedia.
-                        </p>
                     </div>
-
                 </div>
             </div>
-
         {% endif %}
-
     </div>
-
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const searchInput = document.getElementById("article-search");
+    const statusFilter = document.getElementById("article-status-filter");
+    const articleItems = document.querySelectorAll(".medintel-article-item");
+
+    function applyFilters() {
+        const query = (searchInput?.value || "").trim().toLowerCase();
+        const status = statusFilter?.value || "";
+
+        articleItems.forEach(function (item) {
+            const title = item.dataset.title || "";
+            const source = item.dataset.source || "";
+            const itemStatus = item.dataset.status || "pending";
+
+            const textMatches = (
+                !query
+                || title.includes(query)
+                || source.includes(query)
+            );
+
+            const statusMatches = (
+                !status
+                || itemStatus === status
+            );
+
+            item.classList.toggle(
+                "d-none",
+                !(textMatches && statusMatches),
+            );
+        });
+    }
+
+    searchInput?.addEventListener("input", applyFilters);
+    statusFilter?.addEventListener("change", applyFilters);
+});
+</script>
 
 {% endblock %}

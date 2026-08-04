@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Detail Crawler | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Crawler Artikel/Web</div>
+            <h2 class="page-title">{{ job.source.name }}</h2>
+            <div class="text-secondary mt-1">Job {{ job.id }}</div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali ke Riwayat</a>
+        </div>
+    </div>
+</div>
+
+{% if job.error_message %}
+    <div class="alert alert-danger" role="alert">
+        <div class="fw-semibold mb-1">Proses gagal</div>
+        <div>{{ job.error_message }}</div>
+    </div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="text-secondary">Status</div>
+                <div class="mt-1">
+                    {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
+                    {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
+                    {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
+                    {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                    {% else %}<span class="badge bg-secondary-lt">{{ job.get_status_display }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-secondary">Mulai</div>
+                <div class="fw-semibold">{{ job.started_at|date:"d M Y H:i:s"|default:"-" }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-secondary">Selesai</div>
+                <div class="fw-semibold">{{ job.finished_at|date:"d M Y H:i:s"|default:"-" }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-secondary">Durasi</div>
+                <div class="fw-semibold">{{ duration_label }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Kandidat</div><div class="h1 mb-0">{{ job.total_found }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Artikel Baru</div><div class="h1 text-success mb-0">{{ job.total_created }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Duplikat</div><div class="h1 mb-0">{{ job.total_duplicate }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Ditolak</div><div class="h1 text-warning mb-0">{{ job.total_rejected }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Gagal</div><div class="h1 text-danger mb-0">{{ job.total_failed }}</div></div></div></div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Detail Kandidat</h3>
+            <div class="text-secondary small">Alasan berasal dari tahap validasi URL, prefilter, filter lengkap, ingestion, atau koneksi HTTP.</div>
+        </div>
+    </div>
+    <div class="card-body border-bottom py-3">
+        <form method="get" class="row g-2">
+            <div class="col-md-6">
+                <input class="form-control" type="search" name="q" value="{{ search_query }}" placeholder="Cari judul, URL, alasan, atau error">
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" name="status">
+                    <option value="">Semua status</option>
+                    {% for value, label in item_statuses %}
+                        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-outline-primary flex-fill" type="submit">Terapkan</button>
+                <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Reset</a>
+            </div>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead><tr><th>Kandidat</th><th>Status</th><th>Alasan / Error</th><th>Tahap</th><th>Diproses</th></tr></thead>
+            <tbody>
+                {% for item in page_obj %}
+                    <tr>
+                        <td style="min-width: 320px;">
+                            <div class="fw-semibold">{{ item.title|default:"Tanpa judul"|truncatechars:100 }}</div>
+                            {% if item.normalized_url %}
+                                <a class="text-secondary small text-break" href="{{ item.normalized_url }}" target="_blank" rel="noopener noreferrer">{{ item.normalized_url|truncatechars:110 }}</a>
+                            {% else %}
+                                <span class="text-secondary small text-break">{{ item.original_url|truncatechars:110 }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.status == "created" %}<span class="badge bg-success-lt">Dibuat</span>
+                            {% elif item.status == "duplicate" %}<span class="badge bg-secondary-lt">Duplikat</span>
+                            {% elif item.status == "rejected" %}<span class="badge bg-warning-lt">Ditolak</span>
+                            {% elif item.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                            {% else %}<span class="badge bg-blue-lt">Ditemukan</span>{% endif %}
+                        </td>
+                        <td style="min-width: 300px;">
+                            {% if item.error_message %}<div class="text-danger">{{ item.error_message }}</div>{% endif %}
+                            {% if item.reason %}<div>{{ item.reason }}</div>{% endif %}
+                            {% if not item.error_message and not item.reason %}<span class="text-secondary">-</span>{% endif %}
+                        </td>
+                        <td><span class="text-secondary">{{ item.metadata.stage|default:"ingestion" }}</span></td>
+                        <td class="text-nowrap">{{ item.processed_at|date:"d M Y H:i:s"|default:"-" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5" class="text-center text-secondary py-5">Tidak ada kandidat untuk filter ini.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

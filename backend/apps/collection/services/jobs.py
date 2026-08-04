@@ -64,6 +64,12 @@ def complete_collection_job(
         ]
     )
 
+    Source.objects.filter(
+        pk=job.source_id,
+    ).update(
+        last_crawled_at=job.finished_at,
+    )
+
     return job
 
 
@@ -72,20 +78,53 @@ def fail_collection_job(
     *,
     job: CollectionJob,
     error_message: str,
+    total_found: int | None = None,
+    total_created: int | None = None,
+    total_duplicate: int | None = None,
+    total_rejected: int | None = None,
+    total_failed: int | None = None,
 ) -> CollectionJob:
     job.status = CollectionJob.Status.FAILED
     job.finished_at = timezone.now()
     job.error_message = error_message
-    job.total_failed = max(job.total_failed, 1)
+
+    if total_found is not None:
+        job.total_found = total_found
+
+    if total_created is not None:
+        job.total_created = total_created
+
+    if total_duplicate is not None:
+        job.total_duplicate = total_duplicate
+
+    if total_rejected is not None:
+        job.total_rejected = total_rejected
+
+    failed_count = (
+        job.total_failed
+        if total_failed is None
+        else total_failed
+    )
+    job.total_failed = max(failed_count, 1)
 
     job.save(
         update_fields=[
             "status",
             "finished_at",
             "error_message",
+            "total_found",
+            "total_created",
+            "total_duplicate",
+            "total_rejected",
             "total_failed",
             "updated_at",
         ]
+    )
+
+    Source.objects.filter(
+        pk=job.source_id,
+    ).update(
+        last_crawled_at=job.finished_at,
     )
 
     return job

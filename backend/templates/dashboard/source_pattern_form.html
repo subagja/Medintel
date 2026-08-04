@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ form_title }} | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                Sumber OSINT
+            </div>
+
+            <h2 class="page-title">
+                {{ form_title }}
+            </h2>
+
+            <div class="text-secondary mt-1">
+                {{ source.name }} · {{ source.domain }}
+            </div>
+        </div>
+
+        <div class="col-auto">
+            <a
+                href="{% url 'dashboard:source-detail' source.id %}"
+                class="btn btn-outline-secondary"
+            >
+                Kembali
+            </a>
+        </div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                Konfigurasi Pola URL
+            </h3>
+        </div>
+
+        <div class="card-body">
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="row g-3">
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        {{ form.pattern_type.label }}
+                    </label>
+                    {{ form.pattern_type }}
+                    {{ form.pattern_type.errors }}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        {{ form.match_type.label }}
+                    </label>
+                    {{ form.match_type }}
+                    {{ form.match_type.errors }}
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">
+                        {{ form.pattern.label }}
+                    </label>
+                    {{ form.pattern }}
+
+                    {% for error in form.pattern.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ error }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">
+                        {{ form.priority.label }}
+                    </label>
+                    {{ form.priority }}
+                    {{ form.priority.errors }}
+                </div>
+
+                <div class="col-md-8">
+                    <label class="form-label">
+                        {{ form.description.label }}
+                    </label>
+                    {{ form.description }}
+                    {{ form.description.errors }}
+                </div>
+
+                <div class="col-12">
+                    <div class="form-check">
+                        {{ form.is_active }}
+
+                        <label class="form-check-label">
+                            {{ form.is_active.label }}
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="card-footer d-flex justify-content-end">
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+                {{ submit_label }}
+            </button>
+        </div>
+    </div>
+</form>
+
+{% endblock %}

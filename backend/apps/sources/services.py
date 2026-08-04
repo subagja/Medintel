@@ -403,6 +403,36 @@ def check_source_crawl_readiness(
 ) -> SourceCrawlReadiness:
     errors: list[str] = []
 
+    active_seed_count = getattr(
+        source,
+        "active_seed_count",
+        None,
+    )
+    active_allow_pattern_count = getattr(
+        source,
+        "active_allow_pattern_count",
+        None,
+    )
+
+    has_active_seed = (
+        active_seed_count > 0
+        if active_seed_count is not None
+        else source.seed_urls.filter(
+            is_active=True,
+        ).exists()
+    )
+
+    has_active_allow_pattern = (
+        active_allow_pattern_count > 0
+        if active_allow_pattern_count is not None
+        else source.url_patterns.filter(
+            is_active=True,
+            pattern_type=(
+                SourceUrlPattern.PatternType.ALLOW
+            ),
+        ).exists()
+    )
+
     if not source.is_active:
         errors.append(
             "Sumber tidak aktif."
@@ -420,10 +450,17 @@ def check_source_crawl_readiness(
 
     if (
         source.crawl_strategy
+        == Source.CrawlStrategy.MANUAL
+    ):
+        errors.append(
+            "Strategi manual tidak dapat diproses "
+            "oleh crawler otomatis."
+        )
+
+    if (
+        source.crawl_strategy
         != Source.CrawlStrategy.MANUAL
-        and not source.seed_urls.filter(
-            is_active=True,
-        ).exists()
+        and not has_active_seed
     ):
         errors.append(
             "Sumber belum memiliki "
@@ -433,12 +470,7 @@ def check_source_crawl_readiness(
     if (
         source.crawl_strategy
         != Source.CrawlStrategy.MANUAL
-        and not source.url_patterns.filter(
-            is_active=True,
-            pattern_type=(
-                SourceUrlPattern.PatternType.ALLOW
-            ),
-        ).exists()
+        and not has_active_allow_pattern
     ):
         errors.append(
             "Sumber belum memiliki "

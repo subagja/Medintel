@@ -167,7 +167,7 @@
                 <li class="nav-item">
                     <a
                         class="nav-link{% if active_menu == 'sources' %} active{% endif %}"
-                        href="#"
+                        href="{% url 'dashboard:source-list' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -197,7 +197,7 @@
 
                 <li class="nav-item">
                     <a
-                        class="nav-link{% if active_menu == 'crawler' %} active{% endif %}"
+                        class="nav-link{% if active_menu == 'crawler-artikel' %} active{% endif %}"
                         href="#"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">

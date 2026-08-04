@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Review Indikator | MEDINTEL{% endblock %}
+{% block content %}
+<div class="page-header mb-3">
+  <div class="row align-items-center"><div class="col">
+    <div class="page-pretitle">Analisis dan Pengembangan Sinyal</div>
+    <h2 class="page-title">Review Indikator</h2>
+    <div class="text-secondary mt-1">Validasi indikator sebelum membentuk atau memperkuat signal.</div>
+  </div></div>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %}">{{ message }}</div>
+{% endfor %}{% endif %}
+
+<div class="row row-cards mb-3">
+  <div class="col"><div class="card"><div class="card-body"><div class="text-secondary">Seluruh</div><div class="h1">{{ summary.all }}</div></div></div></div>
+  <div class="col"><div class="card"><div class="card-body"><div class="text-secondary">Perlu Review</div><div class="h1 text-warning">{{ summary.needs_review }}</div></div></div></div>
+  <div class="col"><div class="card"><div class="card-body"><div class="text-secondary">Tervalidasi</div><div class="h1 text-success">{{ summary.validated }}</div></div></div></div>
+  <div class="col"><div class="card"><div class="card-body"><div class="text-secondary">Dikoreksi</div><div class="h1 text-primary">{{ summary.corrected }}</div></div></div></div>
+  <div class="col"><div class="card"><div class="card-body"><div class="text-secondary">Ditolak</div><div class="h1 text-danger">{{ summary.rejected }}</div></div></div></div>
+</div>
+
+<div class="row row-cards">
+  <div class="col-lg-5"><div class="card">
+    <div class="card-header"><h3 class="card-title">Antrean Indikator</h3></div>
+    <div class="card-body border-bottom"><div class="btn-group w-100">
+      <a href="?status=needs_review" class="btn btn-sm {% if status_filter == 'needs_review' %}btn-warning{% else %}btn-outline-warning{% endif %}">Perlu Review</a>
+      <a href="?status=validated" class="btn btn-sm {% if status_filter == 'validated' %}btn-success{% else %}btn-outline-success{% endif %}">Tervalidasi</a>
+      <a href="?status=all" class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">Semua</a>
+    </div></div>
+    <div class="list-group list-group-flush">
+      {% for indicator in indicators %}
+      <a href="?indicator={{ indicator.id }}&status={{ status_filter }}" class="list-group-item list-group-item-action {% if selected_indicator and indicator.id == selected_indicator.id %}active{% endif %}">
+        <div class="fw-semibold">{{ indicator.indicator_type.name }}</div>
+        <div class="small opacity-75">{{ indicator.disease|default:"Tanpa penyakit" }} · {{ indicator.location|default:"Tanpa lokasi" }}</div>
+        <div class="small mt-2">{{ indicator.summary|truncatewords:18 }}</div>
+      </a>
+      {% empty %}<div class="empty py-5"><p class="empty-title">Tidak ada indikator</p></div>{% endfor %}
+    </div>
+  </div></div>
+
+  <div class="col-lg-7">
+    {% if selected_indicator and review_form %}
+    <form method="post">{% csrf_token %}
+      <input type="hidden" name="indicator_id" value="{{ selected_indicator.id }}">
+      <div class="card">
+        <div class="card-header"><div><h3 class="card-title">Detail Indikator</h3><div class="text-secondary small">{{ selected_indicator.indicator_type.code }}</div></div><div class="card-actions"><span class="badge bg-warning-lt">{{ selected_indicator.get_status_display }}</span></div></div>
+        <div class="card-body">
+          <div class="row g-3">
+            {% for field in review_form %}
+            <div class="{% if field.name == 'summary' or field.name == 'review_notes' %}col-12{% else %}col-md-6{% endif %}"><label class="form-label">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            {% endfor %}
+          </div>
+          <hr><h3 class="h4">Bukti Pendukung</h3>
+          {% for evidence in evidences %}<div class="card card-sm mb-2"><div class="card-body"><div class="fw-semibold">{{ evidence.article.title }}</div><div class="small text-secondary mt-1">{{ evidence.evidence_text|default:"Evidence text belum tersedia." }}</div></div></div>{% empty %}<div class="alert alert-warning">Indikator belum memiliki bukti pendukung.</div>{% endfor %}
+          {% if linked_signals %}<hr><h3 class="h4">Signal Terkait</h3>{% for relation in linked_signals %}<div class="alert alert-info"><strong>{{ relation.signal.code }}</strong> — {{ relation.signal.title }}</div>{% endfor %}{% endif %}
+          <hr><div class="d-flex flex-wrap gap-2">
+            <button type="submit" name="action" value="validate" class="btn btn-success">Validasi & Bentuk Signal</button>
+            <button type="submit" name="action" value="correct" class="btn btn-primary">Simpan Koreksi & Bentuk Signal</button>
+            <button type="submit" name="action" value="reject" class="btn btn-danger">Tolak Indikator</button>
+          </div>
+        </div>
+      </div>
+    </form>
+    {% else %}<div class="card"><div class="card-body"><div class="empty py-5"><p class="empty-title">Belum ada indikator untuk direview</p></div></div></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

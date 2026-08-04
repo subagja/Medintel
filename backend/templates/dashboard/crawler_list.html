@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Crawler Artikel/Web | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan OSINT</div>
+            <h2 class="page-title">Crawler Artikel/Web</h2>
+            <div class="text-secondary mt-1">
+                Jalankan crawler dan telusuri hasil penerimaan, penolakan,
+                duplikasi, serta kegagalan setiap kandidat artikel.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible" role="alert">
+            <div>{{ message }}</div>
+            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Total Proses</div>
+            <div class="h1 mb-0">{{ summary.total_jobs|default:0 }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Sedang Berjalan</div>
+            <div class="h1 text-primary mb-0">{{ summary.running_jobs|default:0 }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Artikel Baru</div>
+            <div class="h1 text-success mb-0">{{ summary.total_created|default:0 }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Kandidat Ditolak</div>
+            <div class="h1 text-warning mb-0">{{ summary.total_rejected|default:0 }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Gagal</div>
+            <div class="h1 text-danger mb-0">{{ summary.total_failed|default:0 }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Jalankan Crawler</h3>
+            <div class="text-secondary small">
+                Hanya sumber HTML berstatus Siap Crawling yang dapat dipilih.
+            </div>
+        </div>
+    </div>
+    <form method="post" action="{% url 'dashboard:crawler-run' %}">
+        {% csrf_token %}
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label" for="crawler-source">Sumber</label>
+                    <select class="form-select" id="crawler-source" name="source" required>
+                        <option value="">Pilih sumber</option>
+                        {% if ready_sources %}
+                            <option value="all">Semua sumber siap ({{ ready_sources|length }})</option>
+                        {% endif %}
+                        {% for source in ready_sources %}
+                            <option value="{{ source.code }}">{{ source.name }} ({{ source.code }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="crawler-limit">Maks. artikel</label>
+                    <input class="form-control" id="crawler-limit" name="limit" type="number" min="1" max="1000" placeholder="Ikuti konfigurasi sumber">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="candidate-limit">Maks. kandidat diunduh</label>
+                    <input class="form-control" id="candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Default sistem">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" type="submit" {% if not ready_sources %}disabled{% endif %}>
+                        Jalankan
+                    </button>
+                </div>
+            </div>
+            <div class="form-hint mt-2">
+                Proses berjalan langsung. Biarkan halaman tetap terbuka sampai hasil ditampilkan.
+            </div>
+            {% if not ready_sources %}
+                <div class="alert alert-warning mt-3 mb-0" role="alert">
+                    Belum ada sumber HTML berstatus Siap Crawling. Periksa konfigurasi pada menu Sumber OSINT.
+                </div>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Riwayat Collection Job</h3>
+            <div class="text-secondary small">Satu baris mewakili satu eksekusi crawler pada satu sumber.</div>
+        </div>
+    </div>
+    <div class="card-body border-bottom py-3">
+        <form method="get" class="row g-2">
+            <div class="col-md-5">
+                <select class="form-select" name="source">
+                    <option value="">Semua sumber</option>
+                    {% for source in filter_sources %}
+                        <option value="{{ source.code }}" {% if selected_source == source.code %}selected{% endif %}>{{ source.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <select class="form-select" name="status">
+                    <option value="">Semua status</option>
+                    {% for value, label in job_statuses %}
+                        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-outline-primary flex-fill" type="submit">Terapkan</button>
+                <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Reset</a>
+            </div>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>Sumber</th>
+                    <th>Status</th>
+                    <th class="text-center">Kandidat</th>
+                    <th class="text-center">Baru</th>
+                    <th class="text-center">Duplikat</th>
+                    <th class="text-center">Ditolak</th>
+                    <th class="text-center">Gagal</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in page_obj %}
+                    <tr>
+                        <td class="text-nowrap">
+                            <div>{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</div>
+                            <div class="text-secondary small">{{ job.get_trigger_type_display|default:job.trigger_type }}</div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ job.source.name }}</div>
+                            <div class="text-secondary small">{{ job.source.code }}</div>
+                        </td>
+                        <td>
+                            {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
+                            {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
+                            {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
+                            {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                            {% elif job.status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
+                            {% else %}<span class="badge bg-secondary-lt">Menunggu</span>{% endif %}
+                        </td>
+                        <td class="text-center">{{ job.total_found }}</td>
+                        <td class="text-center text-success">{{ job.total_created }}</td>
+                        <td class="text-center">{{ job.total_duplicate }}</td>
+                        <td class="text-center text-warning">{{ job.total_rejected }}</td>
+                        <td class="text-center text-danger">{{ job.total_failed }}</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="9" class="text-center text-secondary py-5">Belum ada riwayat crawler untuk filter ini.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_source %}&source={{ selected_source }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_source %}&source={{ selected_source }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

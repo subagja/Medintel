@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ form_title }} | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+
+        <div class="col">
+            <div class="page-pretitle">
+                Sumber OSINT
+            </div>
+
+            <h2 class="page-title">
+                {{ form_title }}
+            </h2>
+
+            <div class="text-secondary mt-1">
+                {{ source.name }} · {{ source.domain }}
+            </div>
+        </div>
+
+        <div class="col-auto">
+            <a
+                href="{% url 'dashboard:source-detail' source.id %}"
+                class="btn btn-outline-secondary"
+            >
+                Kembali
+            </a>
+        </div>
+
+    </div>
+</div>
+
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card">
+
+        <div class="card-header">
+            <h3 class="card-title">
+                Konfigurasi URL Awal
+            </h3>
+        </div>
+
+        <div class="card-body">
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label class="form-label">
+                    {{ form.url.label }}
+                </label>
+
+                {{ form.url }}
+
+                {% for error in form.url.errors %}
+                    <div class="invalid-feedback d-block">
+                        {{ error }}
+                    </div>
+                {% endfor %}
+            </div>
+
+            <div class="row g-3">
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        {{ form.seed_type.label }}
+                    </label>
+
+                    {{ form.seed_type }}
+
+                    {% for error in form.seed_type.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ error }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">
+                        {{ form.priority.label }}
+                    </label>
+
+                    {{ form.priority }}
+
+                    {% for error in form.priority.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ error }}
+                        </div>
+                    {% endfor %}
+                </div>
+
+            </div>
+
+            <div class="form-check my-3">
+                {{ form.is_active }}
+
+                <label class="form-check-label">
+                    {{ form.is_active.label }}
+                </label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">
+                    {{ form.notes.label }}
+                </label>
+
+                {{ form.notes }}
+
+                {% for error in form.notes.errors %}
+                    <div class="invalid-feedback d-block">
+                        {{ error }}
+                    </div>
+                {% endfor %}
+            </div>
+
+        </div>
+
+        <div class="card-footer d-flex justify-content-end">
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+                {{ submit_label }}
+            </button>
+        </div>
+
+    </div>
+</form>
+
+{% endblock %}

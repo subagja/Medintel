@@ -30,6 +30,10 @@ from .http_client import (
     CrawlerHttpError,
     RobotsDeniedError,
 )
+from .results import (
+    CrawlItemEvent,
+    CrawlItemStatus,
+)
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -169,6 +173,28 @@ def save_debug_html(
     )
 
 
+def _mention_terms(mention) -> list[str]:
+    matched_terms = getattr(
+        mention,
+        "matched_terms",
+        None,
+    )
+
+    if isinstance(matched_terms, str):
+        return [matched_terms]
+
+    if matched_terms:
+        return list(matched_terms)
+
+    matched_text = getattr(
+        mention,
+        "matched_text",
+        "",
+    )
+
+    return [matched_text] if matched_text else []
+
+
 class GenericHtmlCrawler(BaseCrawler):
     """
     Crawler HTML generik.
@@ -196,6 +222,29 @@ class GenericHtmlCrawler(BaseCrawler):
         self.limit = limit
         self.candidate_limit = candidate_limit
         self._candidate_checked = 0
+
+    def _record_item(
+        self,
+        *,
+        original_url: str,
+        status: str,
+        normalized_url: str = "",
+        title: str = "",
+        reason: str = "",
+        error_message: str = "",
+        metadata: dict | None = None,
+    ) -> None:
+        self.emit_item_event(
+            CrawlItemEvent(
+                original_url=original_url,
+                normalized_url=normalized_url,
+                title=title,
+                status=status,
+                reason=reason,
+                error_message=error_message,
+                metadata=metadata or {},
+            )
+        )
 
     def _get_source(self) -> Source:
         try:
@@ -275,6 +324,18 @@ class GenericHtmlCrawler(BaseCrawler):
         )
 
         if not validation.is_valid:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=(
+                    validation.normalized_url
+                ),
+                status=CrawlItemStatus.REJECTED,
+                reason=validation.reason,
+                metadata={
+                    "stage": "url_validation",
+                },
+            )
+
             logger.info(
                 (
                     "URL ditolak "
@@ -295,6 +356,21 @@ class GenericHtmlCrawler(BaseCrawler):
             CrawlerHttpError,
             RobotsDeniedError,
         ) as exc:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=(
+                    validation.normalized_url
+                ),
+                status=CrawlItemStatus.FAILED,
+                reason=(
+                    "Halaman artikel gagal diambil."
+                ),
+                error_message=str(exc),
+                metadata={
+                    "stage": "article_download",
+                },
+            )
+
             logger.warning(
                 (
                     "Gagal mengambil artikel "
@@ -315,6 +391,20 @@ class GenericHtmlCrawler(BaseCrawler):
         )
 
         if not redirected_url_validation.is_valid:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=page.final_url,
+                status=CrawlItemStatus.REJECTED,
+                reason=(
+                    "URL hasil redirect ditolak: "
+                    + redirected_url_validation.reason
+                ),
+                metadata={
+                    "stage": "redirect_validation",
+                    "final_url": page.final_url,
+                },
+            )
+
             logger.info(
                 (
                     "URL hasil redirect ditolak "
@@ -333,6 +423,16 @@ class GenericHtmlCrawler(BaseCrawler):
         )
 
         if not parsed.title:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=page.final_url,
+                status=CrawlItemStatus.REJECTED,
+                reason="Judul artikel tidak ditemukan.",
+                metadata={
+                    "stage": "article_parsing",
+                },
+            )
+
             logger.warning(
                 (
                     "Judul artikel tidak ditemukan "
@@ -348,6 +448,21 @@ class GenericHtmlCrawler(BaseCrawler):
             len(parsed.content)
             < MINIMUM_ARTICLE_CONTENT_LENGTH
         ):
+            self._record_item(
+                original_url=article_url,
+                normalized_url=page.final_url,
+                title=parsed.title,
+                status=CrawlItemStatus.REJECTED,
+                reason=(
+                    "Isi artikel terlalu pendek "
+                    f"({len(parsed.content)} karakter)."
+                ),
+                metadata={
+                    "stage": "article_parsing",
+                    "content_length": len(parsed.content),
+                },
+            )
+
             logger.warning(
                 (
                     "Isi artikel terlalu pendek "
@@ -375,6 +490,17 @@ class GenericHtmlCrawler(BaseCrawler):
         )
 
         if not cheap_result.passed:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=page.final_url,
+                title=parsed.title,
+                status=CrawlItemStatus.REJECTED,
+                reason=cheap_result.reason,
+                metadata={
+                    "stage": "cheap_filter",
+                },
+            )
+
             logger.info(
                 (
                     "Artikel ditolak filter murah "
@@ -406,6 +532,17 @@ class GenericHtmlCrawler(BaseCrawler):
         )
 
         if not eligibility.is_eligible:
+            self._record_item(
+                original_url=article_url,
+                normalized_url=page.final_url,
+                title=parsed.title,
+                status=CrawlItemStatus.REJECTED,
+                reason=eligibility.reason,
+                metadata={
+                    "stage": "full_filter",
+                },
+            )
+
             logger.info(
                 (
                     "Artikel ditolak filter lengkap "
@@ -471,6 +608,7 @@ class GenericHtmlCrawler(BaseCrawler):
                     "disease_id": mention.disease_id,
                     "disease_name": mention.disease_name,
                     "matched_text": mention.matched_text,
+                    "matched_terms": _mention_terms(mention),
                 }
                 for mention in eligibility.disease_mentions
             ],
@@ -478,6 +616,7 @@ class GenericHtmlCrawler(BaseCrawler):
                 {
                     "value": mention.value,
                     "matched_text": mention.matched_text,
+                    "metric_type": mention.metric_type,
                 }
                 for mention in eligibility.count_mentions
             ],
@@ -491,6 +630,19 @@ class GenericHtmlCrawler(BaseCrawler):
             ],
             "evidence_text": eligibility.evidence_text,
         }
+
+        self._record_item(
+            original_url=final_article_url,
+            normalized_url=final_article_url,
+            title=parsed.title,
+            status=CrawlItemStatus.FOUND,
+            reason=eligibility.reason,
+            metadata={
+                "stage": "accepted_for_ingestion",
+                "requested_url": article_url,
+                "final_url": page.final_url,
+            },
+        )
 
         return ArticlePayload(
             source_code=source.code,
@@ -550,6 +702,19 @@ class GenericHtmlCrawler(BaseCrawler):
             CrawlerHttpError,
             RobotsDeniedError,
         ) as exc:
+            self._record_item(
+                original_url=seed.url,
+                status=CrawlItemStatus.FAILED,
+                reason=(
+                    "Halaman daftar artikel gagal diambil."
+                ),
+                error_message=str(exc),
+                metadata={
+                    "stage": "seed_download",
+                    "seed_type": seed.seed_type,
+                },
+            )
+
             logger.error(
                 (
                     "Gagal mengambil seed listing "
@@ -609,6 +774,17 @@ class GenericHtmlCrawler(BaseCrawler):
                 )
             except ValueError as exc:
                 invalid_url_count += 1
+
+                self._record_item(
+                    original_url=candidate.url,
+                    status=CrawlItemStatus.REJECTED,
+                    reason=str(exc),
+                    metadata={
+                        "stage": "candidate_url_normalization",
+                        "seed_url": seed.url,
+                    },
+                )
+
                 logger.debug(
                     (
                         "URL kandidat tidak valid "
@@ -621,6 +797,22 @@ class GenericHtmlCrawler(BaseCrawler):
 
             if normalized_candidate in processed_urls:
                 duplicate_candidate_count += 1
+
+                self._record_item(
+                    original_url=candidate.url,
+                    normalized_url=normalized_candidate,
+                    title=candidate.anchor_text,
+                    status=CrawlItemStatus.DUPLICATE,
+                    reason=(
+                        "URL kandidat ditemukan lebih dari sekali "
+                        "dalam proses yang sama."
+                    ),
+                    metadata={
+                        "stage": "candidate_deduplication",
+                        "seed_url": seed.url,
+                    },
+                )
+
                 continue
 
             processed_urls.add(
@@ -634,6 +826,19 @@ class GenericHtmlCrawler(BaseCrawler):
 
             if not validation.is_valid:
                 rejected_count += 1
+
+                self._record_item(
+                    original_url=candidate.url,
+                    normalized_url=normalized_candidate,
+                    title=candidate.anchor_text,
+                    status=CrawlItemStatus.REJECTED,
+                    reason=validation.reason,
+                    metadata={
+                        "stage": "candidate_url_validation",
+                        "seed_url": seed.url,
+                    },
+                )
+
                 logger.debug(
                     (
                         "Link kandidat ditolak "
@@ -653,6 +858,24 @@ class GenericHtmlCrawler(BaseCrawler):
 
             if not prefilter_passed:
                 prefilter_rejected_count += 1
+
+                self._record_item(
+                    original_url=candidate.url,
+                    normalized_url=(
+                        validation.normalized_url
+                    ),
+                    title=candidate.anchor_text,
+                    status=CrawlItemStatus.REJECTED,
+                    reason=prefilter_reason,
+                    metadata={
+                        "stage": "listing_prefilter",
+                        "seed_url": seed.url,
+                        "context_text": (
+                            candidate.context_text[:500]
+                        ),
+                    },
+                )
+
                 logger.debug(
                     (
                         "Link ditolak prefilter listing "
@@ -875,6 +1098,19 @@ class GenericHtmlCrawler(BaseCrawler):
                     source.code,
                     seed.seed_type,
                     seed.url,
+                )
+
+                self._record_item(
+                    original_url=seed.url,
+                    status=CrawlItemStatus.REJECTED,
+                    reason=(
+                        "Jenis URL awal belum didukung oleh "
+                        "GenericHtmlCrawler."
+                    ),
+                    metadata={
+                        "stage": "seed_dispatch",
+                        "seed_type": seed.seed_type,
+                    },
                 )
 
         logger.info(

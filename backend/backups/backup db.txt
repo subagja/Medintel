@@ -63,3 +63,14 @@ python manage.py audit_crawl_sources `
 
 psql -U isur -d medintel_db `
     -f "C:\Users\nubik\Downloads\seed_location_aliases_indonesia.sql"
+
+
+python manage.py process_articles --all
+
+
+//alur kerja operasional
+python manage.py run_html_crawler `
+    --limit 2 `
+    --candidate-limit 15
+
+python manage.py process_articles --all

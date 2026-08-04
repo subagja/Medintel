@@ -2,9 +2,15 @@ from django.test import TestCase
 
 from .models import (
     Source,
+    SourceSeedUrl,
     SourceUrlPattern,
 )
+from .forms import (
+    SourceSeedUrlForm,
+    SourceUrlPatternForm,
+)
 from .services import (
+    check_source_crawl_readiness,
     normalize_url,
     validate_source_url,
 )
@@ -239,3 +245,189 @@ class SourceUrlValidationTests(TestCase):
             "pola penolakan",
             result.reason,
         )
+
+
+class SourceCrawlReadinessTests(TestCase):
+    def setUp(self):
+        self.source = Source.objects.create(
+            name="Media Kesiapan",
+            code="media-kesiapan",
+            domain="example.com",
+            base_url="https://example.com",
+            source_type=(
+                Source.SourceType.NATIONAL_MEDIA
+            ),
+            is_verified=True,
+            is_active=True,
+            crawl_enabled=True,
+        )
+
+    def test_requires_active_seed_and_allow_pattern(self):
+        readiness = check_source_crawl_readiness(
+            self.source
+        )
+
+        self.assertFalse(readiness.is_ready)
+        self.assertIn(
+            "Sumber belum memiliki URL awal aktif.",
+            readiness.errors,
+        )
+        self.assertIn(
+            "Sumber belum memiliki aturan URL allow.",
+            readiness.errors,
+        )
+
+    def test_source_is_ready_when_all_requirements_pass(self):
+        SourceSeedUrl.objects.create(
+            source=self.source,
+            url="https://example.com/berita",
+            seed_type=SourceSeedUrl.SeedType.LISTING,
+            is_active=True,
+        )
+        SourceUrlPattern.objects.create(
+            source=self.source,
+            pattern="/berita/",
+            pattern_type=(
+                SourceUrlPattern.PatternType.ALLOW
+            ),
+            match_type=(
+                SourceUrlPattern.MatchType.PREFIX
+            ),
+            is_active=True,
+        )
+
+        readiness = check_source_crawl_readiness(
+            self.source
+        )
+
+        self.assertTrue(readiness.is_ready)
+        self.assertEqual(readiness.errors, ())
+
+    def test_inactive_configuration_does_not_count(self):
+        SourceSeedUrl.objects.create(
+            source=self.source,
+            url="https://example.com/berita",
+            seed_type=SourceSeedUrl.SeedType.LISTING,
+            is_active=False,
+        )
+        SourceUrlPattern.objects.create(
+            source=self.source,
+            pattern="/berita/",
+            pattern_type=(
+                SourceUrlPattern.PatternType.ALLOW
+            ),
+            match_type=(
+                SourceUrlPattern.MatchType.PREFIX
+            ),
+            is_active=False,
+        )
+
+        readiness = check_source_crawl_readiness(
+            self.source
+        )
+
+        self.assertFalse(readiness.is_ready)
+
+    def test_manual_strategy_is_not_automatic_crawl_ready(self):
+        self.source.crawl_strategy = (
+            Source.CrawlStrategy.MANUAL
+        )
+        self.source.save()
+
+        readiness = check_source_crawl_readiness(
+            self.source
+        )
+
+        self.assertFalse(readiness.is_ready)
+        self.assertIn(
+            (
+                "Strategi manual tidak dapat diproses "
+                "oleh crawler otomatis."
+            ),
+            readiness.errors,
+        )
+
+
+class SourceConfigurationFormTests(TestCase):
+    def setUp(self):
+        self.source = Source.objects.create(
+            name="Media Form",
+            code="media-form",
+            domain="example.com",
+            base_url="https://example.com",
+            source_type=(
+                Source.SourceType.NATIONAL_MEDIA
+            ),
+            is_verified=True,
+            is_active=True,
+            crawl_enabled=True,
+        )
+
+    def test_seed_form_rejects_different_domain(self):
+        form = SourceSeedUrlForm(
+            data={
+                "url": "https://other.example/berita",
+                "seed_type": (
+                    SourceSeedUrl.SeedType.LISTING
+                ),
+                "priority": 100,
+                "is_active": True,
+                "notes": "",
+            },
+            source=self.source,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("url", form.errors)
+
+    def test_seed_form_rejects_duplicate_url(self):
+        SourceSeedUrl.objects.create(
+            source=self.source,
+            url="https://example.com/berita",
+            seed_type=SourceSeedUrl.SeedType.LISTING,
+        )
+        form = SourceSeedUrlForm(
+            data={
+                "url": "https://example.com/berita",
+                "seed_type": (
+                    SourceSeedUrl.SeedType.LISTING
+                ),
+                "priority": 100,
+                "is_active": True,
+                "notes": "",
+            },
+            source=self.source,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("url", form.errors)
+
+    def test_pattern_form_rejects_duplicate_rule(self):
+        SourceUrlPattern.objects.create(
+            source=self.source,
+            pattern="/berita/",
+            pattern_type=(
+                SourceUrlPattern.PatternType.ALLOW
+            ),
+            match_type=(
+                SourceUrlPattern.MatchType.PREFIX
+            ),
+        )
+        form = SourceUrlPatternForm(
+            data={
+                "pattern_type": (
+                    SourceUrlPattern.PatternType.ALLOW
+                ),
+                "match_type": (
+                    SourceUrlPattern.MatchType.PREFIX
+                ),
+                "pattern": "/berita/",
+                "priority": 100,
+                "description": "",
+                "is_active": True,
+            },
+            source=self.source,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("pattern", form.errors)

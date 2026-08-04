@@ -6,7 +6,7 @@ Dashboard | MEDINTEL OSINT
 
 {% block content %}
 
-<div class="page-header d-print-none">
+<div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
         <div class="col">
             <div class="page-pretitle">
@@ -16,82 +16,194 @@ Dashboard | MEDINTEL OSINT
             <h2 class="page-title">
                 Dashboard Ringkasan
             </h2>
+
+            <div class="text-secondary mt-1">
+                Ringkasan pengumpulan dan validasi artikel
+                ancaman penyakit menular.
+            </div>
         </div>
     </div>
 </div>
 
-<div class="row row-deck row-cards">
 
-    <div class="col-sm-6 col-lg-3">
+<div class="row row-deck row-cards mb-3">
+
+    <div class="col-sm-6 col-xl-3">
         <div class="card">
             <div class="card-body">
                 <div class="text-secondary">
-                    Sinyal Terdeteksi
+                    Total Artikel
                 </div>
 
                 <div class="h1 mb-0">
-                    1.248
+                    {{ summary.total_articles|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-sm-6 col-xl-3">
         <div class="card">
             <div class="card-body">
                 <div class="text-secondary">
-                    Artikel Tervalidasi
+                    Perlu Tinjau
                 </div>
 
-                <div class="h1 mb-0">
-                    312
+                <div class="h1 text-warning mb-0">
+                    {{ summary.new_articles|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-sm-6 col-xl-3">
         <div class="card">
             <div class="card-body">
                 <div class="text-secondary">
-                    Wilayah Prioritas
+                    Tervalidasi
                 </div>
 
-                <div class="h1 mb-0">
-                    18
+                <div class="h1 text-success mb-0">
+                    {{ summary.validated_articles|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-sm-6 col-lg-3">
+    <div class="col-sm-6 col-xl-3">
         <div class="card">
             <div class="card-body">
                 <div class="text-secondary">
-                    Level Ancaman
+                    Tidak Relevan
                 </div>
 
                 <div class="h1 text-danger mb-0">
-                    Tinggi
+                    {{ summary.rejected_articles|default:0 }}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">
-                    Fondasi UI MEDINTEL
-                </h3>
-            </div>
+</div>
 
-            <div class="card-body">
-                Tabler berhasil terhubung ke Django.
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">
+                Artikel Terbaru
+            </h3>
+
+            <div class="text-secondary small">
+                Sepuluh artikel terakhir yang masuk melalui crawler.
             </div>
+        </div>
+
+        <div class="card-actions">
+            <a
+                href="{% url 'dashboard:article-validation' %}"
+                class="btn btn-sm btn-primary"
+            >
+                Buka Validasi Artikel
+            </a>
         </div>
     </div>
 
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+
+            <thead>
+                <tr>
+                    <th>Artikel</th>
+                    <th>Sumber</th>
+                    <th>Penyakit</th>
+                    <th>Waktu Crawling</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for article in latest_articles %}
+                    <tr>
+                        <td>
+                            <a
+                                href="{% url 'dashboard:article-validation' %}?article={{ article.id }}"
+                                class="fw-semibold text-reset"
+                            >
+                                {{ article.title|truncatechars:80 }}
+                            </a>
+                        </td>
+
+                        <td>
+                            {{ article.source }}
+                        </td>
+
+                        <td>
+                            {% for disease in article.diseases.all|slice:":2" %}
+                                <span class="badge bg-blue-lt me-1">
+                                    {{ disease }}
+                                </span>
+                            {% empty %}
+                                <span class="text-secondary">
+                                    Belum diekstraksi
+                                </span>
+                            {% endfor %}
+                        </td>
+
+                        <td class="text-nowrap">
+                            {{ article.crawled_at|date:"d M Y H:i" }}
+                        </td>
+
+                        <td>
+                            {% if article.processing_status == "validated" %}
+                                <span class="badge bg-success-lt">
+                                    Tervalidasi
+                                </span>
+
+                            {% elif article.processing_status == "rejected" %}
+                                <span class="badge bg-danger-lt">
+                                    Tidak relevan
+                                </span>
+
+                            {% elif article.processing_status == "failed" %}
+                                <span class="badge bg-danger-lt">
+                                    Gagal
+                                </span>
+
+                            {% elif article.processing_status == "processing" %}
+                                <span class="badge bg-blue-lt">
+                                    Diproses
+                                </span>
+
+                            {% elif article.processing_status == "processed" %}
+                                <span class="badge bg-azure-lt">
+                                    Selesai
+                                </span>
+
+                            {% else %}
+                                <span class="badge bg-warning-lt">
+                                    Perlu tinjau
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                {% empty %}
+                    <tr>
+                        <td
+                            colspan="5"
+                            class="text-center text-secondary py-5"
+                        >
+                            Belum ada artikel di database.
+                        </td>
+                    </tr>
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+    </div>
 </div>
 
 {% endblock %}

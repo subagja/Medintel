@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ form_title }} | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                Sumber OSINT
+            </div>
+
+            <h2 class="page-title">
+                {{ form_title }}
+            </h2>
+        </div>
+
+        <div class="col-auto">
+            <a
+                href="{% url 'dashboard:source-list' %}"
+                class="btn btn-outline-secondary"
+            >
+                Kembali
+            </a>
+        </div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+
+    <div class="row row-cards">
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        Identitas Sumber
+                    </h3>
+                </div>
+
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.name.label }}
+                        </label>
+                        {{ form.name }}
+                        {{ form.name.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.code.label }}
+                        </label>
+                        {{ form.code }}
+                        {{ form.code.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.domain.label }}
+                        </label>
+                        {{ form.domain }}
+                        {{ form.domain.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.base_url.label }}
+                        </label>
+                        {{ form.base_url }}
+                        {{ form.base_url.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.source_type.label }}
+                        </label>
+                        {{ form.source_type }}
+                        {{ form.source_type.errors }}
+                    </div>
+
+                    <div class="form-check mb-3">
+                        {{ form.is_active }}
+                        <label class="form-check-label">
+                            {{ form.is_active.label }}
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        {{ form.is_verified }}
+                        <label class="form-check-label">
+                            {{ form.is_verified.label }}
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.verification_notes.label }}
+                        </label>
+                        {{ form.verification_notes }}
+                        {{ form.verification_notes.errors }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        Konfigurasi Crawler
+                    </h3>
+                </div>
+
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        {{ form.crawl_enabled }}
+                        <label class="form-check-label">
+                            {{ form.crawl_enabled.label }}
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        {{ form.allow_subdomains }}
+                        <label class="form-check-label">
+                            {{ form.allow_subdomains.label }}
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.crawl_strategy.label }}
+                        </label>
+                        {{ form.crawl_strategy }}
+                        {{ form.crawl_strategy.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.max_articles_per_run.label }}
+                        </label>
+                        {{ form.max_articles_per_run }}
+                        {{ form.max_articles_per_run.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.request_delay_seconds.label }}
+                        </label>
+                        {{ form.request_delay_seconds }}
+                        {{ form.request_delay_seconds.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.request_timeout_seconds.label }}
+                        </label>
+                        {{ form.request_timeout_seconds }}
+                        {{ form.request_timeout_seconds.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.user_agent.label }}
+                        </label>
+                        {{ form.user_agent }}
+                        {{ form.user_agent.errors }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            {{ form.crawler_notes.label }}
+                        </label>
+                        {{ form.crawler_notes }}
+                        {{ form.crawler_notes.errors }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="mt-3 d-flex justify-content-end">
+        <button
+            type="submit"
+            class="btn btn-primary"
+        >
+            {{ submit_label }}
+        </button>
+    </div>
+</form>
+
+{% endblock %}

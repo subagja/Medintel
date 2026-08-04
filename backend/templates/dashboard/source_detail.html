@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}
+{{ source.name }} | MEDINTEL OSINT
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+
+        <div class="col">
+            <div class="page-pretitle">
+                Sumber OSINT
+            </div>
+
+            <h2 class="page-title">
+                {{ source.name }}
+            </h2>
+
+            <div class="text-secondary mt-1">
+                {{ source.domain }} ·
+                {{ source.get_source_type_display }}
+            </div>
+        </div>
+
+        <div class="col-auto d-flex gap-2">
+		    <a
+		        href="{% url 'dashboard:source-update' source.id %}"
+		        class="btn btn-primary"
+		    >
+		        Edit Sumber
+		    </a>
+
+		    <a
+		        href="{% url 'dashboard:source-list' %}"
+		        class="btn btn-outline-secondary"
+		    >
+		        Kembali
+		    </a>
+		</div>
+
+    </div>
+</div>
+
+
+{% if source.crawl_readiness.is_ready %}
+    <div class="alert alert-success mb-3" role="alert">
+        <div class="d-flex align-items-center">
+            <div class="me-3">
+                <span class="badge bg-success">
+                    Siap
+                </span>
+            </div>
+
+            <div>
+                <div class="fw-semibold">
+                    Sumber siap untuk crawling
+                </div>
+
+                <div class="text-secondary">
+                    Seluruh persyaratan sumber, URL awal aktif,
+                    dan pola URL yang diizinkan telah terpenuhi.
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% else %}
+    <div class="alert alert-warning mb-3" role="alert">
+        <div class="fw-semibold mb-2">
+            Sumber belum siap untuk crawling
+        </div>
+
+        <ul class="mb-0 ps-3">
+            {% for error in source.crawl_readiness.errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+
+<div class="row row-cards mb-3">
+
+    <div class="col-lg-4">
+        <div class="card h-100">
+
+            <div class="card-header">
+                <h3 class="card-title">
+                    Informasi Sumber
+                </h3>
+            </div>
+
+            <div class="card-body">
+
+                <dl class="row">
+
+                    <dt class="col-5">
+                        Kode
+                    </dt>
+                    <dd class="col-7">
+                        {{ source.code }}
+                    </dd>
+
+                    <dt class="col-5">
+                        Domain
+                    </dt>
+                    <dd class="col-7">
+                        {{ source.domain }}
+                    </dd>
+
+                    <dt class="col-5">
+                        Jenis
+                    </dt>
+                    <dd class="col-7">
+                        {{ source.get_source_type_display }}
+                    </dd>
+
+                    <dt class="col-5">
+                        Status
+                    </dt>
+                    <dd class="col-7">
+                        {% if source.is_active %}
+                            <span class="badge bg-success-lt">
+                                Aktif
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary-lt">
+                                Tidak aktif
+                            </span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-5">
+                        Verifikasi
+                    </dt>
+                    <dd class="col-7">
+                        {% if source.is_verified %}
+                            <span class="badge bg-success-lt">
+                                Terverifikasi
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning-lt">
+                                Belum diverifikasi
+                            </span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-5">
+                        Crawler
+                    </dt>
+                    <dd class="col-7">
+                        {% if source.crawl_enabled %}
+                            <span class="badge bg-blue-lt">
+                                Aktif
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary-lt">
+                                Nonaktif
+                            </span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-5">
+                        Strategi
+                    </dt>
+                    <dd class="col-7">
+                        {{ source.get_crawl_strategy_display }}
+                    </dd>
+
+                </dl>
+
+                <a
+                    href="{{ source.base_url }}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-primary"
+                >
+                    Buka Situs
+                </a>
+
+            </div>
+        </div>
+    </div>
+
+
+    <div class="col-lg-8">
+        <div class="card h-100">
+
+            <div class="card-header">
+                <h3 class="card-title">
+                    Konfigurasi Crawler
+                </h3>
+            </div>
+
+            <div class="card-body">
+
+                <div class="row g-3">
+
+                    <div class="col-md-4">
+                        <div class="text-secondary small">
+                            Maksimal artikel
+                        </div>
+
+                        <div class="h3 mb-0">
+                            {{ source.max_articles_per_run }}
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="text-secondary small">
+                            Jeda permintaan
+                        </div>
+
+                        <div class="h3 mb-0">
+                            {{ source.request_delay_seconds }} detik
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="text-secondary small">
+                            Timeout
+                        </div>
+
+                        <div class="h3 mb-0">
+                            {{ source.request_timeout_seconds }} detik
+                        </div>
+                    </div>
+
+                </div>
+
+                {% if source.crawler_notes %}
+                    <hr>
+
+                    <div class="text-secondary small mb-1">
+                        Catatan crawler
+                    </div>
+
+                    <div>
+                        {{ source.crawler_notes }}
+                    </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+<div class="row row-cards">
+
+    <div class="col-lg-6">
+        <div class="card">
+
+            <div class="card-header">
+                <h3 class="card-title">
+                    URL Awal
+                </h3>
+
+                <div class="card-actions">
+                    <a
+                        href="{% url 'dashboard:source-seed-create' source.id %}"
+                        class="btn btn-sm btn-primary"
+                    >
+                        Tambah URL Awal
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+
+                    <thead>
+                        <tr>
+                            <th>URL</th>
+                            <th>Jenis</th>
+                            <th>Status</th>
+                            <th class="text-end">Aksi</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for seed in seed_urls %}
+                            <tr>
+                                <td>
+                                    <a
+                                        href="{{ seed.url }}"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        {{ seed.url|truncatechars:55 }}
+                                    </a>
+                                </td>
+
+                                <td>
+                                    {{ seed.get_seed_type_display }}
+                                </td>
+
+                                <td>
+                                    {% if seed.is_active %}
+                                        <span class="badge bg-success-lt">
+                                            Aktif
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary-lt">
+                                            Nonaktif
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end">
+                                    <a
+                                        href="{% url 'dashboard:source-seed-update' source.id seed.id %}"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Edit
+                                    </a>
+                                </td>
+                            </tr>
+
+                        {% empty %}
+                            <tr>
+                                <td
+                                    colspan="4"
+                                    class="text-center text-secondary py-4"
+                                >
+                                    Belum ada URL awal.
+                                </td>
+                            </tr>
+                        {% endfor %}
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="col-lg-6">
+        <div class="card">
+
+            <div class="card-header">
+                <h3 class="card-title">
+                    Pola URL
+                </h3>
+
+                <div class="card-actions">
+                    <a
+                        href="{% url 'dashboard:source-pattern-create' source.id %}"
+                        class="btn btn-sm btn-primary"
+                    >
+                        Tambah Pola URL
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+
+                    <thead>
+                        <tr>
+                            <th>Pola</th>
+                            <th>Jenis</th>
+                            <th>Status</th>
+                            <th class="text-end">Aksi</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for pattern in url_patterns %}
+                            <tr>
+                                <td>
+                                    <div class="font-monospace small">
+                                        {{ pattern.pattern|truncatechars:55 }}
+                                    </div>
+
+                                    <div class="text-secondary small">
+                                        {{ pattern.get_match_type_display }}
+                                    </div>
+                                </td>
+
+                                <td>
+                                    {% if pattern.pattern_type == "allow" %}
+                                        <span class="badge bg-success-lt">
+                                            Izinkan
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-danger-lt">
+                                            Tolak
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if pattern.is_active %}
+                                        <span class="badge bg-success-lt">
+                                            Aktif
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary-lt">
+                                            Nonaktif
+                                        </span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="text-end">
+                                    <a
+                                        href="{% url 'dashboard:source-pattern-update' source.id pattern.id %}"
+                                        class="btn btn-sm btn-outline-primary"
+                                    >
+                                        Edit
+                                    </a>
+                                </td>
+                            </tr>
+
+                        {% empty %}
+                            <tr>
+                                <td
+                                    colspan="4"
+                                    class="text-center text-secondary py-4"
+                                >
+                                    Belum ada pola URL.
+                                </td>
+                            </tr>
+                        {% endfor %}
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

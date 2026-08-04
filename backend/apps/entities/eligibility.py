@@ -13,32 +13,48 @@ from apps.entities.models import (
 
 SCALED_NUMBER_PATTERN = (
     r"(?P<count>"
-    r"(?:\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)"
+    r"(?:"
+    r"\d{1,3}(?:[.,]\d{3})+|"
+    r"\d+(?:[.,]\d+)?|"
+    r"(?:nol|satu|seorang|dua|tiga|empat|lima|enam|tujuh|"
+    r"delapan|sembilan|sepuluh|sebelas|seratus|seribu|"
+    r"sejuta|semiliar|belas|puluh|ratus|ribu|juta|miliar)"
+    r"(?:\s+(?:nol|satu|dua|tiga|empat|lima|enam|tujuh|"
+    r"delapan|sembilan|sepuluh|sebelas|belas|puluh|ratus|"
+    r"ribu|juta|miliar)){0,20}"
+    r")"
     r")"
     r"\s*(?P<multiplier>ribu|juta|miliar)?"
+)
+
+COUNT_METRIC_PATTERN = (
+    r"(?P<metric>"
+    r"kasus\s+(?:suspek|dugaan)|"
+    r"orang\s+(?:diduga\s+terinfeksi|terinfeksi|positif|meninggal)|"
+    r"kasus|pasien|penderita|suspek|terduga|korban|kematian|orang"
+    r")"
 )
 
 COUNT_PATTERNS = (
     re.compile(
         rf"\b{SCALED_NUMBER_PATTERN}\s+"
-        r"(?:kasus|pasien|penderita|korban|kematian|"
-        r"orang\s+terinfeksi|orang\s+positif|orang\s+meninggal)\b",
+        rf"{COUNT_METRIC_PATTERN}\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
         rf"\b(?:sebanyak|tercatat|ditemukan|mencapai|sekitar|"
         rf"melaporkan|mencatat)\s+{SCALED_NUMBER_PATTERN}\s+"
-        r"(?:kasus|pasien|penderita|korban|kematian|orang)\b",
+        rf"{COUNT_METRIC_PATTERN}\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
-        rf"\bjumlah\s+(?:kasus|pasien|penderita|kematian)\s+"
+        rf"\bjumlah\s+{COUNT_METRIC_PATTERN}\s+"
         rf"(?:mencapai|menjadi|sebanyak|sekitar)?\s*"
         rf"{SCALED_NUMBER_PATTERN}\b",
         flags=re.IGNORECASE,
     ),
     re.compile(
-        rf"\b(?:kasus|pasien|penderita|kematian)\s+"
+        rf"\b{COUNT_METRIC_PATTERN}\s+"
         rf"[\wÀ-ÿ/-]+(?:\s+[\wÀ-ÿ/-]+){{0,8}}\s+"
         rf"(?:sebanyak|mencapai|sekitar|tercatat)\s+"
         rf"{SCALED_NUMBER_PATTERN}\b",
@@ -51,6 +67,19 @@ NUMBER_MULTIPLIERS = {
     "ribu": 1_000,
     "juta": 1_000_000,
     "miliar": 1_000_000_000,
+}
+
+INDONESIAN_UNIT_VALUES = {
+    "nol": 0,
+    "satu": 1,
+    "dua": 2,
+    "tiga": 3,
+    "empat": 4,
+    "lima": 5,
+    "enam": 6,
+    "tujuh": 7,
+    "delapan": 8,
+    "sembilan": 9,
 }
 
 
@@ -69,6 +98,7 @@ class CountMention:
     matched_text: str
     start: int
     end: int
+    metric_type: str = "reported_event"
 
 
 @dataclass(frozen=True)
@@ -293,6 +323,134 @@ def extract_disease_mentions(
     )
 
 
+def _parse_under_thousand(
+    tokens: list[str],
+) -> int:
+    if not tokens:
+        raise ValueError("Bilangan kata kosong.")
+
+    value = 0
+    remaining = list(tokens)
+
+    if remaining[0] == "seratus":
+        value = 100
+        remaining = remaining[1:]
+    elif (
+        len(remaining) >= 2
+        and remaining[0] in INDONESIAN_UNIT_VALUES
+        and 1 <= INDONESIAN_UNIT_VALUES[remaining[0]] <= 9
+        and remaining[1] == "ratus"
+    ):
+        value = (
+            INDONESIAN_UNIT_VALUES[remaining[0]]
+            * 100
+        )
+        remaining = remaining[2:]
+
+    if not remaining:
+        return value
+
+    if len(remaining) == 1:
+        token = remaining[0]
+
+        if token in INDONESIAN_UNIT_VALUES:
+            return value + INDONESIAN_UNIT_VALUES[token]
+
+        if token == "sepuluh":
+            return value + 10
+
+        if token == "sebelas":
+            return value + 11
+
+        raise ValueError("Susunan bilangan kata tidak valid.")
+
+    first_value = INDONESIAN_UNIT_VALUES.get(
+        remaining[0]
+    )
+
+    if (
+        len(remaining) == 2
+        and first_value is not None
+        and 2 <= first_value <= 9
+        and remaining[1] == "belas"
+    ):
+        return value + 10 + first_value
+
+    if (
+        first_value is not None
+        and 2 <= first_value <= 9
+        and remaining[1] == "puluh"
+    ):
+        tens_value = first_value * 10
+
+        if len(remaining) == 2:
+            return value + tens_value
+
+        if (
+            len(remaining) == 3
+            and remaining[2] in INDONESIAN_UNIT_VALUES
+            and 1 <= INDONESIAN_UNIT_VALUES[remaining[2]] <= 9
+        ):
+            return (
+                value
+                + tens_value
+                + INDONESIAN_UNIT_VALUES[remaining[2]]
+            )
+
+    raise ValueError("Susunan bilangan kata tidak valid.")
+
+
+def parse_indonesian_number_words(
+    raw_value: str,
+) -> int:
+    normalized = normalize_text(raw_value)
+    tokens = normalized.split()
+
+    replacements = {
+        "seorang": ("satu",),
+        "seribu": ("satu", "ribu"),
+        "sejuta": ("satu", "juta"),
+        "semiliar": ("satu", "miliar"),
+    }
+    expanded_tokens: list[str] = []
+
+    for token in tokens:
+        expanded_tokens.extend(
+            replacements.get(token, (token,))
+        )
+
+    total = 0
+    remaining = expanded_tokens
+
+    for scale, multiplier_value in (
+        ("miliar", 1_000_000_000),
+        ("juta", 1_000_000),
+        ("ribu", 1_000),
+    ):
+        if scale not in remaining:
+            continue
+
+        if remaining.count(scale) != 1:
+            raise ValueError("Skala bilangan berulang.")
+
+        scale_index = remaining.index(scale)
+        scale_tokens = remaining[:scale_index]
+
+        if not scale_tokens:
+            raise ValueError("Skala bilangan tanpa nilai.")
+
+        total += (
+            _parse_under_thousand(scale_tokens)
+            * multiplier_value
+        )
+        remaining = remaining[scale_index + 1:]
+
+    if remaining:
+        total += _parse_under_thousand(remaining)
+
+    return total
+
+
 def parse_scaled_count(
     raw_value: str,
     multiplier: str | None,
@@ -303,6 +461,14 @@ def parse_scaled_count(
         if multiplier
         else None
     )
+
+    if not re.search(r"\d", raw):
+        if multiplier_key:
+            raise ValueError(
+                "Bilangan kata tidak memakai multiplier terpisah."
+            )
+
+        return parse_indonesian_number_words(raw)
 
     if multiplier_key:
         # Bentuk desimal berskala:
@@ -320,6 +486,54 @@ def parse_scaled_count(
     return int(
         raw.replace(".", "").replace(",", "")
     )
+
+
+def classify_count_metric(raw_metric: str) -> str:
+    normalized = normalize_text(raw_metric)
+
+    if any(
+        term in normalized
+        for term in (
+            "suspek",
+            "terduga",
+            "diduga",
+            "dugaan",
+        )
+    ):
+        return "suspect"
+
+    if any(
+        term in normalized
+        for term in (
+            "kematian",
+            "meninggal",
+        )
+    ):
+        return "death"
+
+    if any(
+        term in normalized
+        for term in (
+            "pasien",
+            "penderita",
+        )
+    ):
+        return "patient"
+
+    if any(
+        term in normalized
+        for term in (
+            "kasus",
+            "terinfeksi",
+            "positif",
+        )
+    ):
+        return "confirmed_case"
+
+    if normalized == "korban":
+        return "affected_person"
+
+    return "reported_event"
 
 
 def extract_count_mentions(
@@ -358,6 +572,9 @@ def extract_count_mentions(
                     matched_text=match.group(0),
                     start=start,
                     end=end,
+                    metric_type=classify_count_metric(
+                        match.group("metric")
+                    ),
                 )
             )
             occupied.append((start, end))
@@ -451,7 +668,8 @@ def evaluate_cheap_filter(
             count_mentions=(),
             reason=(
                 "Filter awal: penyakit ditemukan, tetapi "
-                "jumlah kasus/pasien/kematian tidak ditemukan."
+                "jumlah kasus/pasien/suspek/kematian "
+                "tidak ditemukan."
             ),
         )
 
@@ -460,7 +678,8 @@ def evaluate_cheap_filter(
         disease_mentions=diseases,
         count_mentions=counts,
         reason=(
-            "Filter awal lolos: penyakit dan jumlah ditemukan."
+            "Filter awal lolos: penyakit dan jumlah kejadian "
+            "ditemukan."
         ),
     )
 
