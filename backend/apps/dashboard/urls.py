@@ -4,6 +4,7 @@ from . import views
 from apps.assessments import views as assessment_views
 from apps.assessments import early_warning_views
 from apps.assessments import threat_map_views
+from apps.assessments import disease_priority_views
 from apps.signals import views as signal_views
 
 
@@ -39,6 +40,11 @@ urlpatterns = [
         "peta-ancaman/",
         threat_map_views.threat_map_workspace,
         name="threat-map",
+    ),
+    path(
+        "penyakit-prioritas/",
+        disease_priority_views.disease_priority_workspace,
+        name="disease-priority",
     ),
     path(
         "crawler-artikel/",

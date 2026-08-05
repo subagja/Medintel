@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+
+{% block title %}Penyakit Prioritas | MEDINTEL{% endblock %}
+
+{% block extra_css %}
+<style>
+    #disease-priority-workspace .priority-table tbody tr {
+        transition: background-color 140ms ease;
+    }
+
+    #disease-priority-workspace .priority-table tbody tr.is-selected {
+        background: var(--tblr-active-bg);
+        box-shadow: inset 3px 0 0 var(--tblr-primary);
+    }
+
+    #disease-priority-workspace .priority-name {
+        min-width: 220px;
+    }
+
+    #disease-priority-workspace .priority-metric {
+        min-width: 120px;
+    }
+
+    #disease-priority-workspace .trend-track {
+        height: 6px;
+        overflow: hidden;
+        background: var(--tblr-gray-200);
+        border-radius: 999px;
+    }
+
+    #disease-priority-workspace .trend-bar {
+        height: 100%;
+        min-width: 0;
+        border-radius: inherit;
+    }
+
+    #disease-priority-workspace .detail-kpi {
+        min-height: 92px;
+    }
+
+    #disease-priority-workspace .signal-row {
+        border-left: 3px solid transparent;
+    }
+
+    #disease-priority-workspace .signal-row.level-critical {
+        border-left-color: var(--tblr-danger);
+    }
+
+    #disease-priority-workspace .signal-row.level-high {
+        border-left-color: var(--tblr-orange);
+    }
+
+    #disease-priority-workspace .signal-row.level-advisory {
+        border-left-color: var(--tblr-yellow);
+    }
+
+    #disease-priority-workspace .signal-row.level-monitoring {
+        border-left-color: var(--tblr-blue);
+    }
+
+    #disease-priority-workspace .signal-row.level-unassessed {
+        border-left-color: var(--tblr-gray-500);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="disease-priority-workspace">
+    <div class="page-header mb-3">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="page-pretitle">Intelijen dan Peringatan</div>
+                <h2 class="page-title">Penyakit Prioritas</h2>
+                <div class="text-secondary mt-1">
+                    Pantau penyakit dalam Disease Master berdasarkan sinyal tervalidasi, assessment terkonfirmasi, dan peringatan dini aktif.
+                </div>
+            </div>
+            <div class="col-auto ms-auto d-print-none">
+                <div class="text-secondary small text-end">
+                    Diperbarui<br>
+                    <span class="fw-semibold text-body">{{ as_of|date:"d M Y H:i" }} WIB</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info" role="alert">
+        <div class="fw-semibold">Prioritas operasional, bukan penetapan epidemiologis</div>
+        Level perhatian hanya mengikuti keputusan analis yang dapat ditelusuri. Jumlah artikel tidak menaikkan level, dan halaman ini tidak menyatakan KLB atau menggantikan konfirmasi instansi kesehatan.
+    </div>
+
+    <div class="row row-cards mb-3">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body detail-kpi">
+                <div class="text-secondary">Penyakit Dipantau</div>
+                <div class="h1 mb-0">{{ summary.monitored }}</div>
+                <div class="small text-secondary">Disease Master aktif</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body detail-kpi">
+                <div class="text-secondary">Penyakit dengan Sinyal Aktif</div>
+                <div class="h1 mb-0 text-primary">{{ summary.active_diseases }}</div>
+                <div class="small text-secondary">Sinyal tervalidasi/dieskalasi</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body detail-kpi">
+                <div class="text-secondary">Peringatan Aktif</div>
+                <div class="h1 mb-0 text-warning">{{ summary.active_warnings }}</div>
+                <div class="small text-secondary">Produk yang masih berlaku</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body detail-kpi">
+                <div class="text-secondary">Menunggu Assessment</div>
+                <div class="h1 mb-0 {% if summary.needs_assessment %}text-danger{% endif %}">{{ summary.needs_assessment }}</div>
+                <div class="small text-secondary">Sinyal aktif belum dikonfirmasi</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label" for="priority-search">Cari penyakit</label>
+                    <input
+                        class="form-control"
+                        id="priority-search"
+                        type="search"
+                        name="q"
+                        value="{{ query }}"
+                        placeholder="Nama penyakit atau program"
+                    >
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="priority-category">Kategori</label>
+                    <select class="form-select" id="priority-category" name="category">
+                        <option value="">Semua kategori</option>
+                        {% for value, label in category_choices %}
+                            <option value="{{ value }}"{% if selected_category == value %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="priority-attention">Level perhatian</label>
+                    <select class="form-select" id="priority-attention" name="attention">
+                        <option value="">Semua level</option>
+                        {% for value, label in attention_choices %}
+                            <option value="{{ value }}"{% if selected_attention == value %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex gap-2">
+                    <button class="btn btn-primary flex-fill" type="submit">Terapkan</button>
+                    <a class="btn btn-ghost-secondary" href="{% url 'dashboard:disease-priority' %}" aria-label="Reset filter">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <div>
+                <h3 class="card-title">Daftar Penyakit yang Dipantau</h3>
+                <div class="text-secondary small">
+                    Tren membandingkan sinyal tervalidasi baru 7 hari terakhir dengan 7 hari sebelumnya.
+                </div>
+            </div>
+            <div class="card-actions">
+                <span class="badge bg-blue-lt">{{ items|length }} ditampilkan</span>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table priority-table">
+                <thead>
+                    <tr>
+                        <th>Penyakit</th>
+                        <th>Perhatian Operasional</th>
+                        <th>Tren 7 Hari</th>
+                        <th class="text-center">Sinyal Aktif</th>
+                        <th class="text-center">Peringatan</th>
+                        <th>Lokasi Terakhir</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                        <tr class="{% if selected_item and selected_item.id == item.id %}is-selected{% endif %}">
+                            <td class="priority-name">
+                                <div class="fw-semibold">{{ item.name }}</div>
+                                <div class="small text-secondary">{{ item.category_label }}</div>
+                            </td>
+                            <td>
+                                <span class="badge {{ item.attention.badge }}">{{ item.attention.label }}</span>
+                                <div class="small text-secondary mt-1">{{ item.attention.basis }}</div>
+                            </td>
+                            <td class="priority-metric">
+                                <div class="fw-semibold {{ item.trend.class }}">{{ item.trend.label }}</div>
+                                <div class="small text-secondary">
+                                    {{ item.current_signal_count }} kini · {{ item.previous_signal_count }} sebelumnya
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <span class="h3 mb-0">{{ item.active_signal_count }}</span>
+                            </td>
+                            <td class="text-center">
+                                {% if item.active_warning_count %}
+                                    <span class="badge bg-warning-lt">{{ item.active_warning_count }} aktif</span>
+                                {% else %}
+                                    <span class="text-secondary">0</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ item.latest_location|default:"—" }}
+                            </td>
+                            <td class="text-end">
+                                <a
+                                    class="btn btn-sm btn-ghost-primary"
+                                    href="?disease={{ item.id }}&category={{ selected_category }}&attention={{ selected_attention }}&q={{ query|urlencode }}#disease-priority-detail"
+                                >Detail</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty py-5">
+                                    <p class="empty-title">Tidak ada penyakit sesuai filter</p>
+                                    <p class="empty-subtitle text-secondary">Ubah atau reset filter untuk menampilkan kembali Disease Master.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if selected_item %}
+        <div id="disease-priority-detail" class="row row-cards">
+            <div class="col-xl-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <div class="text-secondary small">Detail penyakit</div>
+                            <h3 class="card-title">{{ selected_item.name }}</h3>
+                            {% if selected_item.canonical_name %}
+                                <div class="text-secondary small">{{ selected_item.canonical_name }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="card-actions">
+                            <span class="badge {{ selected_item.attention.badge }}">{{ selected_item.attention.label }}</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <div class="text-secondary small">Kategori surveilans</div>
+                                <div class="fw-semibold">{{ selected_item.category_label }}</div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-secondary small">Program pemantauan</div>
+                                <div class="fw-semibold">{{ selected_item.programs|join:", "|default:"Disease Master MedIntel" }}</div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-secondary small">Dasar level saat ini</div>
+                                <div class="fw-semibold">{{ selected_item.attention.basis }}</div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="text-secondary">7 hari terakhir</span>
+                                    <span class="fw-semibold">{{ selected_item.current_signal_count }} sinyal baru</span>
+                                </div>
+                                <div class="trend-track">
+                                    <div class="trend-bar bg-primary" style="width: {{ selected_item.current_signal_bar }}%"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="text-secondary">7 hari sebelumnya</span>
+                                    <span class="fw-semibold">{{ selected_item.previous_signal_count }} sinyal</span>
+                                </div>
+                                <div class="trend-track">
+                                    <div class="trend-bar bg-secondary" style="width: {{ selected_item.previous_signal_bar }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Sinyal Aktif</h3>
+                            <div class="text-secondary small">Urutan mengikuti level tertinggi dan pembaruan terakhir.</div>
+                        </div>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for signal in selected_item.signals %}
+                            <div class="list-group-item signal-row level-{{ signal.attention.key }}">
+                                <div class="d-flex justify-content-between gap-3">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="fw-semibold">{{ signal.code }}</span>
+                                            <span class="badge {{ signal.attention.badge }}">{{ signal.attention.label }}</span>
+                                            <span class="badge bg-secondary-lt">{{ signal.status_label }}</span>
+                                        </div>
+                                        <div class="mt-1">{{ signal.title }}</div>
+                                        <div class="small text-secondary mt-1">
+                                            {{ signal.location }} · {{ signal.attention.basis }} · diperbarui {{ signal.updated_at|date:"d M Y H:i" }}
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-1 align-items-start flex-wrap justify-content-end">
+                                        <a class="btn btn-sm btn-ghost-primary" href="{{ signal.signal_url }}">Sinyal</a>
+                                        <a class="btn btn-sm btn-ghost-secondary" href="{{ signal.assessment_url }}">Assessment</a>
+                                        {% if signal.warning_url %}
+                                            <a class="btn btn-sm btn-warning" href="{{ signal.warning_url }}">Peringatan</a>
+                                        {% endif %}
+                                        {% if signal.map_url %}
+                                            <a class="btn btn-sm btn-ghost-secondary" href="{{ signal.map_url }}">Peta</a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <div class="empty py-5">
+                                <p class="empty-title">Belum ada sinyal aktif</p>
+                                <p class="empty-subtitle text-secondary">Penyakit tetap dipantau melalui Disease Master dan baru naik dalam urutan setelah ada sinyal tervalidasi.</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-4">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3 class="card-title">Assessment Terkini</h3>
+                        {% if selected_item.latest_assessment %}
+                            <div class="card-actions">
+                                {% if selected_item.latest_assessment_applied %}
+                                    <span class="badge bg-success-lt">Dikonfirmasi analis</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-lt">Belum dikonfirmasi</span>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="card-body">
+                        {% if selected_item.latest_assessment %}
+                            {% widthratio selected_item.latest_assessment.priority_score 1 100 as priority_percent %}
+                            {% widthratio selected_item.latest_assessment.confidence_score 1 100 as confidence_percent %}
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Prioritas</span>
+                                <span class="fw-semibold">{{ priority_percent }}% · {{ selected_item.latest_assessment.get_recommended_priority_display }}</span>
+                            </div>
+                            <div class="progress mb-3">
+                                <div class="progress-bar bg-warning" style="width: {{ priority_percent }}%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Keyakinan</span>
+                                <span class="fw-semibold">{{ confidence_percent }}% · {{ selected_item.latest_assessment.get_recommended_confidence_display }}</span>
+                            </div>
+                            <div class="progress mb-3">
+                                <div class="progress-bar bg-blue" style="width: {{ confidence_percent }}%"></div>
+                            </div>
+                            <div class="text-secondary small">Judgement analis</div>
+                            <div class="mt-1">{{ selected_item.latest_assessment.analytical_judgement|linebreaksbr }}</div>
+                        {% else %}
+                            <div class="empty py-4">
+                                <p class="empty-title">Belum ada assessment</p>
+                                <p class="empty-subtitle text-secondary">Level tidak akan dinaikkan sebelum assessment selesai dan dikonfirmasi analis.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Peringatan Aktif</h3>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for warning in selected_item.active_warnings %}
+                            <a class="list-group-item list-group-item-action" href="{% url 'dashboard:early-warning' %}?assessment={{ warning.assessment_id }}">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <span class="fw-semibold">{{ warning.code }}</span>
+                                    <span class="badge {% if warning.level == 'critical' %}bg-danger text-white{% elif warning.level == 'high' %}bg-orange-lt{% elif warning.level == 'advisory' %}bg-yellow-lt{% else %}bg-blue-lt{% endif %}">{{ warning.get_level_display }}</span>
+                                </div>
+                                <div class="small text-secondary mt-1">Diterbitkan {{ warning.issued_at|date:"d M Y H:i" }}</div>
+                            </a>
+                        {% empty %}
+                            <div class="empty py-4">
+                                <p class="empty-title">Tidak ada peringatan aktif</p>
+                                <p class="empty-subtitle text-secondary">Assessment dapat tetap ditampilkan tanpa menghasilkan peringatan otomatis.</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
