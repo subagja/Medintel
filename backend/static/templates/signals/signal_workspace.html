@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}Sinyal Intelijen | MEDINTEL{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Pengembangan Sinyal</div>
+            <h2 class="page-title">Sinyal Intelijen</h2>
+            <div class="text-secondary mt-1">
+                Bentuk sinyal dari artikel tervalidasi, lalu konfirmasi judgement analis sebelum assessment ancaman.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row row-cards mb-3">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Kandidat Artikel</div>
+            <div class="h1 mb-0">{{ summary.candidates }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Perlu Review</div>
+            <div class="h1 mb-0 text-warning">{{ summary.needs_review }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Tervalidasi</div>
+            <div class="h1 mb-0 text-success">{{ summary.validated }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Dieskalasi</div>
+            <div class="h1 mb-0 text-danger">{{ summary.escalated }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs">
+            <li class="nav-item">
+                <a class="nav-link {% if mode == 'candidates' %}active{% endif %}" href="?mode=candidates">
+                    Kandidat Artikel
+                    <span class="badge bg-blue-lt ms-1">{{ summary.candidates }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if mode == 'signals' %}active{% endif %}" href="?mode=signals">
+                    Daftar Sinyal
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+
+{% if mode == "candidates" %}
+<div class="row row-cards">
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Artikel Siap Dibentuk</h3></div>
+            <div class="list-group list-group-flush">
+                {% for candidate in candidate_rows %}
+                    <a
+                        href="?mode=candidates&article={{ candidate.article.id }}"
+                        class="list-group-item list-group-item-action {% if selected_candidate and candidate.article.id == selected_candidate.article.id %}active{% endif %}"
+                    >
+                        <div class="d-flex justify-content-between gap-2">
+                            <div class="fw-semibold">{{ candidate.article.title }}</div>
+                            <span class="badge bg-success-lt">{{ candidate.admiralty_code }}</span>
+                        </div>
+                        <div class="small opacity-75 mt-1">
+                            {{ candidate.primary_disease }} · {{ candidate.primary_location }}
+                        </div>
+                        <div class="small mt-2">{{ candidate.numeric_fact_label }}</div>
+                    </a>
+                {% empty %}
+                    <div class="empty py-5">
+                        <p class="empty-title">Belum ada kandidat siap bentuk</p>
+                        <p class="empty-subtitle text-secondary">
+                            Kandidat muncul setelah artikel Valid, Eligible, memiliki lokasi utama, dan neraca informasi dikonfirmasi analis.
+                        </p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        {% if selected_candidate and formation_form %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="form_signal">
+            <input type="hidden" name="article_id" value="{{ selected_candidate.article.id }}">
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Konfirmasi Pembentukan Sinyal</h3>
+                        <div class="text-secondary small">{{ selected_candidate.article.source.name }}</div>
+                    </div>
+                    <div class="card-actions d-flex gap-1">
+                        <span class="badge bg-success-lt">Valid</span>
+                        <span class="badge bg-blue-lt">{{ selected_candidate.admiralty_code }}</span>
+                        <span class="badge bg-azure-lt">Eligible</span>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    {% for error in formation_form.non_field_errors %}
+                        <div class="alert alert-danger">{{ error }}</div>
+                    {% endfor %}
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Penyakit utama</div>
+                            <div class="fw-semibold">{{ selected_candidate.primary_disease }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Lokasi kejadian</div>
+                            <div class="fw-semibold">{{ selected_candidate.primary_location }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Fakta numerik</div>
+                            <div class="fw-semibold">{{ selected_candidate.numeric_fact_label }}</div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        Pembentukan sinyal tidak menyatakan KLB. Sistem hanya membawa bukti tervalidasi ke tahap konfirmasi analis.
+                    </div>
+
+                    {% for field in formation_form %}
+                        <div class="mb-3">
+                            <label class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="card-footer text-end">
+                    <button type="submit" class="btn btn-primary">Bentuk Kandidat Sinyal</button>
+                </div>
+            </div>
+        </form>
+        {% else %}
+            <div class="card"><div class="card-body"><div class="empty py-5">
+                <p class="empty-title">Pilih artikel kandidat</p>
+            </div></div></div>
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+<div class="row row-cards">
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Daftar Sinyal</h3></div>
+            <div class="list-group list-group-flush">
+                {% for signal in signal_rows %}
+                    <a
+                        href="?mode=signals&signal={{ signal.id }}"
+                        class="list-group-item list-group-item-action {% if selected_signal and signal.id == selected_signal.id %}active{% endif %}"
+                    >
+                        <div class="d-flex justify-content-between gap-2">
+                            <div class="fw-semibold">{{ signal.code }}</div>
+                            <span class="badge {% if signal.status == 'validated' %}bg-success-lt{% elif signal.status == 'rejected' %}bg-danger-lt{% else %}bg-warning-lt{% endif %}">
+                                {{ signal.get_status_display }}
+                            </span>
+                        </div>
+                        <div class="mt-1">{{ signal.title }}</div>
+                        <div class="small opacity-75 mt-1">{{ signal.primary_disease }} · {{ signal.primary_location }}</div>
+                    </a>
+                {% empty %}
+                    <div class="empty py-5"><p class="empty-title">Belum ada sinyal</p></div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        {% if selected_signal and review_form %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+            <div class="card mb-3">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">{{ selected_signal.code }}</h3>
+                        <div class="text-secondary small">Terakhir diperbarui {{ selected_signal.last_updated_at|date:"d M Y H:i" }}</div>
+                    </div>
+                    <div class="card-actions">
+                        <span class="badge {% if selected_signal.status == 'validated' %}bg-success-lt{% elif selected_signal.status == 'rejected' %}bg-danger-lt{% else %}bg-warning-lt{% endif %}">
+                            {{ selected_signal.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% for error in review_form.non_field_errors %}
+                        <div class="alert alert-danger">{{ error }}</div>
+                    {% endfor %}
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4"><div class="text-secondary small">Penyakit</div><div class="fw-semibold">{{ selected_signal.primary_disease }}</div></div>
+                        <div class="col-md-4"><div class="text-secondary small">Lokasi</div><div class="fw-semibold">{{ selected_signal.primary_location }}</div></div>
+                        <div class="col-md-4"><div class="text-secondary small">Skor sistem</div><div class="fw-semibold">{{ selected_signal.system_score|floatformat:2|default:"-" }}</div></div>
+                    </div>
+
+                    <div class="row g-3">
+                        {% for field in review_form %}
+                            <div class="{% if field.name == 'title' or field.name == 'summary' or field.name == 'analyst_judgement' or field.name == 'implication' or field.name == 'recommended_action' or field.name == 'information_gaps' or field.name == 'review_notes' %}col-12{% else %}col-md-6{% endif %}">
+                                <label class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                                {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <hr>
+                    <h3 class="h4">Bukti dan Kebutuhan Intelijen</h3>
+                    {% for relation in selected_signal.signal_articles.all %}
+                        <div class="card card-sm mb-2"><div class="card-body">
+                            <div class="fw-semibold">{{ relation.article.title }}</div>
+                            <div class="small text-secondary">{{ relation.article.source.name }} · {{ relation.get_support_type_display }}</div>
+                        </div></div>
+                    {% empty %}<div class="alert alert-warning">Belum ada artikel pendukung.</div>{% endfor %}
+
+                    {% for relation in selected_signal.signal_requirements.all %}
+                        <div class="alert alert-info py-2 mb-2">
+                            <strong>{{ relation.requirement.code|upper }}</strong> — {{ relation.requirement.title }}
+                        </div>
+                    {% endfor %}
+                </div>
+                {% if selected_signal.status != 'closed' and selected_signal.status != 'rejected' %}
+                <div class="card-footer d-flex justify-content-end gap-2">
+                    {% if selected_signal.status != 'validated' or selected_signal.analyst_judgement == '' %}
+                        <button type="submit" name="action" value="validate_signal" class="btn btn-success">Konfirmasi Sinyal</button>
+                    {% else %}
+                        <button type="submit" name="action" value="validate_signal" class="btn btn-primary">Simpan Koreksi</button>
+                    {% endif %}
+                    {% if selected_signal.status == 'needs_review' or selected_signal.status == 'under_review' %}
+                        <button type="submit" name="action" value="reject_signal" class="btn btn-outline-danger">Tolak</button>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </form>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Riwayat Sinyal</h3></div>
+            <div class="list-group list-group-flush">
+                {% for history in selected_signal.histories.all %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between gap-2">
+                            <div class="fw-semibold">
+                                {{ history.get_from_status_display|default:"Pembentukan" }} → {{ history.get_to_status_display }}
+                            </div>
+                            <div class="small text-secondary">{{ history.changed_at|date:"d M Y H:i" }}</div>
+                        </div>
+                        <div class="small text-secondary mt-1">
+                            {{ history.changed_by|default:"Sistem" }} · {{ history.reason|default:"Tanpa catatan" }}
+                        </div>
+                    </div>
+                {% empty %}<div class="list-group-item text-secondary">Belum ada riwayat.</div>{% endfor %}
+            </div>
+        </div>
+        {% else %}
+            <div class="card"><div class="card-body"><div class="empty py-5">
+                <p class="empty-title">Pilih sinyal untuk ditinjau</p>
+            </div></div></div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

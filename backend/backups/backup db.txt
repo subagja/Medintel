@@ -69,13 +69,14 @@ python manage.py process_articles --all
 
 
 //alur kerja operasional
-python manage.py run_html_crawler `
-    --limit 2 `
-    --candidate-limit 15
-
+python manage.py run_html_crawler 
 python manage.py process_articles --all
 
 
 //fixing database
 python manage.py sync_indonesia_core_locations --deactivate-unmatched --apply
 python manage.py audit_indonesia_geolocation
+
+
+//fixing location
+python manage.py reconcile_article_geolocation --all --apply

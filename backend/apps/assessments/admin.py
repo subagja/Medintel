@@ -1,11 +1,27 @@
 from django.contrib import admin
 
 from .models import (
+    EarlyWarning,
+    EarlyWarningHistory,
     InformationEvaluation,
     InformationGap,
     SignalAssessment,
     SourceEvaluation,
 )
+
+
+class EarlyWarningHistoryInline(admin.TabularInline):
+    model = EarlyWarningHistory
+    extra = 0
+    readonly_fields = (
+        "action",
+        "from_status",
+        "to_status",
+        "notes",
+        "changed_by",
+        "changed_at",
+    )
+    can_delete = False
 
 
 class InformationGapInline(admin.TabularInline):
@@ -184,3 +200,56 @@ class InformationGapAdmin(admin.ModelAdmin):
         "assessment__signal",
         "resolved_by",
     )
+
+
+@admin.register(EarlyWarning)
+class EarlyWarningAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "signal",
+        "version",
+        "level",
+        "confidence_level",
+        "status",
+        "is_current",
+        "issued_by",
+        "issued_at",
+    )
+    list_filter = (
+        "level",
+        "confidence_level",
+        "status",
+        "is_current",
+        "issued_at",
+    )
+    search_fields = (
+        "code",
+        "title",
+        "signal__code",
+        "signal__title",
+        "summary",
+    )
+    list_select_related = (
+        "signal",
+        "assessment",
+        "issued_by",
+        "closed_by",
+    )
+    readonly_fields = (
+        "id",
+        "code",
+        "signal",
+        "assessment",
+        "version",
+        "level",
+        "confidence_level",
+        "status",
+        "is_current",
+        "issued_by",
+        "issued_at",
+        "closed_by",
+        "closed_at",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [EarlyWarningHistoryInline]

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -10,6 +11,7 @@ from ..models import (
     ArticleFact,
     ArticleLocation,
     Disease,
+    ExtractionMethod,
     ExtractionReviewLog,
     Location,
     ValidationStatus,
@@ -29,6 +31,24 @@ FACT_CORRECTION_FIELDS = {
     "government_response",
     "fact_text",
 }
+
+
+@dataclass(frozen=True)
+class PrimaryLocationCorrectionResult:
+    relation: ArticleLocation
+    created: bool
+    changed: bool
+    demoted_count: int
+    context_count: int
+
+
+@dataclass(frozen=True)
+class PrimaryDiseaseCorrectionResult:
+    relation: ArticleDisease
+    created: bool
+    changed: bool
+    demoted_count: int
+    context_count: int
 
 
 def serialize_value(value: Any) -> Any:
@@ -282,6 +302,176 @@ def reject_article_disease(
 
     return relation
 
+
+@transaction.atomic
+def set_primary_article_disease(
+    *,
+    article,
+    disease: Disease,
+    reviewer,
+    notes: str,
+) -> PrimaryDiseaseCorrectionResult:
+    """Tetapkan satu penyakit utama tanpa menghapus penyakit konteks."""
+    normalized_notes = notes.strip()
+
+    if not normalized_notes:
+        raise ValidationError(
+            "Dasar penetapan penyakit utama wajib diisi."
+        )
+
+    if not (
+        reviewer
+        and getattr(reviewer, "is_authenticated", False)
+    ):
+        raise ValidationError(
+            "Pengguna harus login untuk menetapkan penyakit utama."
+        )
+
+    if not disease.is_active:
+        raise ValidationError(
+            "Penyakit yang dipilih sudah tidak aktif."
+        )
+
+    relations = list(
+        ArticleDisease.objects.select_for_update()
+        .filter(article=article)
+        .select_related("disease")
+    )
+
+    selected_relation = next(
+        (
+            relation
+            for relation in relations
+            if relation.disease_id == disease.id
+        ),
+        None,
+    )
+
+    created = selected_relation is None
+
+    if created:
+        selected_relation = ArticleDisease.objects.create(
+            article=article,
+            disease=disease,
+            mention_text=disease.name,
+            confidence_score=1.0,
+            extraction_method=ExtractionMethod.MANUAL,
+            is_primary=False,
+        )
+        selected_before = {}
+        relations.append(selected_relation)
+    else:
+        selected_before = article_disease_snapshot(
+            selected_relation
+        )
+
+    changed = created
+    demoted_count = 0
+    reviewed_at = timezone.now()
+
+    for relation in relations:
+        if relation.id == selected_relation.id:
+            continue
+
+        if not relation.is_primary:
+            continue
+
+        before_data = article_disease_snapshot(relation)
+
+        relation.is_primary = False
+        relation.validation_status = ValidationStatus.CORRECTED
+        relation.validation_notes = normalized_notes
+        relation.validated_by = reviewer
+        relation.validated_at = reviewed_at
+        relation.full_clean()
+        relation.save(
+            update_fields=[
+                "is_primary",
+                "validation_status",
+                "validation_notes",
+                "validated_by",
+                "validated_at",
+                "updated_at",
+            ]
+        )
+
+        create_review_log(
+            object_type=(
+                ExtractionReviewLog.ObjectType.ARTICLE_DISEASE
+            ),
+            object_id=relation.id,
+            action=ExtractionReviewLog.Action.CORRECT,
+            reviewer=reviewer,
+            before_data=before_data,
+            after_data=article_disease_snapshot(relation),
+            notes=normalized_notes,
+        )
+
+        changed = True
+        demoted_count += 1
+
+    selected_needs_update = any(
+        [
+            created,
+            demoted_count > 0,
+            not selected_relation.is_primary,
+            (
+                selected_relation.validation_status
+                != ValidationStatus.CORRECTED
+            ),
+            selected_relation.validation_notes
+            != normalized_notes,
+            selected_relation.validated_by_id
+            != reviewer.pk,
+        ]
+    )
+
+    if selected_needs_update:
+        selected_relation.is_primary = True
+        selected_relation.validation_status = (
+            ValidationStatus.CORRECTED
+        )
+        selected_relation.validation_notes = normalized_notes
+        selected_relation.validated_by = reviewer
+        selected_relation.validated_at = reviewed_at
+        selected_relation.full_clean()
+        selected_relation.save(
+            update_fields=[
+                "is_primary",
+                "validation_status",
+                "validation_notes",
+                "validated_by",
+                "validated_at",
+                "updated_at",
+            ]
+        )
+
+        create_review_log(
+            object_type=(
+                ExtractionReviewLog.ObjectType.ARTICLE_DISEASE
+            ),
+            object_id=selected_relation.id,
+            action=ExtractionReviewLog.Action.CORRECT,
+            reviewer=reviewer,
+            before_data=selected_before,
+            after_data=article_disease_snapshot(
+                selected_relation
+            ),
+            notes=normalized_notes,
+        )
+
+        changed = True
+
+    context_count = max(len(relations) - 1, 0)
+
+    return PrimaryDiseaseCorrectionResult(
+        relation=selected_relation,
+        created=created,
+        changed=changed,
+        demoted_count=demoted_count,
+        context_count=context_count,
+    )
+
 @transaction.atomic
 def validate_article_location(
     *,
@@ -407,6 +597,183 @@ def reject_article_location(
     )
 
     return relation
+
+
+@transaction.atomic
+def set_primary_article_location(
+    *,
+    article,
+    location: Location,
+    reviewer,
+    notes: str,
+) -> PrimaryLocationCorrectionResult:
+    """
+    Tetapkan satu lokasi kejadian utama tanpa menghapus lokasi konteks.
+
+    Perubahan ini bersifat keputusan analis. Semua relasi utama lama
+    diturunkan menjadi konteks dan setiap perubahan dicatat pada
+    ExtractionReviewLog. Fakta artikel tidak direlokasi otomatis agar
+    koreksi lokasi tidak mengubah substansi fakta secara terselubung.
+    """
+    normalized_notes = notes.strip()
+
+    if not normalized_notes:
+        raise ValidationError(
+            "Dasar koreksi lokasi utama wajib diisi."
+        )
+
+    if not (
+        reviewer
+        and getattr(reviewer, "is_authenticated", False)
+    ):
+        raise ValidationError(
+            "Pengguna harus login untuk mengoreksi lokasi utama."
+        )
+
+    if not location.is_active:
+        raise ValidationError(
+            "Lokasi yang dipilih sudah tidak aktif."
+        )
+
+    relations = list(
+        ArticleLocation.objects.select_for_update()
+        .filter(article=article)
+        .select_related("location")
+    )
+
+    selected_relation = next(
+        (
+            relation
+            for relation in relations
+            if relation.location_id == location.id
+        ),
+        None,
+    )
+
+    created = selected_relation is None
+
+    if created:
+        selected_relation = ArticleLocation.objects.create(
+            article=article,
+            location=location,
+            mention_text=location.name,
+            confidence_score=1.0,
+            extraction_method=ExtractionMethod.MANUAL,
+            is_primary=False,
+        )
+        selected_before = {}
+        relations.append(selected_relation)
+    else:
+        selected_before = article_location_snapshot(
+            selected_relation
+        )
+
+    changed = created
+    demoted_count = 0
+    reviewed_at = timezone.now()
+
+    for relation in relations:
+        if relation.id == selected_relation.id:
+            continue
+
+        if not relation.is_primary:
+            continue
+
+        before_data = article_location_snapshot(relation)
+
+        relation.is_primary = False
+        relation.validation_status = ValidationStatus.CORRECTED
+        relation.validation_notes = normalized_notes
+        relation.validated_by = reviewer
+        relation.validated_at = reviewed_at
+        relation.full_clean()
+        relation.save(
+            update_fields=[
+                "is_primary",
+                "validation_status",
+                "validation_notes",
+                "validated_by",
+                "validated_at",
+                "updated_at",
+            ]
+        )
+
+        create_review_log(
+            object_type=(
+                ExtractionReviewLog.ObjectType.ARTICLE_LOCATION
+            ),
+            object_id=relation.id,
+            action=ExtractionReviewLog.Action.CORRECT,
+            reviewer=reviewer,
+            before_data=before_data,
+            after_data=article_location_snapshot(relation),
+            notes=normalized_notes,
+        )
+
+        changed = True
+        demoted_count += 1
+
+    selected_needs_update = any(
+        [
+            created,
+            demoted_count > 0,
+            not selected_relation.is_primary,
+            (
+                selected_relation.validation_status
+                != ValidationStatus.CORRECTED
+            ),
+            selected_relation.validation_notes
+            != normalized_notes,
+            selected_relation.validated_by_id
+            != reviewer.pk,
+        ]
+    )
+
+    if selected_needs_update:
+        selected_relation.is_primary = True
+        selected_relation.validation_status = (
+            ValidationStatus.CORRECTED
+        )
+        selected_relation.validation_notes = normalized_notes
+        selected_relation.validated_by = reviewer
+        selected_relation.validated_at = reviewed_at
+        selected_relation.full_clean()
+        selected_relation.save(
+            update_fields=[
+                "is_primary",
+                "validation_status",
+                "validation_notes",
+                "validated_by",
+                "validated_at",
+                "updated_at",
+            ]
+        )
+
+        create_review_log(
+            object_type=(
+                ExtractionReviewLog.ObjectType.ARTICLE_LOCATION
+            ),
+            object_id=selected_relation.id,
+            action=ExtractionReviewLog.Action.CORRECT,
+            reviewer=reviewer,
+            before_data=selected_before,
+            after_data=article_location_snapshot(
+                selected_relation
+            ),
+            notes=normalized_notes,
+        )
+
+        changed = True
+
+    context_count = max(len(relations) - 1, 0)
+
+    return PrimaryLocationCorrectionResult(
+        relation=selected_relation,
+        created=created,
+        changed=changed,
+        demoted_count=demoted_count,
+        context_count=context_count,
+    )
 
 @transaction.atomic
 def validate_article_fact(

@@ -52,9 +52,9 @@ class IndicatorGenerationTests(TestCase):
             ),
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-indicator",
+            defaults={"code": "dbd-indicator"},
         )
 
         self.location = Location.objects.create(

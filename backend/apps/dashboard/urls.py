@@ -1,6 +1,10 @@
 from django.urls import path
 
 from . import views
+from apps.assessments import views as assessment_views
+from apps.assessments import early_warning_views
+from apps.assessments import threat_map_views
+from apps.signals import views as signal_views
 
 
 app_name = "dashboard"
@@ -15,6 +19,26 @@ urlpatterns = [
         "validasi-artikel/",
         views.article_validation,
         name="article-validation",
+    ),
+    path(
+        "sinyal-intelijen/",
+        signal_views.signal_workspace,
+        name="signal-workspace",
+    ),
+    path(
+        "assessment-ancaman/",
+        assessment_views.threat_assessment_workspace,
+        name="threat-assessment",
+    ),
+    path(
+        "peringatan-dini/",
+        early_warning_views.early_warning_workspace,
+        name="early-warning",
+    ),
+    path(
+        "peta-ancaman/",
+        threat_map_views.threat_map_workspace,
+        name="threat-map",
     ),
     path(
         "crawler-artikel/",

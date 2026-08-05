@@ -52,9 +52,9 @@ class SignalGenerationTests(TestCase):
             is_active=True,
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-signal",
+            defaults={"code": "dbd-signal"},
         )
 
         self.location = Location.objects.create(

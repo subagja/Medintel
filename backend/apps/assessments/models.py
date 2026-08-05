@@ -683,6 +683,196 @@ class SignalAssessment(models.Model):
         )
 
 
+class EarlyWarning(models.Model):
+    """
+    Produk peringatan dini internal yang diterbitkan dari assessment aktif.
+
+    Objek ini tidak menyatakan KLB dan tidak menggantikan konfirmasi resmi
+    instansi kesehatan. Satu versi assessment hanya dapat melahirkan satu
+    peringatan dini, dan penerbitannya selalu memerlukan keputusan analis.
+    """
+
+    class Level(models.TextChoices):
+        MONITORING = "monitoring", "Pemantauan"
+        ADVISORY = "advisory", "Waspada"
+        HIGH = "high", "Peringatan Tinggi"
+        CRITICAL = "critical", "Peringatan Kritis"
+
+    class Status(models.TextChoices):
+        ISSUED = "issued", "Diterbitkan"
+        SUPERSEDED = "superseded", "Digantikan"
+        CLOSED = "closed", "Ditutup"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+    )
+
+    signal = models.ForeignKey(
+        Signal,
+        on_delete=models.PROTECT,
+        related_name="early_warnings",
+    )
+
+    assessment = models.OneToOneField(
+        SignalAssessment,
+        on_delete=models.PROTECT,
+        related_name="early_warning",
+    )
+
+    version = models.PositiveIntegerField(default=1)
+
+    is_current = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    level = models.CharField(
+        max_length=20,
+        choices=Level.choices,
+        db_index=True,
+    )
+
+    confidence_level = models.CharField(
+        max_length=20,
+        choices=SignalAssessment.RecommendedConfidence.choices,
+        db_index=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ISSUED,
+        db_index=True,
+    )
+
+    title = models.CharField(max_length=500)
+    summary = models.TextField()
+    analytical_judgement = models.TextField()
+    implications = models.TextField(blank=True)
+    recommended_actions = models.TextField()
+    information_gaps = models.TextField(blank=True)
+    decision_notes = models.TextField()
+
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="issued_early_warnings",
+        null=True,
+        blank=True,
+    )
+
+    issued_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="closed_early_warnings",
+        null=True,
+        blank=True,
+    )
+
+    closed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    closure_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_current", "-issued_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["signal", "version"],
+                name="unique_signal_warning_version",
+            ),
+            models.UniqueConstraint(
+                fields=["signal"],
+                condition=Q(is_current=True),
+                name="unique_current_early_warning",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "level", "issued_at"],
+                name="warning_status_level_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.title}"
+
+
+class EarlyWarningHistory(models.Model):
+    class Action(models.TextChoices):
+        ISSUED = "issued", "Diterbitkan"
+        SUPERSEDED = "superseded", "Digantikan"
+        CLOSED = "closed", "Ditutup"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    warning = models.ForeignKey(
+        EarlyWarning,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        db_index=True,
+    )
+
+    from_status = models.CharField(
+        max_length=20,
+        choices=EarlyWarning.Status.choices,
+        blank=True,
+    )
+
+    to_status = models.CharField(
+        max_length=20,
+        choices=EarlyWarning.Status.choices,
+    )
+
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="early_warning_history",
+        null=True,
+        blank=True,
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-changed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.warning.code} — {self.get_action_display()}"
+
+
 class InformationGap(models.Model):
     class GapType(models.TextChoices):
         CASE_DATA = "case_data", "Data Kasus"

@@ -282,13 +282,20 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-lg-7">
         {% if selected_article and assessment_form %}
-            <form method="post">
+            <form method="post" novalidate>
                 {% csrf_token %}
 
                 <input
                     type="hidden"
                     name="article_id"
                     value="{{ selected_article.id }}"
+                >
+
+                <input
+                    type="hidden"
+                    name="active_tab"
+                    id="active-validation-tab"
+                    value="{{ active_validation_tab }}"
                 >
 
                 <div class="card">
@@ -407,12 +414,16 @@ Validasi Artikel | MEDINTEL OSINT
                                         {% for relation in selected_locations %}
                                             <div class="mb-2">
                                                 <span class="badge bg-azure-lt">
-                                                    {{ relation.location.name }}
+                                                    {{ relation.location }}
                                                 </span>
 
                                                 {% if relation.is_primary %}
                                                     <span class="badge bg-primary-lt">
                                                         Utama
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary-lt">
+                                                        Konteks
                                                     </span>
                                                 {% endif %}
 
@@ -607,9 +618,13 @@ Validasi Artikel | MEDINTEL OSINT
                         <ul class="nav nav-tabs mb-3" role="tablist">
                             <li class="nav-item">
                                 <button
-                                    class="nav-link active"
+                                    class="nav-link
+                                    {% if active_validation_tab == 'validation' %}
+                                        active
+                                    {% endif %}"
                                     data-bs-toggle="tab"
                                     data-bs-target="#tab-validation"
+                                    data-medintel-tab="validation"
                                     type="button"
                                     role="tab"
                                 >
@@ -619,9 +634,45 @@ Validasi Artikel | MEDINTEL OSINT
 
                             <li class="nav-item">
                                 <button
-                                    class="nav-link"
+                                    class="nav-link
+                                    {% if active_validation_tab == 'disease' %}
+                                        active
+                                    {% endif %}"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-primary-disease"
+                                    data-medintel-tab="disease"
+                                    type="button"
+                                    role="tab"
+                                >
+                                    Penyakit Utama
+                                </button>
+                            </li>
+
+                            <li class="nav-item">
+                                <button
+                                    class="nav-link
+                                    {% if active_validation_tab == 'location' %}
+                                        active
+                                    {% endif %}"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-primary-location"
+                                    data-medintel-tab="location"
+                                    type="button"
+                                    role="tab"
+                                >
+                                    Lokasi Utama
+                                </button>
+                            </li>
+
+                            <li class="nav-item">
+                                <button
+                                    class="nav-link
+                                    {% if active_validation_tab == 'information' %}
+                                        active
+                                    {% endif %}"
                                     data-bs-toggle="tab"
                                     data-bs-target="#tab-information-assessment"
+                                    data-medintel-tab="information"
                                     type="button"
                                     role="tab"
                                 >
@@ -631,9 +682,13 @@ Validasi Artikel | MEDINTEL OSINT
 
                             <li class="nav-item">
                                 <button
-                                    class="nav-link"
+                                    class="nav-link
+                                    {% if active_validation_tab == 'history' %}
+                                        active
+                                    {% endif %}"
                                     data-bs-toggle="tab"
                                     data-bs-target="#tab-history"
+                                    data-medintel-tab="history"
                                     type="button"
                                     role="tab"
                                 >
@@ -644,7 +699,10 @@ Validasi Artikel | MEDINTEL OSINT
 
                         <div class="tab-content">
                             <div
-                                class="tab-pane fade active show"
+                                class="tab-pane fade
+                                {% if active_validation_tab == 'validation' %}
+                                    active show
+                                {% endif %}"
                                 id="tab-validation"
                                 role="tabpanel"
                             >
@@ -698,10 +756,248 @@ Validasi Artikel | MEDINTEL OSINT
                             </div>
 
                             <div
-                                class="tab-pane fade"
+                                class="tab-pane fade
+                                {% if active_validation_tab == 'disease' %}
+                                    active show
+                                {% endif %}"
+                                id="tab-primary-disease"
+                                role="tabpanel"
+                            >
+                                {% if primary_disease_form.non_field_errors %}
+                                    <div class="alert alert-danger">
+                                        {% for error in primary_disease_form.non_field_errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="alert alert-info">
+                                    Pilih penyakit yang menjadi pokok kejadian
+                                    dan sesuai dengan fakta numerik artikel.
+                                    Penyakit lain tidak dihapus dan tetap
+                                    tercatat sebagai konteks.
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ primary_disease_form.primary_disease.id_for_label }}"
+                                        >
+                                            {{ primary_disease_form.primary_disease.label }}
+                                        </label>
+
+                                        {{ primary_disease_form.primary_disease }}
+
+                                        {% if primary_disease_form.primary_disease.help_text %}
+                                            <div class="form-hint">
+                                                {{ primary_disease_form.primary_disease.help_text }}
+                                            </div>
+                                        {% endif %}
+
+                                        {% for error in primary_disease_form.primary_disease.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ primary_disease_form.disease_correction_notes.id_for_label }}"
+                                        >
+                                            {{ primary_disease_form.disease_correction_notes.label }}
+                                        </label>
+
+                                        {{ primary_disease_form.disease_correction_notes }}
+
+                                        {% for error in primary_disease_form.disease_correction_notes.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="col-12 d-flex justify-content-end">
+                                        <button
+                                            type="submit"
+                                            name="action"
+                                            value="correct_primary_disease"
+                                            class="btn btn-blue"
+                                        >
+                                            Simpan Penyakit Utama
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div
+                                class="tab-pane fade
+                                {% if active_validation_tab == 'location' %}
+                                    active show
+                                {% endif %}"
+                                id="tab-primary-location"
+                                role="tabpanel"
+                            >
+                                {% if primary_location_form.non_field_errors %}
+                                    <div class="alert alert-danger">
+                                        {% for error in primary_location_form.non_field_errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="alert alert-info">
+                                    Pilih lokasi yang benar-benar menjadi
+                                    tempat kejadian atau angka kasus. Lokasi
+                                    lain tidak dihapus dan tetap tercatat
+                                    sebagai konteks artikel.
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ primary_location_form.primary_location.id_for_label }}"
+                                        >
+                                            {{ primary_location_form.primary_location.label }}
+                                        </label>
+
+                                        {{ primary_location_form.primary_location }}
+
+                                        {% if primary_location_form.primary_location.help_text %}
+                                            <div class="form-hint">
+                                                {{ primary_location_form.primary_location.help_text }}
+                                            </div>
+                                        {% endif %}
+
+                                        {% for error in primary_location_form.primary_location.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="col-12">
+                                        <label
+                                            class="form-label"
+                                            for="{{ primary_location_form.correction_notes.id_for_label }}"
+                                        >
+                                            {{ primary_location_form.correction_notes.label }}
+                                        </label>
+
+                                        {{ primary_location_form.correction_notes }}
+
+                                        {% for error in primary_location_form.correction_notes.errors %}
+                                            <div class="invalid-feedback d-block">
+                                                {{ error }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="col-12 d-flex justify-content-end">
+                                        <button
+                                            type="submit"
+                                            name="action"
+                                            value="correct_primary_location"
+                                            class="btn btn-azure"
+                                        >
+                                            Simpan Lokasi Utama
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div
+                                class="tab-pane fade
+                                {% if active_validation_tab == 'information' %}
+                                    active show
+                                {% endif %}"
                                 id="tab-information-assessment"
                                 role="tabpanel"
                             >
+                                {% if information_balance_recommendation %}
+                                    <div class="card border-azure mb-3">
+                                        <div class="card-body">
+                                            <div class="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-3">
+                                                <div>
+                                                    <div class="text-secondary small">
+                                                        Rekomendasi sistem
+                                                    </div>
+                                                    <div class="d-flex align-items-center gap-2 mt-1">
+                                                        <span class="badge bg-azure-lt fs-3">
+                                                            {{ information_balance_recommendation.admiralty_code }}
+                                                        </span>
+                                                        <div>
+                                                            <div class="fw-semibold">
+                                                                {{ information_balance_recommendation.source_reliability }} —
+                                                                {{ information_balance_recommendation.source_label }}
+                                                            </div>
+                                                            <div class="text-secondary small">
+                                                                {{ information_balance_recommendation.information_credibility }} —
+                                                                {{ information_balance_recommendation.information_label }}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-azure"
+                                                    id="apply-information-recommendation"
+                                                    data-source-reliability="{{ information_balance_recommendation.source_reliability }}"
+                                                    data-information-credibility="{{ information_balance_recommendation.information_credibility }}"
+                                                >
+                                                    Gunakan Rekomendasi
+                                                </button>
+                                            </div>
+
+                                            <div class="row g-3 mt-1">
+                                                <div class="col-md-6">
+                                                    <div class="fw-semibold small mb-1">
+                                                        Dasar otomatis
+                                                    </div>
+                                                    <ul class="small text-secondary ps-3 mb-0">
+                                                        {% for factor in information_balance_recommendation.supporting_factors %}
+                                                            <li>{{ factor }}</li>
+                                                        {% empty %}
+                                                            <li>Belum ada faktor pendukung otomatis.</li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <div class="fw-semibold small mb-1">
+                                                        Batas penilaian
+                                                    </div>
+                                                    <ul class="small text-secondary ps-3 mb-0">
+                                                        {% for factor in information_balance_recommendation.limiting_factors %}
+                                                            <li>{{ factor }}</li>
+                                                        {% empty %}
+                                                            <li>Tidak ada keterbatasan otomatis yang teridentifikasi.</li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                class="alert alert-success mt-3 mb-0 d-none"
+                                                id="recommendation-applied-message"
+                                            >
+                                                Nilai rekomendasi telah disalin ke form.
+                                                Catatan analis yang sudah ada tidak ditimpa.
+                                            </div>
+
+                                            <div class="form-hint mt-3">
+                                                Rekomendasi belum mengubah database. Analis tetap
+                                                memeriksa dasar penilaian dan menekan
+                                                <strong>Simpan Penilaian</strong> sebagai keputusan akhir.
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label
@@ -740,7 +1036,7 @@ Validasi Artikel | MEDINTEL OSINT
                                     <div class="col-12">
                                         <div class="alert alert-info">
                                             Nilai Admiralty Code:
-                                            <strong>
+                                            <strong id="current-admiralty-code">
                                                 {{ assessment.admiralty_code }}
                                             </strong>
                                         </div>
@@ -766,10 +1062,111 @@ Validasi Artikel | MEDINTEL OSINT
                             </div>
 
                             <div
-                                class="tab-pane fade"
+                                class="tab-pane fade
+                                {% if active_validation_tab == 'history' %}
+                                    active show
+                                {% endif %}"
                                 id="tab-history"
                                 role="tabpanel"
                             >
+                                <div class="fw-semibold mb-2">
+                                    Penetapan Penyakit Utama
+                                </div>
+
+                                {% if disease_history %}
+                                    <div class="table-responsive mb-4">
+                                        <table class="table table-vcenter">
+                                            <thead>
+                                                <tr>
+                                                    <th>Waktu</th>
+                                                    <th>Analis</th>
+                                                    <th>Penyakit Utama</th>
+                                                    <th>Dasar Penetapan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for history in disease_history %}
+                                                    <tr>
+                                                        <td class="text-nowrap">
+                                                            {{ history.reviewed_at|date:"d M Y H:i" }}
+                                                        </td>
+                                                        <td>
+                                                            {% if history.reviewer %}
+                                                                {{ history.reviewer.get_username }}
+                                                            {% else %}
+                                                                Sistem
+                                                            {% endif %}
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-blue-lt">
+                                                                {{ history.primary_disease_label }}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            {{ history.notes|default:"—" }}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="text-secondary mb-4">
+                                        Belum ada riwayat penetapan penyakit utama.
+                                    </div>
+                                {% endif %}
+
+                                <div class="fw-semibold mb-2">
+                                    Koreksi Lokasi Utama
+                                </div>
+
+                                {% if location_history %}
+                                    <div class="table-responsive mb-4">
+                                        <table class="table table-vcenter">
+                                            <thead>
+                                                <tr>
+                                                    <th>Waktu</th>
+                                                    <th>Analis</th>
+                                                    <th>Lokasi Utama</th>
+                                                    <th>Dasar Koreksi</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for history in location_history %}
+                                                    <tr>
+                                                        <td class="text-nowrap">
+                                                            {{ history.reviewed_at|date:"d M Y H:i" }}
+                                                        </td>
+                                                        <td>
+                                                            {% if history.reviewer %}
+                                                                {{ history.reviewer.get_username }}
+                                                            {% else %}
+                                                                Sistem
+                                                            {% endif %}
+                                                        </td>
+                                                        <td>
+                                                            <span class="badge bg-azure-lt">
+                                                                {{ history.primary_location_label }}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            {{ history.notes|default:"—" }}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                {% else %}
+                                    <div class="text-secondary mb-4">
+                                        Belum ada riwayat koreksi lokasi utama.
+                                    </div>
+                                {% endif %}
+
+                                <div class="fw-semibold mb-2">
+                                    Penilaian Artikel
+                                </div>
+
                                 {% if assessment_history %}
                                     <div class="table-responsive">
                                         <table class="table table-vcenter">
@@ -827,6 +1224,8 @@ Validasi Artikel | MEDINTEL OSINT
                     <div class="card-footer d-flex justify-content-end">
                         <button
                             type="submit"
+                            name="action"
+                            value="save_assessment"
                             class="btn btn-primary"
                         >
                             Simpan Penilaian
@@ -848,11 +1247,23 @@ Validasi Artikel | MEDINTEL OSINT
     </div>
 </div>
 
+{% if information_balance_recommendation %}
+    {{ information_balance_recommendation.suggested_notes|json_script:"information-recommendation-notes" }}
+{% endif %}
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     const searchInput = document.getElementById("article-search");
     const statusFilter = document.getElementById("article-status-filter");
     const articleItems = document.querySelectorAll(".medintel-article-item");
+    const activeTabInput = document.getElementById("active-validation-tab");
+    const tabButtons = document.querySelectorAll("[data-medintel-tab]");
+    const reliabilitySelect = document.getElementById("id_source_reliability");
+    const credibilitySelect = document.getElementById("id_information_credibility");
+    const assessmentNotes = document.getElementById("id_assessment_notes");
+    const currentAdmiraltyCode = document.getElementById("current-admiralty-code");
+    const recommendationButton = document.getElementById("apply-information-recommendation");
+    const recommendationMessage = document.getElementById("recommendation-applied-message");
 
     function applyFilters() {
         const query = (searchInput?.value || "").trim().toLowerCase();
@@ -883,6 +1294,59 @@ document.addEventListener("DOMContentLoaded", function () {
 
     searchInput?.addEventListener("input", applyFilters);
     statusFilter?.addEventListener("change", applyFilters);
+
+    tabButtons.forEach(function (button) {
+        button.addEventListener("shown.bs.tab", function () {
+            if (activeTabInput) {
+                activeTabInput.value = button.dataset.medintelTab || "validation";
+            }
+        });
+    });
+
+    function updateAdmiraltyCode() {
+        if (!currentAdmiraltyCode) {
+            return;
+        }
+
+        currentAdmiraltyCode.textContent = (
+            (reliabilitySelect?.value || "F")
+            + (credibilitySelect?.value || "6")
+        );
+    }
+
+    reliabilitySelect?.addEventListener("change", updateAdmiraltyCode);
+    credibilitySelect?.addEventListener("change", updateAdmiraltyCode);
+
+    recommendationButton?.addEventListener("click", function () {
+        if (reliabilitySelect) {
+            reliabilitySelect.value = (
+                recommendationButton.dataset.sourceReliability || "F"
+            );
+        }
+
+        if (credibilitySelect) {
+            credibilitySelect.value = (
+                recommendationButton.dataset.informationCredibility || "6"
+            );
+        }
+
+        const notesElement = document.getElementById(
+            "information-recommendation-notes",
+        );
+
+        if (
+            assessmentNotes
+            && !assessmentNotes.value.trim()
+            && notesElement
+        ) {
+            assessmentNotes.value = JSON.parse(notesElement.textContent);
+        }
+
+        updateAdmiraltyCode();
+        recommendationMessage?.classList.remove("d-none");
+    });
+
+    updateAdmiraltyCode();
 });
 </script>
 

@@ -65,9 +65,9 @@ class IndicatorReviewTests(TestCase):
             ),
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-indicator-review",
+            defaults={"code": "dbd-indicator-review"},
         )
 
         self.location = Location.objects.create(

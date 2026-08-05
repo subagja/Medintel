@@ -73,7 +73,7 @@
                 <li class="nav-item">
                     <a
                         class="nav-link{% if active_menu == 'early_warning' %} active{% endif %}"
-                        href="#"
+                        href="{% url 'dashboard:early-warning' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -102,7 +102,7 @@
                 <li class="nav-item">
                     <a
                         class="nav-link{% if active_menu == 'threat_map' %} active{% endif %}"
-                        href="#"
+                        href="{% url 'dashboard:threat-map' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -323,8 +323,34 @@
 
                 <li class="nav-item">
                     <a
+                        class="nav-link{% if active_menu == 'signals' %} active{% endif %}"
+                        href="{% url 'dashboard:signal-workspace' %}"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 17l4-4 4 3 6-8"></path>
+                                <path d="M14 8h4v4"></path>
+                                <circle cx="5" cy="17" r="2"></circle>
+                            </svg>
+                        </span>
+                        <span class="nav-link-title">Sinyal Intelijen</span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <a
                         class="nav-link{% if active_menu == 'assessment' %} active{% endif %}"
-                        href="#"
+                        href="{% url 'dashboard:threat-assessment' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg

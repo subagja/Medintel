@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}Peringatan Dini | MEDINTEL{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Intelijen dan Peringatan</div>
+            <h2 class="page-title">Peringatan Dini</h2>
+            <div class="text-secondary mt-1">
+                Terbitkan produk peringatan internal dari assessment yang telah dikonfirmasi analis.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="alert alert-info" role="alert">
+    <div class="fw-semibold">Produk intelijen internal</div>
+    Peringatan diterbitkan setelah keputusan analis. Produk ini tidak menyatakan KLB dan tidak menggantikan konfirmasi epidemiologis resmi.
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Assessment Aktif</div>
+            <div class="h1 mb-0">{{ summary.assessments }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Siap Diterbitkan</div>
+            <div class="h1 mb-0 text-warning">{{ summary.eligible }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Peringatan Aktif</div>
+            <div class="h1 mb-0 text-success">{{ summary.active }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Tinggi/Kritis</div>
+            <div class="h1 mb-0 text-danger">{{ summary.high }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Assessment Aktif</h3>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for row in rows %}
+                    <a
+                        href="?assessment={{ row.assessment.id }}"
+                        class="list-group-item list-group-item-action {% if selected_assessment and row.assessment.id == selected_assessment.id %}active{% endif %}"
+                    >
+                        <div class="d-flex justify-content-between gap-2">
+                            <div class="fw-semibold">{{ row.assessment.signal.code }}</div>
+                            {% if row.warning %}
+                                <span class="badge bg-success-lt">{{ row.warning.code }}</span>
+                            {% elif row.eligibility.is_eligible %}
+                                <span class="badge bg-warning-lt">Siap</span>
+                            {% else %}
+                                <span class="badge bg-secondary-lt">Tertahan</span>
+                            {% endif %}
+                        </div>
+                        <div class="mt-1">{{ row.assessment.signal.title }}</div>
+                        <div class="small opacity-75 mt-1">
+                            Assessment v{{ row.assessment.version }} · Prioritas {{ row.assessment.get_recommended_priority_display }}
+                        </div>
+                    </a>
+                {% empty %}
+                    <div class="empty py-5">
+                        <p class="empty-title">Belum ada assessment aktif</p>
+                        <p class="empty-subtitle text-secondary">
+                            Selesaikan Assessment Ancaman dan terapkan rekomendasinya terlebih dahulu.
+                        </p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        {% if selected_assessment %}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">{{ selected_assessment.signal.code }}</h3>
+                        <div class="text-secondary small">{{ selected_assessment.signal.title }}</div>
+                    </div>
+                    <div class="card-actions d-flex gap-1">
+                        <span class="badge {% if selected_assessment.recommended_priority == 'critical' %}bg-danger{% elif selected_assessment.recommended_priority == 'high' %}bg-orange-lt{% elif selected_assessment.recommended_priority == 'medium' %}bg-yellow-lt{% else %}bg-green-lt{% endif %}">
+                            Prioritas {{ selected_assessment.get_recommended_priority_display }}
+                        </span>
+                        <span class="badge bg-blue-lt">
+                            Keyakinan {{ selected_assessment.get_recommended_confidence_display }}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Penyakit</div>
+                            <div class="fw-semibold">{{ selected_assessment.signal.primary_disease }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Lokasi</div>
+                            <div class="fw-semibold">{{ selected_assessment.signal.primary_location }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Assessment</div>
+                            <div class="fw-semibold">Versi {{ selected_assessment.version }} · {{ selected_assessment.get_status_display }}</div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="fw-semibold mb-1">Judgement analitis</div>
+                    <div>{{ selected_assessment.analytical_judgement|linebreaksbr }}</div>
+                    {% if selected_assessment.limitations %}
+                        <div class="fw-semibold mt-3 mb-1">Keterbatasan dan gap informasi</div>
+                        <div class="text-secondary">{{ selected_assessment.limitations|linebreaksbr }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if selected_warning %}
+                {% if issue_form.non_field_errors %}
+                    <div class="alert alert-danger">{{ issue_form.non_field_errors }}</div>
+                {% endif %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">{{ selected_warning.code }}</h3>
+                            <div class="text-secondary small">
+                                Diterbitkan {{ selected_warning.issued_at|date:"d M Y H:i" }} oleh {{ selected_warning.issued_by|default:"Sistem" }}
+                            </div>
+                        </div>
+                        <div class="card-actions d-flex gap-1">
+                            <span class="badge {% if selected_warning.level == 'critical' %}bg-danger{% elif selected_warning.level == 'high' %}bg-orange-lt{% elif selected_warning.level == 'advisory' %}bg-yellow-lt{% else %}bg-blue-lt{% endif %}">
+                                {{ selected_warning.get_level_display }}
+                            </span>
+                            <span class="badge {% if selected_warning.status == 'issued' %}bg-success-lt{% elif selected_warning.status == 'closed' %}bg-secondary-lt{% else %}bg-blue-lt{% endif %}">
+                                {{ selected_warning.get_status_display }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ selected_warning.title }}</h3>
+                        <div class="mb-3">{{ selected_warning.summary|linebreaksbr }}</div>
+
+                        <div class="fw-semibold mb-1">Implikasi</div>
+                        <div class="mb-3">{{ selected_warning.implications|default:"Belum dicantumkan."|linebreaksbr }}</div>
+
+                        <div class="fw-semibold mb-1">Rekomendasi tindakan</div>
+                        <div class="mb-3">{{ selected_warning.recommended_actions|linebreaksbr }}</div>
+
+                        {% if selected_warning.information_gaps %}
+                            <div class="alert alert-warning mb-0">
+                                <div class="fw-semibold">Gap informasi</div>
+                                {{ selected_warning.information_gaps|linebreaksbr }}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% if selected_warning.status == 'issued' and selected_warning.is_current %}
+                        <div class="card-footer text-end">
+                            <a href="{% url 'dashboard:threat-map' %}?warning={{ selected_warning.id }}" class="btn btn-primary">
+                                Lihat di Peta Ancaman
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+
+                {% if selected_warning.status == 'issued' and selected_warning.is_current %}
+                    <div class="card mb-3">
+                        <div class="card-header"><h3 class="card-title">Tutup Peringatan</h3></div>
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="close_warning">
+                            <input type="hidden" name="assessment_id" value="{{ selected_assessment.id }}">
+                            <input type="hidden" name="warning_id" value="{{ selected_warning.id }}">
+                            <div class="card-body">
+                                {% if close_form.non_field_errors %}
+                                    <div class="alert alert-danger">{{ close_form.non_field_errors }}</div>
+                                {% endif %}
+                                <label class="form-label" for="{{ close_form.closure_notes.id_for_label }}">{{ close_form.closure_notes.label }}</label>
+                                {{ close_form.closure_notes }}
+                                {% for error in close_form.closure_notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="card-footer text-end">
+                                <button type="submit" class="btn btn-outline-danger">Tutup Peringatan</button>
+                            </div>
+                        </form>
+                    </div>
+                {% endif %}
+
+                {% if selected_warning.history.all %}
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Riwayat Peringatan</h3></div>
+                        <div class="list-group list-group-flush">
+                            {% for item in selected_warning.history.all %}
+                                <div class="list-group-item">
+                                    <div class="fw-semibold">{{ item.get_action_display }}</div>
+                                    <div class="small text-secondary">{{ item.changed_at|date:"d M Y H:i" }} · {{ item.changed_by|default:"Sistem" }}</div>
+                                    {% if item.notes %}<div class="mt-1">{{ item.notes }}</div>{% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            {% elif eligibility.is_eligible %}
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Terbitkan Peringatan Dini</h3>
+                            <div class="text-secondary small">
+                                Level sistem:
+                                {% if eligibility.recommended_level == 'critical' %}Peringatan Kritis{% elif eligibility.recommended_level == 'high' %}Peringatan Tinggi{% elif eligibility.recommended_level == 'advisory' %}Waspada{% else %}Pemantauan{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="issue_warning">
+                        <input type="hidden" name="assessment_id" value="{{ selected_assessment.id }}">
+                        <div class="card-body">
+                            {% if issue_form.non_field_errors %}
+                                <div class="alert alert-danger">{{ issue_form.non_field_errors }}</div>
+                            {% endif %}
+                            {% for field in issue_form %}
+                                <div class="mb-3">
+                                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {% for error in field.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <div class="text-secondary small">Penerbitan dicatat dalam audit trail.</div>
+                            <button type="submit" class="btn btn-warning">Terbitkan Peringatan Dini</button>
+                        </div>
+                    </form>
+                </div>
+            {% else %}
+                <div class="card">
+                    <div class="card-body">
+                        <div class="empty py-4">
+                            <p class="empty-title">Belum siap diterbitkan</p>
+                            <div class="empty-subtitle text-secondary">
+                                {% for blocker in eligibility.blockers %}
+                                    <div>{{ blocker }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="mt-3">
+                                <a href="{% url 'dashboard:threat-assessment' %}?signal={{ selected_assessment.signal.id }}" class="btn btn-primary">
+                                    Kembali ke Assessment Ancaman
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="card">
+                <div class="card-body">
+                    <div class="empty py-5">
+                        <p class="empty-title">Belum ada bahan peringatan dini</p>
+                        <p class="empty-subtitle text-secondary">
+                            Buat dan konfirmasi Assessment Ancaman terlebih dahulu.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if recent_warnings %}
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">Arsip Terbaru</h3></div>
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead><tr><th>Kode</th><th>Judul</th><th>Level</th><th>Status</th><th>Diterbitkan</th></tr></thead>
+                <tbody>
+                    {% for warning in recent_warnings %}
+                        <tr>
+                            <td class="fw-semibold">{{ warning.code }}</td>
+                            <td>{{ warning.title }}</td>
+                            <td>{{ warning.get_level_display }}</td>
+                            <td>{{ warning.get_status_display }}</td>
+                            <td>{{ warning.issued_at|date:"d M Y H:i" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

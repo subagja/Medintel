@@ -67,9 +67,9 @@ class RequirementMatchingTests(TestCase):
             ),
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-requirement",
+            defaults={"code": "dbd-requirement"},
         )
 
         self.indonesia = Location.objects.create(

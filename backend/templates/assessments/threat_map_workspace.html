@@ -1,0 +1,656 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Peta Ancaman | MEDINTEL{% endblock %}
+
+{% block extra_css %}
+<style>
+    #threat-map-workspace {
+        --threat-monitoring: var(--tblr-info);
+        --threat-advisory: var(--tblr-yellow);
+        --threat-high: var(--tblr-orange);
+        --threat-critical: var(--tblr-danger);
+        --threat-none: var(--tblr-gray-200);
+        --threat-border: var(--tblr-gray-500);
+        --threat-outline: var(--tblr-gray-700);
+    }
+
+    #threat-map-workspace .threat-map-stage {
+        position: relative;
+        min-height: 520px;
+        overflow: hidden;
+        background: var(--tblr-gray-100);
+    }
+
+    #threat-map-workspace .threat-map-stage svg {
+        display: block;
+        width: 100%;
+        min-height: 520px;
+    }
+
+    #threat-map-workspace .threat-province {
+        cursor: pointer;
+        stroke: var(--threat-border);
+        stroke-width: 1.1;
+        vector-effect: non-scaling-stroke;
+        transition: filter 150ms ease, opacity 150ms ease, stroke-width 150ms ease;
+    }
+
+    #threat-map-workspace .threat-province.has-warning {
+        stroke: var(--threat-outline);
+        stroke-width: 1.7;
+    }
+
+    #threat-map-workspace .threat-province:hover,
+    #threat-map-workspace .threat-province.is-selected {
+        filter: saturate(1.25) brightness(0.96);
+        stroke: var(--threat-outline);
+        stroke-width: 2.8;
+    }
+
+    #threat-map-workspace .threat-marker {
+        cursor: pointer;
+        stroke: var(--tblr-bg-surface);
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+    }
+
+    #threat-map-workspace .threat-marker.is-selected {
+        stroke: var(--threat-outline);
+        stroke-width: 3.5;
+    }
+
+    #threat-map-workspace .threat-marker-halo {
+        fill: none;
+        stroke: var(--threat-outline);
+        stroke-width: 1.5;
+        vector-effect: non-scaling-stroke;
+        pointer-events: none;
+    }
+
+    #threat-map-workspace .threat-map-message {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        text-align: center;
+        pointer-events: none;
+    }
+
+    #threat-map-workspace .threat-map-tooltip {
+        position: absolute;
+        display: none;
+        max-width: 260px;
+        pointer-events: none;
+        z-index: 5;
+    }
+
+    #threat-map-workspace .threat-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+    }
+
+    #threat-map-workspace .threat-legend-swatch {
+        width: 0.8rem;
+        height: 0.8rem;
+        border-radius: 0.2rem;
+        border: 1px solid var(--threat-border);
+    }
+
+    #threat-map-workspace .threat-region-button.is-selected {
+        border-left: 3px solid var(--tblr-primary);
+        background: var(--tblr-active-bg);
+    }
+
+    @media (max-width: 991.98px) {
+        #threat-map-workspace .threat-map-stage,
+        #threat-map-workspace .threat-map-stage svg {
+            min-height: 420px;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        #threat-map-workspace .threat-map-stage,
+        #threat-map-workspace .threat-map-stage svg {
+            min-height: 320px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div
+    id="threat-map-workspace"
+    data-geojson-url="{% static 'assessments/data/indonesia_provinces.geojson' %}"
+    data-selected-warning="{% if selected_warning %}{{ selected_warning.id }}{% endif %}"
+>
+    <div class="page-header mb-3">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="page-pretitle">Intelijen dan Peringatan</div>
+                <h2 class="page-title">Peta Ancaman</h2>
+                <div class="text-secondary mt-1">
+                    Situational awareness wilayah berdasarkan peringatan dini yang masih aktif.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info" role="alert">
+        <div class="fw-semibold">Peta produk intelijen internal</div>
+        Warna wilayah mengikuti level tertinggi dari peringatan aktif yang telah diterbitkan analis. Peta ini tidak menyatakan KLB dan tidak menggantikan konfirmasi epidemiologis resmi.
+    </div>
+
+    <div class="row row-cards mb-3">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card"><div class="card-body">
+                <div class="text-secondary">Peringatan Aktif</div>
+                <div class="h1 mb-0">{{ summary.active }}</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card"><div class="card-body">
+                <div class="text-secondary">Provinsi Terdampak</div>
+                <div class="h1 mb-0 text-warning">{{ summary.provinces }}</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card"><div class="card-body">
+                <div class="text-secondary">Level Tertinggi</div>
+                <div class="h2 mb-0">{{ summary.highest_level }}</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card"><div class="card-body">
+                <div class="text-secondary">Belum Terpetakan</div>
+                <div class="h1 mb-0{% if summary.unmapped %} text-danger{% endif %}">{{ summary.unmapped }}</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <form method="get" class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label" for="threat-disease-filter">Penyakit</label>
+                    <select class="form-select" id="threat-disease-filter" name="disease">
+                        <option value="">Semua penyakit</option>
+                        {% for disease in disease_choices %}
+                            <option value="{{ disease.id }}"{% if selected_disease == disease.id|stringformat:"s" %} selected{% endif %}>{{ disease.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="threat-level-filter">Level peringatan</label>
+                    <select class="form-select" id="threat-level-filter" name="level">
+                        <option value="">Semua level</option>
+                        {% for value, label in level_choices %}
+                            <option value="{{ value }}"{% if selected_level == value %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Terapkan Filter</button>
+                    {% if selected_disease or selected_level %}
+                        <a href="{% url 'dashboard:threat-map' %}" class="btn btn-ghost-secondary">Reset</a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="row row-cards">
+        <div class="col-xl-8">
+            <div class="card h-100">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Sebaran Peringatan Aktif</h3>
+                        <div class="text-secondary small">Klik wilayah atau titik kejadian untuk melihat detail.</div>
+                    </div>
+                    <div class="card-actions btn-list">
+                        <button type="button" class="btn btn-icon btn-ghost-secondary" id="threat-map-zoom-in" aria-label="Perbesar peta">+</button>
+                        <button type="button" class="btn btn-icon btn-ghost-secondary" id="threat-map-zoom-out" aria-label="Perkecil peta">−</button>
+                        <button type="button" class="btn btn-ghost-secondary" id="threat-map-reset">Reset peta</button>
+                    </div>
+                </div>
+                <div class="threat-map-stage" id="threat-map-stage">
+                    <svg
+                        id="threat-map-svg"
+                        viewBox="0 0 1000 520"
+                        role="img"
+                        aria-labelledby="threat-map-title threat-map-description"
+                        preserveAspectRatio="xMidYMid meet"
+                    >
+                        <title id="threat-map-title">Peta peringatan penyakit menular aktif di Indonesia</title>
+                        <desc id="threat-map-description">Provinsi diwarna menurut level tertinggi dari peringatan dini aktif.</desc>
+                    </svg>
+                    <div class="threat-map-message text-secondary" id="threat-map-message">
+                        Memuat peta Indonesia…
+                    </div>
+                    <div class="card threat-map-tooltip" id="threat-map-tooltip" role="status" aria-live="polite">
+                        <div class="card-body py-2 px-3">
+                            <div class="fw-semibold" id="threat-tooltip-title"></div>
+                            <div class="small text-secondary" id="threat-tooltip-detail"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="d-flex flex-wrap gap-3 small" aria-label="Legenda level peringatan">
+                        <span class="threat-legend-item"><span class="threat-legend-swatch" style="background: var(--threat-critical)"></span>Kritis</span>
+                        <span class="threat-legend-item"><span class="threat-legend-swatch" style="background: var(--threat-high)"></span>Tinggi</span>
+                        <span class="threat-legend-item"><span class="threat-legend-swatch" style="background: var(--threat-advisory)"></span>Waspada</span>
+                        <span class="threat-legend-item"><span class="threat-legend-swatch" style="background: var(--threat-monitoring)"></span>Pemantauan</span>
+                        <span class="threat-legend-item"><span class="threat-legend-swatch" style="background: var(--threat-none)"></span>Tidak ada peringatan aktif</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card mb-3" id="threat-detail-card">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">Detail Peringatan</h3>
+                        <div class="text-secondary small" id="threat-detail-province">
+                            {% if selected_warning %}{{ selected_warning.province }}{% else %}Belum ada wilayah dipilih{% endif %}
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <span class="badge bg-yellow-lt" id="threat-detail-level">
+                            {% if selected_warning %}{{ selected_warning.level_label }}{% else %}Tidak tersedia{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if selected_warning %}
+                        <div class="fw-semibold" id="threat-detail-code">{{ selected_warning.code }}</div>
+                        <h3 class="mt-1" id="threat-detail-title">{{ selected_warning.title }}</h3>
+                        <div class="text-secondary mb-3" id="threat-detail-summary">{{ selected_warning.summary }}</div>
+                        <dl class="row mb-0">
+                            <dt class="col-5">Penyakit</dt>
+                            <dd class="col-7" id="threat-detail-disease">{{ selected_warning.disease }}</dd>
+                            <dt class="col-5">Lokasi kejadian</dt>
+                            <dd class="col-7" id="threat-detail-location">{{ selected_warning.location }}</dd>
+                            <dt class="col-5">Keyakinan</dt>
+                            <dd class="col-7" id="threat-detail-confidence">{{ selected_warning.confidence_label }}</dd>
+                            <dt class="col-5">Diterbitkan</dt>
+                            <dd class="col-7" id="threat-detail-issued">{{ selected_warning.issued_at }}</dd>
+                            <dt class="col-5">Bukti artikel</dt>
+                            <dd class="col-7" id="threat-detail-articles">{{ selected_warning.article_count }}</dd>
+                        </dl>
+                    {% else %}
+                        <div class="empty py-4" id="threat-detail-empty">
+                            <p class="empty-title">Belum ada peringatan aktif</p>
+                            <p class="empty-subtitle text-secondary">Terbitkan Peringatan Dini atau ubah filter untuk menampilkan data.</p>
+                        </div>
+                        <div class="d-none" id="threat-detail-content">
+                            <div class="fw-semibold" id="threat-detail-code"></div>
+                            <h3 class="mt-1" id="threat-detail-title"></h3>
+                            <div class="text-secondary mb-3" id="threat-detail-summary"></div>
+                            <dl class="row mb-0">
+                                <dt class="col-5">Penyakit</dt><dd class="col-7" id="threat-detail-disease"></dd>
+                                <dt class="col-5">Lokasi kejadian</dt><dd class="col-7" id="threat-detail-location"></dd>
+                                <dt class="col-5">Keyakinan</dt><dd class="col-7" id="threat-detail-confidence"></dd>
+                                <dt class="col-5">Diterbitkan</dt><dd class="col-7" id="threat-detail-issued"></dd>
+                                <dt class="col-5">Bukti artikel</dt><dd class="col-7" id="threat-detail-articles"></dd>
+                            </dl>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer d-flex gap-2{% if not selected_warning %} d-none{% endif %}" id="threat-detail-actions">
+                    <a class="btn btn-warning" id="threat-detail-warning-link" href="{% if selected_warning %}{{ selected_warning.warning_url }}{% else %}#{% endif %}">Buka Peringatan</a>
+                    <a class="btn btn-ghost-secondary" id="threat-detail-signal-link" href="{% if selected_warning %}{{ selected_warning.signal_url }}{% else %}#{% endif %}">Buka Sinyal</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Wilayah Prioritas</h3>
+                </div>
+                <div class="list-group list-group-flush" id="threat-region-list">
+                    {% for province in provinces %}
+                        <button
+                            type="button"
+                            class="list-group-item list-group-item-action text-start threat-region-button{% if selected_warning and selected_warning.province_key == province.key %} is-selected{% endif %}"
+                            data-province-key="{{ province.key }}"
+                            data-warning-id="{{ province.warnings.0.id }}"
+                        >
+                            <div class="d-flex justify-content-between gap-2">
+                                <div class="fw-semibold">{{ province.name }}</div>
+                                <span class="badge {% if province.level == 'critical' %}bg-danger{% elif province.level == 'high' %}bg-orange-lt{% elif province.level == 'advisory' %}bg-yellow-lt{% else %}bg-blue-lt{% endif %}">{{ province.level_label }}</span>
+                            </div>
+                            <div class="small text-secondary mt-1">
+                                {{ province.warning_count }} peringatan · {{ province.diseases|join:", " }}
+                            </div>
+                        </button>
+                    {% empty %}
+                        <div class="empty py-4">
+                            <p class="empty-title">Belum ada wilayah terdampak</p>
+                            <p class="empty-subtitle text-secondary">Tidak ada peringatan aktif pada filter ini.</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if unmapped_warnings %}
+        <div class="alert alert-warning mt-3" role="alert">
+            <div class="fw-semibold">{{ summary.unmapped }} peringatan belum dapat dipetakan</div>
+            Pastikan lokasi utama memiliki relasi ke provinsi Indonesia atau kode wilayah BPS yang sesuai.
+        </div>
+    {% endif %}
+</div>
+
+{{ provinces|json_script:"threat-map-provinces-data" }}
+{{ warnings|json_script:"threat-map-warnings-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    const root = document.getElementById("threat-map-workspace");
+    if (!root) return;
+
+    const svgNode = document.getElementById("threat-map-svg");
+    const stage = document.getElementById("threat-map-stage");
+    const message = document.getElementById("threat-map-message");
+    const tooltip = document.getElementById("threat-map-tooltip");
+    const tooltipTitle = document.getElementById("threat-tooltip-title");
+    const tooltipDetail = document.getElementById("threat-tooltip-detail");
+    const provinceData = JSON.parse(document.getElementById("threat-map-provinces-data").textContent);
+    const warnings = JSON.parse(document.getElementById("threat-map-warnings-data").textContent);
+    const provinceByKey = new Map(provinceData.map((item) => [item.key, item]));
+    const warningById = new Map(warnings.map((item) => [item.id, item]));
+    const styles = getComputedStyle(root);
+
+    const colors = {
+        monitoring: styles.getPropertyValue("--threat-monitoring").trim(),
+        advisory: styles.getPropertyValue("--threat-advisory").trim(),
+        high: styles.getPropertyValue("--threat-high").trim(),
+        critical: styles.getPropertyValue("--threat-critical").trim(),
+        none: styles.getPropertyValue("--threat-none").trim()
+    };
+
+    let selectedWarningId = root.dataset.selectedWarning || (warnings[0] ? warnings[0].id : "");
+    let selectedProvinceKey = selectedWarningId && warningById.get(selectedWarningId)
+        ? warningById.get(selectedWarningId).province_key
+        : "";
+    let mapReady = false;
+    const featureByProvinceKey = new Map();
+
+    function normalizeProvinceName(value) {
+        return String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/^provinsi\s+/, "")
+            .replace(/[^a-z0-9]/g, "");
+    }
+
+    function setText(id, value) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value == null || value === "" ? "—" : String(value);
+    }
+
+    function formatDate(value) {
+        if (!value) return "—";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return new Intl.DateTimeFormat("id-ID", {
+            dateStyle: "medium",
+            timeStyle: "short"
+        }).format(date);
+    }
+
+    function levelBadgeClass(level) {
+        if (level === "critical") return "badge bg-danger";
+        if (level === "high") return "badge bg-orange-lt";
+        if (level === "advisory") return "badge bg-yellow-lt";
+        return "badge bg-blue-lt";
+    }
+
+    function selectWarning(warningId, focusMap) {
+        const warning = warningById.get(warningId);
+        if (!warning) return;
+
+        selectedWarningId = warning.id;
+        selectedProvinceKey = warning.province_key;
+        setText("threat-detail-province", warning.province || "Belum terpetakan");
+        setText("threat-detail-level", warning.level_label);
+        setText("threat-detail-code", warning.code);
+        setText("threat-detail-title", warning.title);
+        setText("threat-detail-summary", warning.summary);
+        setText("threat-detail-disease", warning.disease);
+        setText("threat-detail-location", warning.location);
+        setText("threat-detail-confidence", warning.confidence_label);
+        setText("threat-detail-issued", formatDate(warning.issued_at));
+        setText("threat-detail-articles", warning.article_count);
+
+        const badge = document.getElementById("threat-detail-level");
+        if (badge) badge.className = levelBadgeClass(warning.level);
+
+        const warningLink = document.getElementById("threat-detail-warning-link");
+        const signalLink = document.getElementById("threat-detail-signal-link");
+        if (warningLink) warningLink.href = warning.warning_url;
+        if (signalLink) signalLink.href = warning.signal_url;
+
+        const empty = document.getElementById("threat-detail-empty");
+        const content = document.getElementById("threat-detail-content");
+        const actions = document.getElementById("threat-detail-actions");
+        if (empty) empty.classList.add("d-none");
+        if (content) content.classList.remove("d-none");
+        if (actions) actions.classList.remove("d-none");
+
+        document.querySelectorAll(".threat-region-button").forEach((button) => {
+            button.classList.toggle("is-selected", button.dataset.provinceKey === selectedProvinceKey);
+        });
+        document.querySelectorAll(".threat-province").forEach((path) => {
+            path.classList.toggle("is-selected", path.dataset.provinceKey === selectedProvinceKey);
+        });
+        document.querySelectorAll(".threat-marker").forEach((marker) => {
+            marker.classList.toggle("is-selected", marker.dataset.warningId === selectedWarningId);
+        });
+        document.querySelectorAll(".threat-marker-halo").forEach((halo) => {
+            halo.classList.toggle("d-none", halo.dataset.warningId !== selectedWarningId);
+        });
+
+        if (focusMap !== false) focusOnProvince(selectedProvinceKey, true);
+    }
+
+    document.querySelectorAll(".threat-region-button").forEach((button) => {
+        button.addEventListener("click", () => selectWarning(button.dataset.warningId, true));
+    });
+
+    if (selectedWarningId) selectWarning(selectedWarningId);
+
+    if (typeof window.d3 === "undefined") {
+        message.textContent = "Peta tidak dapat dimuat. Periksa koneksi aset visualisasi.";
+        return;
+    }
+
+    const svg = window.d3.select(svgNode);
+    const mapLayer = svg.append("g");
+    const projection = window.d3.geoMercator();
+    const path = window.d3.geoPath(projection);
+    const zoom = window.d3.zoom()
+        .scaleExtent([1, 8])
+        .on("zoom", (event) => {
+            mapLayer.attr("transform", event.transform);
+            mapLayer.selectAll(".threat-marker")
+                .attr("r", 6 / event.transform.k);
+            mapLayer.selectAll(".threat-marker-halo")
+                .attr("r", 11 / event.transform.k);
+        });
+
+    svg.call(zoom).on("dblclick.zoom", null);
+
+    function focusOnProvince(provinceKey, animate) {
+        if (!mapReady || !provinceKey || !featureByProvinceKey.has(provinceKey)) return;
+
+        const feature = featureByProvinceKey.get(provinceKey);
+        const bounds = path.bounds(feature);
+        const width = Math.max(bounds[1][0] - bounds[0][0], 1);
+        const height = Math.max(bounds[1][1] - bounds[0][1], 1);
+        const centerX = (bounds[0][0] + bounds[1][0]) / 2;
+        const centerY = (bounds[0][1] + bounds[1][1]) / 2;
+        const scale = Math.min(3.6, 0.78 / Math.max(width / 1000, height / 520));
+        const transform = window.d3.zoomIdentity
+            .translate(500, 260)
+            .scale(Math.max(1.7, scale))
+            .translate(-centerX, -centerY);
+        const target = animate ? svg.transition().duration(280) : svg;
+        target.call(zoom.transform, transform);
+    }
+
+    function showTooltip(event, title, detail) {
+        tooltipTitle.textContent = title;
+        tooltipDetail.textContent = detail;
+        tooltip.style.display = "block";
+        const stageRect = stage.getBoundingClientRect();
+        const tooltipRect = tooltip.getBoundingClientRect();
+        const left = Math.min(
+            Math.max(event.clientX - stageRect.left + 12, 8),
+            stageRect.width - tooltipRect.width - 8
+        );
+        const top = Math.min(
+            Math.max(event.clientY - stageRect.top + 12, 8),
+            stageRect.height - tooltipRect.height - 8
+        );
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+    }
+
+    function hideTooltip() {
+        tooltip.style.display = "none";
+    }
+
+    function fillForFeature(feature) {
+        const key = normalizeProvinceName(feature.properties.name);
+        const province = provinceByKey.get(key);
+        return province ? colors[province.level] : colors.none;
+    }
+
+    window.d3.json(root.dataset.geojsonUrl).then((geojson) => {
+        projection.fitExtent([[24, 24], [976, 496]], geojson);
+
+        geojson.features.forEach((feature) => {
+            featureByProvinceKey.set(
+                normalizeProvinceName(feature.properties.name),
+                feature
+            );
+        });
+
+        mapLayer.selectAll("path")
+            .data(geojson.features)
+            .join("path")
+            .attr("class", (feature) => {
+                const key = normalizeProvinceName(feature.properties.name);
+                const province = provinceByKey.get(key);
+                return "threat-province"
+                    + (province ? " has-warning" : "")
+                    + (key === selectedProvinceKey ? " is-selected" : "");
+            })
+            .attr("data-province-key", (feature) => normalizeProvinceName(feature.properties.name))
+            .attr("d", path)
+            .attr("fill", fillForFeature)
+            .attr("aria-label", (feature) => {
+                const key = normalizeProvinceName(feature.properties.name);
+                const province = provinceByKey.get(key);
+                return province
+                    ? province.name + ", " + province.level_label + ", " + province.warning_count + " peringatan aktif"
+                    : feature.properties.name + ", tidak ada peringatan aktif";
+            })
+            .on("mouseenter", function (event, feature) {
+                const key = normalizeProvinceName(feature.properties.name);
+                const province = provinceByKey.get(key);
+                showTooltip(
+                    event,
+                    feature.properties.name,
+                    province
+                        ? province.level_label + " · " + province.warning_count + " peringatan"
+                        : "Tidak ada peringatan aktif"
+                );
+            })
+            .on("mousemove", function (event, feature) {
+                const key = normalizeProvinceName(feature.properties.name);
+                const province = provinceByKey.get(key);
+                showTooltip(
+                    event,
+                    feature.properties.name,
+                    province
+                        ? province.level_label + " · " + province.warning_count + " peringatan"
+                        : "Tidak ada peringatan aktif"
+                );
+            })
+            .on("mouseleave", hideTooltip)
+            .on("click", function (event, feature) {
+                const province = provinceByKey.get(normalizeProvinceName(feature.properties.name));
+                if (province && province.warnings.length) {
+                    selectWarning(province.warnings[0].id, true);
+                }
+            });
+
+        const mappableWarnings = warnings.filter((warning) => {
+            return warning.latitude !== null && warning.longitude !== null;
+        });
+
+        mapLayer.selectAll("circle.threat-marker-halo")
+            .data(mappableWarnings)
+            .join("circle")
+            .attr("class", (warning) => {
+                return "threat-marker-halo" + (warning.id === selectedWarningId ? "" : " d-none");
+            })
+            .attr("data-warning-id", (warning) => warning.id)
+            .attr("cx", (warning) => projection([warning.longitude, warning.latitude])[0])
+            .attr("cy", (warning) => projection([warning.longitude, warning.latitude])[1])
+            .attr("r", 11);
+
+        mapLayer.selectAll("circle.threat-marker")
+            .data(mappableWarnings)
+            .join("circle")
+            .attr("class", (warning) => {
+                return "threat-marker" + (warning.id === selectedWarningId ? " is-selected" : "");
+            })
+            .attr("data-warning-id", (warning) => warning.id)
+            .attr("cx", (warning) => projection([warning.longitude, warning.latitude])[0])
+            .attr("cy", (warning) => projection([warning.longitude, warning.latitude])[1])
+            .attr("r", 6)
+            .attr("fill", (warning) => colors[warning.level])
+            .attr("aria-label", (warning) => warning.code + ", " + warning.location + ", " + warning.level_label)
+            .on("mouseenter", function (event, warning) {
+                showTooltip(event, warning.code + " · " + warning.location, warning.disease + " · " + warning.level_label);
+            })
+            .on("mousemove", function (event, warning) {
+                showTooltip(event, warning.code + " · " + warning.location, warning.disease + " · " + warning.level_label);
+            })
+            .on("mouseleave", hideTooltip)
+            .on("click", function (event, warning) {
+                event.stopPropagation();
+                selectWarning(warning.id, true);
+            });
+
+        mapReady = true;
+        message.classList.add("d-none");
+        if (selectedProvinceKey) focusOnProvince(selectedProvinceKey, false);
+    }).catch(() => {
+        message.textContent = "Geometri peta Indonesia gagal dimuat.";
+    });
+
+    document.getElementById("threat-map-zoom-in").addEventListener("click", () => {
+        svg.transition().duration(180).call(zoom.scaleBy, 1.5);
+    });
+    document.getElementById("threat-map-zoom-out").addEventListener("click", () => {
+        svg.transition().duration(180).call(zoom.scaleBy, 1 / 1.5);
+    });
+    document.getElementById("threat-map-reset").addEventListener("click", () => {
+        svg.transition().duration(180).call(zoom.transform, window.d3.zoomIdentity);
+    });
+}());
+</script>
+{% endblock %}

@@ -66,9 +66,9 @@ class SignalLifecycleTests(TestCase):
             processing_status=Article.ProcessingStatus.PROCESSED,
         )
 
-        self.disease = Disease.objects.create(
+        self.disease, _ = Disease.objects.get_or_create(
             name="Demam Berdarah Dengue",
-            code="dbd-lifecycle",
+            defaults={"code": "dbd-lifecycle"},
         )
 
         self.location = Location.objects.create(

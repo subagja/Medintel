@@ -21,6 +21,12 @@ from ..models import (
 )
 
 
+AUTOMATED_LOCATION_METHODS = (
+    ExtractionMethod.SYSTEM,
+    ExtractionMethod.RULE_BASED,
+)
+
+
 @dataclass(frozen=True)
 class EntityMention:
     entity_id: str
@@ -346,6 +352,143 @@ def calculate_rule_confidence(
     return min(score, 1.0)
 
 
+def _primary_location_mentions(
+    mentions: list[EntityMention],
+) -> list[EntityMention]:
+    return [
+        mention
+        for mention in mentions
+        if mention.is_primary
+    ]
+
+
+def _persist_primary_location(
+    *,
+    article: Article,
+    result: EntityExtractionResult,
+    title_length: int,
+) -> None:
+    """Simpan hanya satu lokasi kejadian otomatis yang actionable."""
+    location_mentions = result.location_mentions
+
+    if not location_mentions:
+        return
+
+    protected_primary_exists = ArticleLocation.objects.filter(
+        article=article,
+        is_primary=True,
+    ).exclude(
+        extraction_method__in=AUTOMATED_LOCATION_METHODS,
+        validation_status=ValidationStatus.UNREVIEWED,
+    ).exists()
+
+    automatic_domestic = ArticleLocation.objects.filter(
+        article=article,
+        location__country_code="ID",
+        extraction_method__in=AUTOMATED_LOCATION_METHODS,
+        validation_status=ValidationStatus.UNREVIEWED,
+    )
+
+    if protected_primary_exists:
+        # Keputusan analis mengalahkan resolver otomatis. Relasi otomatis
+        # yang belum ditinjau tidak perlu dipertahankan sebagai lokasi kedua.
+        automatic_domestic.delete()
+        return
+
+    automatic_domestic.filter(
+        is_primary=True,
+    ).update(
+        is_primary=False,
+    )
+
+    detected_location_ids: set[str] = set()
+
+    for mention in location_mentions:
+        location = Location.objects.get(
+            id=mention.entity_id,
+        )
+        detected_location_ids.add(str(location.id))
+        confidence = (
+            mention.confidence_score
+            if mention.confidence_score is not None
+            else calculate_rule_confidence(
+                mention_count=mention.mention_count,
+                found_in_title=(
+                    mention.start < title_length
+                ),
+            )
+        )
+
+        relation, created = ArticleLocation.objects.get_or_create(
+            article=article,
+            location=location,
+            defaults={
+                "mention_text": mention.matched_text,
+                "confidence_score": confidence,
+                "extraction_method": ExtractionMethod.RULE_BASED,
+                "validation_status": ValidationStatus.UNREVIEWED,
+                "is_primary": True,
+            },
+        )
+
+        if created:
+            result.locations_created += 1
+        else:
+            if (
+                relation.extraction_method
+                in AUTOMATED_LOCATION_METHODS
+                and relation.validation_status
+                == ValidationStatus.UNREVIEWED
+            ):
+                relation.mention_text = mention.matched_text
+                relation.confidence_score = confidence
+                relation.extraction_method = (
+                    ExtractionMethod.RULE_BASED
+                )
+                relation.is_primary = True
+                relation.save(
+                    update_fields=[
+                        "mention_text",
+                        "confidence_score",
+                        "extraction_method",
+                        "is_primary",
+                        "updated_at",
+                    ]
+                )
+
+            result.locations_updated += 1
+
+    automatic_domestic.exclude(
+        location_id__in=detected_location_ids,
+    ).delete()
+
+
+@transaction.atomic
+def extract_article_locations(
+    article: Article,
+) -> EntityExtractionResult:
+    """Ekstrak ulang lokasi tanpa mengubah entitas penyakit."""
+    all_mentions, geolocation = _extract_location_geolocation(
+        article
+    )
+    result = EntityExtractionResult(
+        article=article,
+        location_mentions=_primary_location_mentions(
+            all_mentions
+        ),
+        geolocation_scope=geolocation.scope,
+        ambiguous_location_terms=(
+            geolocation.ambiguous_terms
+        ),
+    )
+    _persist_primary_location(
+        article=article,
+        result=result,
+        title_length=len(article.title),
+    )
+    return result
+
+
 @transaction.atomic
 def extract_article_entities(
     article: Article,
@@ -359,8 +502,11 @@ def extract_article_entities(
     disease_mentions = extract_disease_mentions(
         article
     )
-    location_mentions, geolocation = _extract_location_geolocation(
+    all_location_mentions, geolocation = _extract_location_geolocation(
         article
+    )
+    location_mentions = _primary_location_mentions(
+        all_location_mentions
     )
 
     result = EntityExtractionResult(
@@ -399,90 +545,10 @@ def extract_article_entities(
         else:
             result.diseases_updated += 1
 
-    manual_primary_exists = ArticleLocation.objects.filter(
+    _persist_primary_location(
         article=article,
-        is_primary=True,
-    ).exclude(
-        extraction_method=ExtractionMethod.RULE_BASED,
-        validation_status=ValidationStatus.UNREVIEWED,
-    ).exists()
-
-    if not manual_primary_exists:
-        ArticleLocation.objects.filter(
-            article=article,
-            extraction_method=ExtractionMethod.RULE_BASED,
-            validation_status=ValidationStatus.UNREVIEWED,
-            is_primary=True,
-        ).update(
-            is_primary=False,
-        )
-
-    detected_location_ids: set[str] = set()
-
-    for mention in location_mentions:
-        location = Location.objects.get(
-            id=mention.entity_id,
-        )
-
-        detected_location_ids.add(str(location.id))
-        confidence = (
-            mention.confidence_score
-            if mention.confidence_score is not None
-            else calculate_rule_confidence(
-                mention_count=mention.mention_count,
-                found_in_title=(
-                    mention.start <= title_length
-                ),
-            )
-        )
-
-        relation, created = ArticleLocation.objects.get_or_create(
-            article=article,
-            location=location,
-            defaults={
-                "mention_text": mention.matched_text,
-                "confidence_score": confidence,
-                "extraction_method": ExtractionMethod.RULE_BASED,
-                "validation_status": ValidationStatus.UNREVIEWED,
-                "is_primary": (
-                    mention.is_primary
-                    and not manual_primary_exists
-                ),
-            },
-        )
-
-        if created:
-            result.locations_created += 1
-        else:
-            if (
-                relation.extraction_method
-                == ExtractionMethod.RULE_BASED
-                and relation.validation_status
-                == ValidationStatus.UNREVIEWED
-            ):
-                relation.mention_text = mention.matched_text
-                relation.confidence_score = confidence
-                relation.is_primary = (
-                    mention.is_primary
-                    and not manual_primary_exists
-                )
-                relation.save(
-                    update_fields=[
-                        "mention_text",
-                        "confidence_score",
-                        "is_primary",
-                        "updated_at",
-                    ]
-                )
-
-            result.locations_updated += 1
-
-    ArticleLocation.objects.filter(
-        article=article,
-        extraction_method=ExtractionMethod.RULE_BASED,
-        validation_status=ValidationStatus.UNREVIEWED,
-    ).exclude(
-        location_id__in=detected_location_ids,
-    ).delete()
+        result=result,
+        title_length=title_length,
+    )
 
     return result

@@ -29,21 +29,33 @@ from apps.collection.models import (
 )
 from apps.crawlers.real_crawler import GenericHtmlCrawler
 from apps.crawlers.services import run_crawler
-from apps.assessments.forms import ArticleValidationAssessmentForm
+from apps.assessments.forms import (
+    ArticleValidationAssessmentForm,
+    PrimaryArticleDiseaseForm,
+    PrimaryArticleLocationForm,
+)
 from apps.assessments.models import (
     ArticleValidationAssessment,
     ArticleValidationHistory,
+)
+from apps.assessments.services.information_balance import (
+    recommend_information_balance,
 )
 from apps.entities.models import (
     ArticleDisease,
     ArticleFact,
     ArticleLocation,
+    Disease,
+    ExtractionReviewLog,
+    Location,
     ValidationStatus,
 )
 from apps.entities.services.review import (
     validate_article_disease,
     validate_article_fact,
     validate_article_location,
+    set_primary_article_disease,
+    set_primary_article_location,
 )
 from apps.indicators.services.generation import (
     generate_indicators_from_fact,
@@ -691,11 +703,33 @@ def article_validation(request: HttpRequest) -> HttpResponse:
 
     assessment = None
     form = None
+    primary_disease_form = None
+    primary_location_form = None
     assessment_history = []
+    disease_history = []
+    location_history = []
+    information_balance_recommendation = None
     selected_diseases = []
     selected_locations = []
     selected_facts = []
     selected_eligibility = None
+    requested_validation_tab = (
+        request.POST.get("active_tab")
+        or request.GET.get("tab")
+        or "validation"
+    )
+    allowed_validation_tabs = {
+        "validation",
+        "disease",
+        "location",
+        "information",
+        "history",
+    }
+    active_validation_tab = (
+        requested_validation_tab
+        if requested_validation_tab in allowed_validation_tabs
+        else "validation"
+    )
 
     if selected_article is not None:
         selected_diseases = list(
@@ -774,158 +808,342 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             )
         )
 
-        if request.method == "POST":
-            previous_values = {
-                "status": assessment.validation_status,
-                "source_reliability": (
-                    assessment.source_reliability
-                ),
-                "information_credibility": (
-                    assessment.information_credibility
-                ),
-                "assessment_notes": assessment.assessment_notes,
-                "relevance_notes": assessment.relevance_notes,
-            }
+        information_balance_recommendation = (
+            recommend_information_balance(selected_article)
+        )
 
+        post_action = request.POST.get(
+            "action",
+            "save_assessment",
+        )
+
+        if (
+            request.method == "POST"
+            and post_action == "correct_primary_disease"
+        ):
+            active_validation_tab = "disease"
             form = ArticleValidationAssessmentForm(
-                request.POST,
                 instance=assessment,
             )
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                request.POST,
+                article=selected_article,
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                article=selected_article,
+            )
 
-            if form.is_valid():
-                with transaction.atomic():
-                    saved_assessment = form.save(
-                        commit=False
-                    )
-
-                    if request.user.is_authenticated:
-                        saved_assessment.evaluated_by = (
-                            request.user
-                        )
-
-                    saved_assessment.save()
-
-                    has_changed = _assessment_has_changed(
-                        previous_values=previous_values,
-                        assessment=saved_assessment,
-                    )
-
-                    if has_changed:
-                        ArticleValidationHistory.objects.create(
-                            assessment=saved_assessment,
-                            previous_status=(
-                                previous_values["status"]
-                            ),
-                            new_status=(
-                                saved_assessment.validation_status
-                            ),
-                            previous_source_reliability=(
-                                previous_values[
-                                    "source_reliability"
-                                ]
-                            ),
-                            new_source_reliability=(
-                                saved_assessment.source_reliability
-                            ),
-                            previous_information_credibility=(
-                                previous_values[
-                                    "information_credibility"
-                                ]
-                            ),
-                            new_information_credibility=(
-                                saved_assessment
-                                .information_credibility
-                            ),
-                            change_notes=(
-                                saved_assessment.assessment_notes
-                            ),
-                            changed_by=(
-                                request.user
-                                if request.user.is_authenticated
-                                else None
-                            ),
-                        )
-
-                    generation_summary = None
-
-                    if (
-                        saved_assessment.validation_status
-                        == ArticleValidationAssessment
-                        .ValidationStatus
-                        .VALIDATED
-                    ):
-                        if not request.user.is_authenticated:
-                            raise ValidationError(
-                                "Pengguna harus login untuk "
-                                "memvalidasi artikel."
-                            )
-
-                        generation_summary = (
-                            _validate_extractions_and_generate_indicators(
-                                article=selected_article,
-                                reviewer=request.user,
-                                notes=(
-                                    saved_assessment.assessment_notes
-                                    or saved_assessment.relevance_notes
-                                ),
-                            )
-                        )
-
-                    _synchronize_article_status(
-                        article=selected_article,
-                        assessment=saved_assessment,
-                    )
-
-                messages.success(
-                    request,
+            if not request.user.is_authenticated:
+                primary_disease_form.add_error(
+                    None,
                     (
-                        "Validasi artikel berhasil disimpan "
-                        f"dengan nilai "
-                        f"{saved_assessment.admiralty_code}."
+                        "Pengguna harus login untuk menetapkan "
+                        "penyakit utama."
                     ),
                 )
+            elif primary_disease_form.is_valid():
+                try:
+                    correction_result = (
+                        set_primary_article_disease(
+                            article=selected_article,
+                            disease=(
+                                primary_disease_form
+                                .cleaned_data["primary_disease"]
+                            ),
+                            reviewer=request.user,
+                            notes=(
+                                primary_disease_form
+                                .cleaned_data[
+                                    "disease_correction_notes"
+                                ]
+                            ),
+                        )
+                    )
+                except ValidationError as exc:
+                    primary_disease_form.add_error(
+                        None,
+                        exc,
+                    )
+                else:
+                    if correction_result.changed:
+                        messages.success(
+                            request,
+                            (
+                                "Penyakit utama ditetapkan menjadi "
+                                f"{correction_result.relation.disease}. "
+                                f"{correction_result.context_count} "
+                                "penyakit lain tetap disimpan sebagai "
+                                "konteks."
+                            ),
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            (
+                                "Penyakit utama tidak berubah; "
+                                "riwayat baru tidak dibuat."
+                            ),
+                        )
 
-                if generation_summary is not None:
-                    messages.info(
+                    redirect_url = reverse(
+                        "dashboard:article-validation"
+                    )
+
+                    return redirect(
+                        (
+                            f"{redirect_url}"
+                            f"?article={selected_article.id}"
+                            "&eligibility=all"
+                            "&tab=disease"
+                        )
+                    )
+        elif (
+            request.method == "POST"
+            and post_action == "correct_primary_location"
+        ):
+            active_validation_tab = "location"
+            form = ArticleValidationAssessmentForm(
+                instance=assessment,
+            )
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                article=selected_article,
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                request.POST,
+                article=selected_article,
+            )
+
+            if not request.user.is_authenticated:
+                primary_location_form.add_error(
+                    None,
+                    (
+                        "Pengguna harus login untuk mengoreksi "
+                        "lokasi utama."
+                    ),
+                )
+            elif primary_location_form.is_valid():
+                try:
+                    correction_result = (
+                        set_primary_article_location(
+                            article=selected_article,
+                            location=(
+                                primary_location_form
+                                .cleaned_data["primary_location"]
+                            ),
+                            reviewer=request.user,
+                            notes=(
+                                primary_location_form
+                                .cleaned_data["correction_notes"]
+                            ),
+                        )
+                    )
+                except ValidationError as exc:
+                    primary_location_form.add_error(
+                        None,
+                        exc,
+                    )
+                else:
+                    if correction_result.changed:
+                        messages.success(
+                            request,
+                            (
+                                "Lokasi kejadian utama ditetapkan "
+                                f"menjadi "
+                                f"{correction_result.relation.location}. "
+                                f"{correction_result.context_count} "
+                                "lokasi lain tetap disimpan sebagai "
+                                "konteks."
+                            ),
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            (
+                                "Lokasi utama tidak berubah; "
+                                "riwayat baru tidak dibuat."
+                            ),
+                        )
+
+                    redirect_url = reverse(
+                        "dashboard:article-validation"
+                    )
+
+                    return redirect(
+                        (
+                            f"{redirect_url}"
+                            f"?article={selected_article.id}"
+                            "&eligibility=all"
+                            "&tab=location"
+                        )
+                    )
+        else:
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                article=selected_article,
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                article=selected_article,
+            )
+
+            if request.method == "POST":
+                previous_values = {
+                    "status": assessment.validation_status,
+                    "source_reliability": (
+                        assessment.source_reliability
+                    ),
+                    "information_credibility": (
+                        assessment.information_credibility
+                    ),
+                    "assessment_notes": assessment.assessment_notes,
+                    "relevance_notes": assessment.relevance_notes,
+                }
+
+                form = ArticleValidationAssessmentForm(
+                    request.POST,
+                    instance=assessment,
+                )
+
+                if form.is_valid():
+                    with transaction.atomic():
+                        saved_assessment = form.save(
+                            commit=False
+                        )
+
+                        if request.user.is_authenticated:
+                            saved_assessment.evaluated_by = (
+                                request.user
+                            )
+
+                        saved_assessment.save()
+
+                        has_changed = _assessment_has_changed(
+                            previous_values=previous_values,
+                            assessment=saved_assessment,
+                        )
+
+                        if has_changed:
+                            ArticleValidationHistory.objects.create(
+                                assessment=saved_assessment,
+                                previous_status=(
+                                    previous_values["status"]
+                                ),
+                                new_status=(
+                                    saved_assessment.validation_status
+                                ),
+                                previous_source_reliability=(
+                                    previous_values[
+                                        "source_reliability"
+                                    ]
+                                ),
+                                new_source_reliability=(
+                                    saved_assessment.source_reliability
+                                ),
+                                previous_information_credibility=(
+                                    previous_values[
+                                        "information_credibility"
+                                    ]
+                                ),
+                                new_information_credibility=(
+                                    saved_assessment
+                                    .information_credibility
+                                ),
+                                change_notes=(
+                                    saved_assessment.assessment_notes
+                                ),
+                                changed_by=(
+                                    request.user
+                                    if request.user.is_authenticated
+                                    else None
+                                ),
+                            )
+
+                        generation_summary = None
+
+                        if (
+                            saved_assessment.validation_status
+                            == ArticleValidationAssessment
+                            .ValidationStatus
+                            .VALIDATED
+                        ):
+                            if not request.user.is_authenticated:
+                                raise ValidationError(
+                                    "Pengguna harus login untuk "
+                                    "memvalidasi artikel."
+                                )
+
+                            generation_summary = (
+                                _validate_extractions_and_generate_indicators(
+                                    article=selected_article,
+                                    reviewer=request.user,
+                                    notes=(
+                                        saved_assessment.assessment_notes
+                                        or saved_assessment.relevance_notes
+                                    ),
+                                )
+                            )
+
+                        _synchronize_article_status(
+                            article=selected_article,
+                            assessment=saved_assessment,
+                        )
+
+                    messages.success(
                         request,
                         (
-                            "Hasil ekstraksi tervalidasi: "
-                            f"{generation_summary['diseases_validated']} "
-                            "penyakit, "
-                            f"{generation_summary['locations_validated']} "
-                            "lokasi, dan "
-                            f"{generation_summary['facts_validated']} "
-                            "fakta. "
-                            "Indikator baru: "
-                            f"{generation_summary['indicators_created']}; "
-                            "indikator yang sudah ada: "
-                            f"{generation_summary['indicators_existing']}; "
-                            "fakta tanpa kandidat indikator: "
-                            f"{generation_summary['facts_skipped']}."
+                            "Validasi artikel berhasil disimpan "
+                            f"dengan nilai "
+                            f"{saved_assessment.admiralty_code}."
                         ),
                     )
 
-                redirect_url = reverse(
-                    "dashboard:article-validation"
-                )
+                    if generation_summary is not None:
+                        messages.info(
+                            request,
+                            (
+                                "Hasil ekstraksi tervalidasi: "
+                                f"{generation_summary['diseases_validated']} "
+                                "penyakit, "
+                                f"{generation_summary['locations_validated']} "
+                                "lokasi, dan "
+                                f"{generation_summary['facts_validated']} "
+                                "fakta. "
+                                "Indikator baru: "
+                                f"{generation_summary['indicators_created']}; "
+                                "indikator yang sudah ada: "
+                                f"{generation_summary['indicators_existing']}; "
+                                "fakta tanpa kandidat indikator: "
+                                f"{generation_summary['facts_skipped']}."
+                            ),
+                        )
 
-                return redirect(
-                    (
-                        f"{redirect_url}"
-                        f"?article={selected_article.id}"
-                        f"&eligibility={eligibility_filter}"
+                    redirect_url = reverse(
+                        "dashboard:article-validation"
                     )
-                )
 
-        else:
-            form = ArticleValidationAssessmentForm(
-                instance=assessment,
-            )
+                    return redirect(
+                        (
+                            f"{redirect_url}"
+                            f"?article={selected_article.id}"
+                            f"&eligibility={eligibility_filter}"
+                            f"&tab={active_validation_tab}"
+                        )
+                    )
+            else:
+                form = ArticleValidationAssessmentForm(
+                    instance=assessment,
+                )
 
         assessment_history = (
             assessment.history
             .select_related("changed_by")
             .all()
+        )
+
+        location_history = _location_correction_history(
+            selected_locations
+        )
+
+        disease_history = _disease_correction_history(
+            selected_diseases
         )
 
     base_articles = _validation_queryset()
@@ -976,7 +1194,15 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "selected_article": selected_article,
         "assessment": assessment,
         "assessment_form": form,
+        "primary_disease_form": primary_disease_form,
+        "primary_location_form": primary_location_form,
         "assessment_history": assessment_history,
+        "disease_history": disease_history,
+        "location_history": location_history,
+        "information_balance_recommendation": (
+            information_balance_recommendation
+        ),
+        "active_validation_tab": active_validation_tab,
         "selected_diseases": selected_diseases,
         "selected_locations": selected_locations,
         "selected_facts": selected_facts,
@@ -998,6 +1224,121 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         context,
     )
 
+
+def _disease_correction_history(
+    disease_relations: list[ArticleDisease],
+) -> list[ExtractionReviewLog]:
+    relation_ids = [
+        relation.id
+        for relation in disease_relations
+    ]
+
+    if not relation_ids:
+        return []
+
+    review_logs = list(
+        ExtractionReviewLog.objects.filter(
+            object_type=(
+                ExtractionReviewLog
+                .ObjectType
+                .ARTICLE_DISEASE
+            ),
+            object_id__in=relation_ids,
+            action=ExtractionReviewLog.Action.CORRECT,
+        )
+        .select_related("reviewer")
+        .order_by("-reviewed_at")
+    )
+
+    primary_logs = [
+        review_log
+        for review_log in review_logs
+        if (review_log.after_data or {}).get("is_primary")
+    ]
+
+    disease_ids = {
+        (review_log.after_data or {}).get("disease_id")
+        for review_log in primary_logs
+        if (review_log.after_data or {}).get("disease_id")
+    }
+
+    diseases = {
+        str(disease_id): disease
+        for disease_id, disease in (
+            Disease.objects.in_bulk(disease_ids).items()
+        )
+    }
+
+    for review_log in primary_logs:
+        disease_id = (
+            review_log.after_data or {}
+        ).get("disease_id")
+        disease = diseases.get(str(disease_id))
+        review_log.primary_disease_label = (
+            str(disease)
+            if disease is not None
+            else "Penyakit tidak tersedia"
+        )
+
+    return primary_logs
+
+
+def _location_correction_history(
+    location_relations: list[ArticleLocation],
+) -> list[ExtractionReviewLog]:
+    relation_ids = [
+        relation.id
+        for relation in location_relations
+    ]
+
+    if not relation_ids:
+        return []
+
+    review_logs = list(
+        ExtractionReviewLog.objects.filter(
+            object_type=(
+                ExtractionReviewLog
+                .ObjectType
+                .ARTICLE_LOCATION
+            ),
+            object_id__in=relation_ids,
+            action=ExtractionReviewLog.Action.CORRECT,
+        )
+        .select_related("reviewer")
+        .order_by("-reviewed_at")
+    )
+
+    primary_logs = [
+        review_log
+        for review_log in review_logs
+        if (review_log.after_data or {}).get("is_primary")
+    ]
+
+    location_ids = {
+        (review_log.after_data or {}).get("location_id")
+        for review_log in primary_logs
+        if (review_log.after_data or {}).get("location_id")
+    }
+
+    locations = {
+        str(location_id): location
+        for location_id, location in (
+            Location.objects.in_bulk(location_ids).items()
+        )
+    }
+
+    for review_log in primary_logs:
+        location_id = (
+            review_log.after_data or {}
+        ).get("location_id")
+        location = locations.get(str(location_id))
+        review_log.primary_location_label = (
+            str(location)
+            if location is not None
+            else "Lokasi tidak tersedia"
+        )
+
+    return primary_logs
 
 
 def _validate_extractions_and_generate_indicators(

@@ -8,6 +8,7 @@ from .rule_based import (
     EntityExtractionResult,
     EntityMention,
     extract_article_entities,
+    extract_article_locations,
     extract_disease_mentions,
     extract_location_mentions,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "FactExtractionResult",
     "build_fact_candidate",
     "extract_article_entities",
+    "extract_article_locations",
     "extract_article_facts",
     "extract_disease_mentions",
     "extract_location_mentions",

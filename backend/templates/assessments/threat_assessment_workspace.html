@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment Ancaman | MEDINTEL{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Assessment Ancaman</h2>
+            <div class="text-secondary mt-1">
+                Nilai prioritas dan keyakinan dari sinyal tervalidasi. Hasil sistem tetap memerlukan keputusan analis.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row row-cards mb-3">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Sinyal Siap Dinilai</div>
+            <div class="h1 mb-0">{{ summary.assessable }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Belum Dinilai</div>
+            <div class="h1 mb-0 text-warning">{{ summary.not_assessed }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Assessment Aktif</div>
+            <div class="h1 mb-0 text-success">{{ summary.assessed }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Prioritas Tinggi/Kritis</div>
+            <div class="h1 mb-0 text-danger">{{ summary.high_priority }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Sinyal Tervalidasi</h3>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for signal in signals %}
+                    <a
+                        href="?signal={{ signal.id }}"
+                        class="list-group-item list-group-item-action {% if selected_signal and signal.id == selected_signal.id %}active{% endif %}"
+                    >
+                        <div class="d-flex justify-content-between gap-2">
+                            <div class="fw-semibold">{{ signal.code }}</div>
+                            {% with latest=signal.assessments.all.0 %}
+                                {% if latest and latest.is_current %}
+                                    <span class="badge bg-success-lt">v{{ latest.version }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning-lt">Belum dinilai</span>
+                                {% endif %}
+                            {% endwith %}
+                        </div>
+                        <div class="mt-1">{{ signal.title }}</div>
+                        <div class="small opacity-75 mt-1">
+                            {{ signal.primary_disease }} · {{ signal.primary_location }}
+                        </div>
+                    </a>
+                {% empty %}
+                    <div class="empty py-5">
+                        <p class="empty-title">Belum ada sinyal siap dinilai</p>
+                        <p class="empty-subtitle text-secondary">
+                            Sinyal muncul setelah berstatus Tervalidasi atau Dikoreksi.
+                        </p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        {% if selected_signal %}
+            <div class="card mb-3">
+                <div class="card-header">
+                    <div>
+                        <h3 class="card-title">{{ selected_signal.code }}</h3>
+                        <div class="text-secondary small">{{ selected_signal.title }}</div>
+                    </div>
+                    <div class="card-actions">
+                        <span class="badge bg-success-lt">{{ selected_signal.get_status_display }}</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Penyakit</div>
+                            <div class="fw-semibold">{{ selected_signal.primary_disease }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Lokasi</div>
+                            <div class="fw-semibold">{{ selected_signal.primary_location }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-secondary small">Status Sinyal</div>
+                            <div class="fw-semibold">{{ selected_signal.get_status_display }}</div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="fw-semibold mb-2">Bukti pendukung dan Neraca Informasi</div>
+                    {% for relation in selected_signal.signal_articles.all %}
+                        <div class="card card-sm mb-2">
+                            <div class="card-body d-flex justify-content-between gap-3">
+                                <div>
+                                    <div class="fw-semibold">{{ relation.article.title }}</div>
+                                    <div class="small text-secondary">
+                                        {{ relation.article.source.name }} · {{ relation.get_support_type_display }}
+                                    </div>
+                                </div>
+                                {% with balance=relation.article.validation_assessment %}
+                                    <span class="badge {% if balance.validation_status == 'validated' %}bg-blue-lt{% else %}bg-warning-lt{% endif %}">
+                                        {{ balance.admiralty_code|default:"Belum dinilai" }}
+                                    </span>
+                                {% endwith %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if current_assessment %}
+                {% widthratio current_assessment.priority_score 1 100 as priority_percent %}
+                {% widthratio current_assessment.confidence_score 1 100 as confidence_percent %}
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Rekomendasi Assessment v{{ current_assessment.version }}</h3>
+                            <div class="text-secondary small">
+                                Dibuat {{ current_assessment.assessed_at|date:"d M Y H:i" }}
+                            </div>
+                        </div>
+                        <div class="card-actions d-flex gap-1">
+                            <span class="badge {% if current_assessment.recommended_priority == 'critical' %}bg-danger{% elif current_assessment.recommended_priority == 'high' %}bg-orange-lt{% elif current_assessment.recommended_priority == 'medium' %}bg-yellow-lt{% else %}bg-green-lt{% endif %}">
+                                Prioritas {{ current_assessment.get_recommended_priority_display }}
+                            </span>
+                            <span class="badge bg-blue-lt">
+                                Keyakinan {{ current_assessment.get_recommended_confidence_display }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Skor prioritas</span>
+                                    <strong>{{ priority_percent }}%</strong>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar bg-orange" style="width: {{ priority_percent }}%"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span>Skor keyakinan</span>
+                                    <strong>{{ confidence_percent }}%</strong>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar bg-blue" style="width: {{ confidence_percent }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Judgement analitis</dt>
+                            <dd class="col-sm-8">{{ current_assessment.analytical_judgement }}</dd>
+                            <dt class="col-sm-4">Implikasi</dt>
+                            <dd class="col-sm-8">{{ current_assessment.implications|default:"-" }}</dd>
+                            <dt class="col-sm-4">Rekomendasi tindakan</dt>
+                            <dd class="col-sm-8">{{ current_assessment.recommended_actions|default:"-" }}</dd>
+                            <dt class="col-sm-4">Keterbatasan</dt>
+                            <dd class="col-sm-8">{{ current_assessment.limitations|default:"-" }}</dd>
+                        </dl>
+
+                        <div class="alert alert-info mt-3 mb-0">
+                            Skor merupakan rekomendasi sistem. Assessment tidak menyatakan KLB dan belum mengubah prioritas sinyal sampai dikonfirmasi analis.
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        {% if recommendation_applied %}
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                                <div>
+                                    <div class="fw-semibold text-success">Rekomendasi telah dikonfirmasi analis</div>
+                                    <div class="small text-secondary">Assessment aktif siap digunakan untuk pembentukan peringatan dini.</div>
+                                </div>
+                                <a href="{% url 'dashboard:early-warning' %}?assessment={{ current_assessment.id }}" class="btn btn-warning">
+                                    Lanjut ke Peringatan Dini
+                                </a>
+                            </div>
+                        {% else %}
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="apply_recommendation">
+                                <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                                <input type="hidden" name="assessment_id" value="{{ current_assessment.id }}">
+                                {% for error in decision_form.non_field_errors %}
+                                    <div class="alert alert-danger">{{ error }}</div>
+                                {% endfor %}
+                                <label class="form-label">{{ decision_form.decision_notes.label }}</label>
+                                {{ decision_form.decision_notes }}
+                                {% for error in decision_form.decision_notes.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                                <div class="text-end mt-3">
+                                    <button type="submit" class="btn btn-success">
+                                        Konfirmasi dan Terapkan Rekomendasi
+                                    </button>
+                                </div>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create_assessment">
+                <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">
+                                {% if current_assessment %}Buat Versi Assessment Baru{% else %}Form Assessment Ancaman{% endif %}
+                            </h3>
+                            <div class="text-secondary small">
+                                Nilai 1–5 harus ditetapkan analis berdasarkan bukti yang tersedia.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% for error in assessment_form.non_field_errors %}
+                            <div class="alert alert-danger">{{ error }}</div>
+                        {% endfor %}
+
+                        <details class="alert alert-info mb-4">
+                            <summary class="fw-semibold">Panduan singkat pemberian skor</summary>
+                            <div class="table-responsive mt-3">
+                                <table class="table table-sm table-vcenter mb-0">
+                                    <thead>
+                                        <tr><th>Kriteria</th><th>Skor rendah</th><th>Skor sedang</th><th>Skor tinggi</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td>Urgensi</td><td>Dapat dipantau rutin</td><td>Perlu perhatian dalam waktu dekat</td><td>Memerlukan perhatian segera</td></tr>
+                                        <tr><td>Dampak</td><td>Terbatas</td><td>Mengganggu layanan/kelompok tertentu</td><td>Berat dan meluas</td></tr>
+                                        <tr><td>Cakupan</td><td>Satu fasilitas/wilayah kecil</td><td>Beberapa kabupaten/provinsi</td><td>Lintas provinsi/nasional</td></tr>
+                                        <tr><td>Perkembangan</td><td>Stabil</td><td>Mulai meningkat</td><td>Meningkat cepat</td></tr>
+                                        <tr><td>Kerentanan</td><td>Kelompok relatif terlindungi</td><td>Ada kelompok rentan</td><td>Kerentanan tinggi dan luas</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="small mt-2">
+                                Gunakan skor 1–2 untuk kondisi rendah, 3 untuk sedang, dan 4–5 untuk tinggi. Jangan menaikkan skor hanya berdasarkan jumlah kasus tanpa pembanding waktu atau populasi.
+                            </div>
+                        </details>
+
+                        <div class="row g-3 mb-4">
+                            {% for field in assessment_form %}
+                                {% if field.name == 'urgency_score' or field.name == 'impact_score' or field.name == 'geographic_scope_score' or field.name == 'development_speed_score' or field.name == 'vulnerability_score' or field.name == 'information_completeness_score' or field.name == 'evidence_consistency_score' %}
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ field.label }}</label>
+                                        {{ field }}
+                                        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+
+                        <div class="row g-3">
+                            {% for field in assessment_form %}
+                                {% if field.name == 'analytical_judgement' or field.name == 'implications' or field.name == 'recommended_actions' or field.name == 'assumptions' or field.name == 'limitations' %}
+                                    <div class="col-12">
+                                        <label class="form-label">{{ field.label }}</label>
+                                        {{ field }}
+                                        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex justify-content-between align-items-center gap-3">
+                        <div class="small text-secondary">
+                            Neraca Informasi terkonfirmasi akan dipakai otomatis sebagai baseline keyakinan.
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            {% if current_assessment %}Hitung Versi Baru{% else %}Hitung Assessment{% endif %}
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            {% if assessment_history %}
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Riwayat Assessment</h3></div>
+                    <div class="list-group list-group-flush">
+                        {% for assessment in assessment_history %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <div class="fw-semibold">
+                                        Versi {{ assessment.version }} · {{ assessment.get_recommended_priority_display }} / {{ assessment.get_recommended_confidence_display }}
+                                    </div>
+                                    <span class="badge {% if assessment.is_current %}bg-success-lt{% else %}bg-secondary-lt{% endif %}">
+                                        {% if assessment.is_current %}Aktif{% else %}Digantikan{% endif %}
+                                    </span>
+                                </div>
+                                <div class="small text-secondary mt-1">
+                                    {{ assessment.assessed_at|date:"d M Y H:i" }} · {{ assessment.assessed_by|default:"Sistem" }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="card"><div class="card-body"><div class="empty py-5">
+                <p class="empty-title">Pilih sinyal tervalidasi</p>
+            </div></div></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -47,6 +47,15 @@ EVENT_ANCHOR_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+DATELINE_SUFFIX_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"\([^\n)]{1,40}\)\s*[-\u2013\u2014:]?"
+    r"|,\s*[^.\n]{1,40}\s*[-\u2013\u2014:]"
+    r"|[-\u2013\u2014:]"
+    r")",
+    flags=re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class LocationCandidate:
@@ -76,6 +85,7 @@ class ResolvedLocationMention:
     administrative_level: str
     country_code: str
     code: str
+    parent_id: str | None
     parent_name: str
     latitude: str | None
     longitude: str | None
@@ -158,6 +168,7 @@ class IndonesiaGeolocationResult:
                     "administrative_level": (
                         item.administrative_level
                     ),
+                    "parent_id": item.parent_id,
                     "matched_text": item.matched_text,
                     "confidence_score": item.confidence_score,
                     "is_primary": item.is_primary,
@@ -526,6 +537,88 @@ def _calculate_confidence(
     return min(round(score, 4), 1.0)
 
 
+def _leaf_mentions(
+    mentions: Iterable[ResolvedLocationMention],
+) -> list[ResolvedLocationMention]:
+    """Hilangkan provinsi yang hanya menjadi parent lokasi lebih rinci."""
+    rows = list(mentions)
+    parent_ids = {
+        item.parent_id
+        for item in rows
+        if item.parent_id
+    }
+    leaves = [
+        item
+        for item in rows
+        if item.location_id not in parent_ids
+    ]
+    return leaves or rows
+
+
+def _is_dateline_mention(
+    *,
+    text: str,
+    mention: ResolvedLocationMention,
+    title_length: int,
+) -> bool:
+    """Deteksi lokasi pembuka berita, misalnya ``Jakarta (ANTARA) -``."""
+    if mention.mention_count > 1 or mention.start < title_length:
+        return False
+
+    body_prefix = text[title_length:mention.start]
+
+    if len(body_prefix) > 120 or body_prefix.strip():
+        return False
+
+    suffix = text[
+        mention.end:min(len(text), mention.end + 80)
+    ]
+    return bool(DATELINE_SUFFIX_PATTERN.match(suffix))
+
+
+def _select_primary_location(
+    *,
+    mentions: list[ResolvedLocationMention],
+    text: str,
+    title_length: int,
+) -> ResolvedLocationMention | None:
+    """
+    Pilih satu lokasi kejadian yang tegas.
+
+    Lokasi dalam judul merupakan bukti terkuat. Tanpa lokasi pada judul,
+    hanya satu cabang wilayah independen yang boleh dipilih otomatis.
+    Artikel multiwilayah dibiarkan tanpa primary agar diperiksa analis.
+    """
+    title_mentions = [
+        item
+        for item in mentions
+        if item.start < title_length
+    ]
+
+    if title_mentions:
+        candidates = _leaf_mentions(title_mentions)
+    else:
+        candidates = _leaf_mentions(
+            item
+            for item in mentions
+            if not _is_dateline_mention(
+                text=text,
+                mention=item,
+                title_length=title_length,
+            )
+        )
+
+    if len(candidates) != 1:
+        return None
+
+    candidate = candidates[0]
+
+    if candidate.confidence_score < 0.75:
+        return None
+
+    return candidate
+
+
 def resolve_indonesia_locations(
     text: str,
     *,
@@ -654,6 +747,7 @@ def resolve_indonesia_locations(
                 ),
                 country_code=candidate.country_code,
                 code=candidate.code,
+                parent_id=candidate.parent_id,
                 parent_name=candidate.parent_name,
                 latitude=candidate.latitude,
                 longitude=candidate.longitude,
@@ -672,40 +766,17 @@ def resolve_indonesia_locations(
             scope="unresolved",
         )
 
-    def primary_key(
-        mention: ResolvedLocationMention,
-    ) -> tuple:
-        distance = _distance_to_spans(
-            start=mention.start,
-            end=mention.end,
-            spans=event_anchor_spans,
-        )
-
-        return (
-            -(
-                distance
-                if distance is not None
-                else 10**9
-            ),
-            mention.start <= title_length,
-            LEVEL_SPECIFICITY.get(
-                mention.administrative_level,
-                0,
-            ),
-            mention.confidence_score,
-            -mention.start,
-        )
-
-    primary = max(
-        mentions,
-        key=primary_key,
+    primary = _select_primary_location(
+        mentions=mentions,
+        text=source_text,
+        title_length=title_length,
     )
     mentions = [
         replace(
             mention,
             is_primary=(
-                mention.location_id
-                == primary.location_id
+                primary is not None
+                and mention.location_id == primary.location_id
             ),
         )
         for mention in mentions
