@@ -5,6 +5,8 @@ from .models import (
     EarlyWarningHistory,
     InformationEvaluation,
     InformationGap,
+    IntelligenceRecommendation,
+    IntelligenceRecommendationHistory,
     SignalAssessment,
     SourceEvaluation,
 )
@@ -12,6 +14,20 @@ from .models import (
 
 class EarlyWarningHistoryInline(admin.TabularInline):
     model = EarlyWarningHistory
+    extra = 0
+    readonly_fields = (
+        "action",
+        "from_status",
+        "to_status",
+        "notes",
+        "changed_by",
+        "changed_at",
+    )
+    can_delete = False
+
+
+class IntelligenceRecommendationHistoryInline(admin.TabularInline):
+    model = IntelligenceRecommendationHistory
     extra = 0
     readonly_fields = (
         "action",
@@ -253,3 +269,59 @@ class EarlyWarningAdmin(admin.ModelAdmin):
         "updated_at",
     )
     inlines = [EarlyWarningHistoryInline]
+
+
+@admin.register(IntelligenceRecommendation)
+class IntelligenceRecommendationAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "signal",
+        "version",
+        "action_category",
+        "urgency",
+        "status",
+        "is_current",
+        "target_unit",
+        "due_date",
+    )
+    list_filter = (
+        "action_category",
+        "urgency",
+        "status",
+        "is_current",
+        "due_date",
+    )
+    search_fields = (
+        "code",
+        "title",
+        "signal__code",
+        "signal__title",
+        "target_unit",
+        "recommended_action",
+    )
+    list_select_related = (
+        "signal",
+        "assessment",
+        "early_warning",
+        "created_by",
+        "approved_by",
+        "completed_by",
+    )
+    readonly_fields = (
+        "id",
+        "code",
+        "signal",
+        "assessment",
+        "early_warning",
+        "version",
+        "status",
+        "is_current",
+        "created_by",
+        "approved_by",
+        "approved_at",
+        "completed_by",
+        "completed_at",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [IntelligenceRecommendationHistoryInline]

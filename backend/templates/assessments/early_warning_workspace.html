@@ -175,9 +175,12 @@
                         {% endif %}
                     </div>
                     {% if selected_warning.status == 'issued' and selected_warning.is_current %}
-                        <div class="card-footer text-end">
+                        <div class="card-footer d-flex justify-content-end gap-2 flex-wrap">
                             <a href="{% url 'dashboard:threat-map' %}?warning={{ selected_warning.id }}" class="btn btn-primary">
                                 Lihat di Peta Ancaman
+                            </a>
+                            <a href="{% url 'dashboard:intelligence-recommendation' %}?assessment={{ selected_assessment.id }}" class="btn btn-warning">
+                                Susun Rekomendasi Intelijen
                             </a>
                         </div>
                     {% endif %}

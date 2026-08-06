@@ -873,6 +873,238 @@ class EarlyWarningHistory(models.Model):
         return f"{self.warning.code} — {self.get_action_display()}"
 
 
+class IntelligenceRecommendation(models.Model):
+    """
+    Produk dukungan keputusan yang menerjemahkan assessment terkonfirmasi
+    menjadi tindakan terstruktur. Sistem dapat menyiapkan draf, tetapi
+    penetapan dan perubahan status selalu merupakan keputusan analis.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draf"
+        APPROVED = "approved", "Ditetapkan"
+        IN_PROGRESS = "in_progress", "Ditindaklanjuti"
+        COMPLETED = "completed", "Selesai"
+        CANCELED = "canceled", "Dibatalkan"
+        SUPERSEDED = "superseded", "Digantikan"
+
+    class Urgency(models.TextChoices):
+        ROUTINE = "routine", "Rutin"
+        PRIORITY = "priority", "Prioritas"
+        URGENT = "urgent", "Mendesak"
+        IMMEDIATE = "immediate", "Segera"
+
+    class ActionCategory(models.TextChoices):
+        COLLECTION = "collection", "Pengumpulan Informasi"
+        VERIFICATION = "verification", "Verifikasi"
+        MONITORING = "monitoring", "Pemantauan"
+        COORDINATION = "coordination", "Koordinasi"
+        PREPAREDNESS = "preparedness", "Kesiapsiagaan"
+        OPERATIONAL_SUPPORT = (
+            "operational_support",
+            "Dukungan Operasional",
+        )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        db_index=True,
+    )
+
+    signal = models.ForeignKey(
+        Signal,
+        on_delete=models.PROTECT,
+        related_name="intelligence_recommendations",
+    )
+
+    assessment = models.OneToOneField(
+        SignalAssessment,
+        on_delete=models.PROTECT,
+        related_name="intelligence_recommendation",
+    )
+
+    early_warning = models.ForeignKey(
+        EarlyWarning,
+        on_delete=models.SET_NULL,
+        related_name="intelligence_recommendations",
+        null=True,
+        blank=True,
+    )
+
+    version = models.PositiveIntegerField(default=1)
+
+    is_current = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+
+    urgency = models.CharField(
+        max_length=20,
+        choices=Urgency.choices,
+        db_index=True,
+    )
+
+    action_category = models.CharField(
+        max_length=30,
+        choices=ActionCategory.choices,
+        db_index=True,
+    )
+
+    title = models.CharField(max_length=500)
+    situation_summary = models.TextField()
+    objective = models.TextField()
+    recommended_action = models.TextField()
+    target_unit = models.CharField(max_length=500)
+
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    decision_rationale = models.TextField(blank=True)
+    success_indicators = models.TextField()
+    assumptions = models.TextField(blank=True)
+    information_gaps = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_intelligence_recommendations",
+        null=True,
+        blank=True,
+    )
+
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="approved_intelligence_recommendations",
+        null=True,
+        blank=True,
+    )
+
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="completed_intelligence_recommendations",
+        null=True,
+        blank=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    completion_notes = models.TextField(blank=True)
+    cancellation_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_current", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["signal", "version"],
+                name="unique_signal_recommendation_version",
+            ),
+            models.UniqueConstraint(
+                fields=["signal"],
+                condition=Q(is_current=True),
+                name="unique_current_intel_recommendation",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "urgency", "due_date"],
+                name="intel_rec_status_urgency_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.code} — {self.title}"
+
+
+class IntelligenceRecommendationHistory(models.Model):
+    class Action(models.TextChoices):
+        DRAFTED = "drafted", "Draf Dibentuk"
+        APPROVED = "approved", "Ditetapkan"
+        STARTED = "started", "Tindak Lanjut Dimulai"
+        COMPLETED = "completed", "Diselesaikan"
+        CANCELED = "canceled", "Dibatalkan"
+        SUPERSEDED = "superseded", "Digantikan"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    recommendation = models.ForeignKey(
+        IntelligenceRecommendation,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        db_index=True,
+    )
+
+    from_status = models.CharField(
+        max_length=20,
+        choices=IntelligenceRecommendation.Status.choices,
+        blank=True,
+    )
+
+    to_status = models.CharField(
+        max_length=20,
+        choices=IntelligenceRecommendation.Status.choices,
+    )
+
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="intelligence_recommendation_history",
+        null=True,
+        blank=True,
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-changed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.recommendation.code} — {self.get_action_display()}"
+
+
 class InformationGap(models.Model):
     class GapType(models.TextChoices):
         CASE_DATA = "case_data", "Data Kasus"

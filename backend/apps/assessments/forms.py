@@ -1,5 +1,6 @@
 from django import forms
 from django.db.models import Case, IntegerField, Value, When
+from django.utils import timezone
 
 from apps.entities.models import (
     ArticleDisease,
@@ -8,7 +9,10 @@ from apps.entities.models import (
     Location,
 )
 
-from .models import ArticleValidationAssessment
+from .models import (
+    ArticleValidationAssessment,
+    IntelligenceRecommendation,
+)
 
 
 class ArticleValidationAssessmentForm(forms.ModelForm):
@@ -542,5 +546,156 @@ class EarlyWarningCloseForm(forms.Form):
                     "penutupan peringatan."
                 ),
             }
+        ),
+    )
+
+
+class IntelligenceRecommendationDraftForm(forms.Form):
+    title = forms.CharField(
+        label="Judul rekomendasi",
+        max_length=500,
+        strip=True,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    situation_summary = forms.CharField(
+        label="Ringkasan situasi",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 4}
+        ),
+    )
+    objective = forms.CharField(
+        label="Tujuan yang ingin dicapai",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 3}
+        ),
+    )
+    recommended_action = forms.CharField(
+        label="Tindakan yang direkomendasikan",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 4,
+                "placeholder": (
+                    "Tuliskan tindakan spesifik, dapat dilaksanakan, dan "
+                    "dapat ditelusuri."
+                ),
+            }
+        ),
+    )
+    action_category = forms.ChoiceField(
+        label="Kategori tindakan",
+        choices=IntelligenceRecommendation.ActionCategory.choices,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    urgency = forms.ChoiceField(
+        label="Urgensi",
+        choices=IntelligenceRecommendation.Urgency.choices,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    target_unit = forms.CharField(
+        label="Sasaran/unit yang dituju",
+        max_length=500,
+        strip=True,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": (
+                    "Contoh: Dinas Kesehatan Kabupaten Tangerang"
+                ),
+            }
+        ),
+    )
+    due_date = forms.DateField(
+        label="Tenggat tindak lanjut",
+        required=False,
+        widget=forms.DateInput(
+            attrs={"class": "form-control", "type": "date"}
+        ),
+    )
+    success_indicators = forms.CharField(
+        label="Indikator keberhasilan",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 3}
+        ),
+    )
+    assumptions = forms.CharField(
+        label="Asumsi",
+        required=False,
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 2}
+        ),
+    )
+    information_gaps = forms.CharField(
+        label="Gap informasi",
+        required=False,
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 2}
+        ),
+    )
+
+    def clean_due_date(self):
+        due_date = self.cleaned_data.get("due_date")
+        if due_date and due_date < timezone.localdate():
+            raise forms.ValidationError(
+                "Tenggat rekomendasi tidak boleh berada di masa lalu."
+            )
+        return due_date
+
+
+class IntelligenceRecommendationDecisionForm(forms.Form):
+    decision_notes = forms.CharField(
+        label="Dasar penetapan analis",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": (
+                    "Jelaskan mengapa rekomendasi layak ditetapkan sebagai "
+                    "dukungan keputusan."
+                ),
+            }
+        ),
+    )
+
+
+class IntelligenceRecommendationProgressForm(forms.Form):
+    progress_notes = forms.CharField(
+        label="Catatan dimulainya tindak lanjut",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 2}
+        ),
+    )
+
+
+class IntelligenceRecommendationCompleteForm(forms.Form):
+    completion_notes = forms.CharField(
+        label="Hasil tindak lanjut",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": (
+                    "Catat hasil, bukti, atau respons yang diperoleh."
+                ),
+            }
+        ),
+    )
+
+
+class IntelligenceRecommendationCancelForm(forms.Form):
+    cancellation_reason = forms.CharField(
+        label="Alasan pembatalan",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={"class": "form-control", "rows": 3}
         ),
     )

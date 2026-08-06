@@ -5,6 +5,7 @@ from apps.assessments import views as assessment_views
 from apps.assessments import early_warning_views
 from apps.assessments import threat_map_views
 from apps.assessments import disease_priority_views
+from apps.assessments import intelligence_recommendation_views
 from apps.signals import views as signal_views
 
 
@@ -45,6 +46,11 @@ urlpatterns = [
         "penyakit-prioritas/",
         disease_priority_views.disease_priority_workspace,
         name="disease-priority",
+    ),
+    path(
+        "rekomendasi-intelijen/",
+        intelligence_recommendation_views.intelligence_recommendation_workspace,
+        name="intelligence-recommendation",
     ),
     path(
         "crawler-artikel/",
