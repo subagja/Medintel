@@ -26,6 +26,8 @@ class ThreatAssessmentWorkspaceTests(TestCase):
         self.analyst = User.objects.create_user(
             username="threat-assessment-analyst",
             password="test-password-123",
+            is_superuser=True,
+            is_staff=True,
         )
         self.client.force_login(self.analyst)
 

@@ -3,6 +3,8 @@ from uuid import UUID
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 
+from apps.accounts.permissions import Roles, require_role
+
 from apps.entities.models import Disease
 
 from .models import EarlyWarning
@@ -20,6 +22,7 @@ def _valid_uuid(value: str) -> str:
         return ""
 
 
+@require_role(*Roles.ALL)
 def threat_map_workspace(request: HttpRequest) -> HttpResponse:
     all_active = active_warning_queryset()
     disease_choices = Disease.objects.filter(

@@ -4,6 +4,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from apps.accounts.permissions import Roles, require_role
+
 from .forms import EarlyWarningCloseForm, EarlyWarningIssueForm
 from .models import EarlyWarning, SignalAssessment
 from .services import (
@@ -54,6 +56,7 @@ def _warning_for(assessment):
         return None
 
 
+@require_role(*Roles.ALL)
 def early_warning_workspace(request: HttpRequest) -> HttpResponse:
     assessments = list(_current_assessments())
     rows = []

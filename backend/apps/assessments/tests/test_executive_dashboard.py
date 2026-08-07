@@ -27,6 +27,8 @@ class ExecutiveDashboardTests(TestCase):
         self.analyst = User.objects.create_user(
             username="executive-dashboard-analyst",
             password="test-password-123",
+            is_superuser=True,
+            is_staff=True,
         )
         self.client.force_login(self.analyst)
         self.province, _created = Location.objects.get_or_create(

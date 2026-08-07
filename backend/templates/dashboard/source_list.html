@@ -22,6 +22,14 @@ Sumber OSINT | MEDINTEL OSINT
                 situs resmi instansi, dan kesiapan sumber untuk crawling.
             </div>
         </div>
+
+        {% if pending_verification_count %}
+            <div class="col-auto">
+                <a href="{% url 'dashboard:source-verification-queue' %}" class="btn btn-outline-warning btn-sm">
+                    {{ pending_verification_count }} sumber menunggu verifikasi
+                </a>
+            </div>
+        {% endif %}
     </div>
 </div>
 

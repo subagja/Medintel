@@ -72,7 +72,7 @@ class SignalAssessmentTests(TestCase):
         )
 
         self.disease = Disease.objects.create(
-            name="Demam Berdarah Dengue",
+            name="Demam Berdarah Dengue (Uji Assessment)",
             code="dbd-assessment",
         )
 

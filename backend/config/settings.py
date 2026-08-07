@@ -43,6 +43,7 @@ INSTALLED_APPS = [
 
     "rest_framework",
 
+    "apps.accounts",
     "apps.sources",
     "apps.articles",
     "apps.ingestion",

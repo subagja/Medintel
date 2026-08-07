@@ -4,6 +4,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from apps.accounts.permissions import Roles, require_role
+
 from apps.signals.models import Signal
 
 from .forms import (
@@ -119,6 +121,7 @@ def _create_assessment(request, signal, form):
     )
 
 
+@require_role(*Roles.ALL)
 def threat_assessment_workspace(
     request: HttpRequest,
 ) -> HttpResponse:

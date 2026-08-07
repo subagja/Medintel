@@ -4,6 +4,8 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
+from apps.accounts.permissions import Roles, require_role
+
 from apps.signals.services.generation import generate_signal_from_indicator
 
 from .forms import IndicatorReviewForm
@@ -11,6 +13,7 @@ from .models import Indicator
 from .services.review import correct_indicator, reject_indicator, validate_indicator
 
 
+@require_role(*Roles.ALL)
 def indicator_review(request: HttpRequest) -> HttpResponse:
     indicators = (
         Indicator.objects

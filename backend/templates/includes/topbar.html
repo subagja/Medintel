@@ -9,13 +9,21 @@
                     data-bs-toggle="dropdown"
                 >
                     <span class="avatar avatar-sm">
-                        AI
+                        {{ request.user.get_username|default:"?"|slice:":2"|upper }}
                     </span>
 
                     <div class="d-none d-xl-block ps-2">
-                        <div>Analis Intelijen</div>
+                        <div>{{ request.user.get_full_name|default:request.user.get_username }}</div>
                         <div class="mt-1 small text-secondary">
-                            Pusat
+                            {% with roles=request.user.groups.all %}
+                                {% if request.user.is_superuser %}
+                                    Admin
+                                {% elif roles %}
+                                    {% for group in roles %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                {% else %}
+                                    Tanpa peran
+                                {% endif %}
+                            {% endwith %}
                         </div>
                     </div>
                 </a>
@@ -24,7 +32,10 @@
                     <a href="#" class="dropdown-item">Profil</a>
                     <a href="#" class="dropdown-item">Pengaturan</a>
                     <div class="dropdown-divider"></div>
-                    <a href="#" class="dropdown-item">Keluar</a>
+                    <form method="post" action="{% url 'logout' %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="dropdown-item text-start">Keluar</button>
+                    </form>
                 </div>
             </div>
         </div>

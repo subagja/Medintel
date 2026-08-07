@@ -1,5 +1,5 @@
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -29,6 +29,7 @@ from apps.articles.filters import (
     apply_article_filters,
     build_article_filter_options,
 )
+from apps.accounts.permissions import Roles, has_role, require_role
 from apps.sources.origin import (
     ORIGIN_CHOICES,
     apply_origin_filter,
@@ -72,6 +73,7 @@ from apps.indicators.services.generation import (
 )
 
 
+@require_role(*Roles.ALL)
 def dashboard_overview(request: HttpRequest) -> HttpResponse:
     total_articles = Article.objects.count()
 
@@ -138,6 +140,7 @@ def _ready_html_sources() -> list[Source]:
     return ready_sources
 
 
+@require_role(*Roles.ALL)
 def crawler_list(request: HttpRequest) -> HttpResponse:
     source_code = request.GET.get(
         "source",
@@ -254,6 +257,7 @@ def _parse_optional_positive_int(
 
 
 @require_POST
+@require_role(Roles.ADMIN, Roles.ANALYST)
 def crawler_run(request: HttpRequest) -> HttpResponse:
     is_ajax = (
         request.headers.get("X-Requested-With") == "XMLHttpRequest"
@@ -433,6 +437,7 @@ def _serialize_job_status(job: CollectionJob) -> dict:
     }
 
 
+@require_role(*Roles.ALL)
 def crawler_status(request: HttpRequest) -> HttpResponse:
     """Endpoint JSON untuk polling status job crawler dari JavaScript.
 
@@ -498,6 +503,7 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_role(*Roles.ALL)
 def crawler_job_detail(
     request: HttpRequest,
     job_id,
@@ -631,6 +637,7 @@ def _attach_source_readiness(source: Source) -> Source:
     return source
 
 
+@require_role(*Roles.ALL)
 def source_list(request: HttpRequest) -> HttpResponse:
     search_query = request.GET.get(
         "q",
@@ -744,6 +751,12 @@ def source_list(request: HttpRequest) -> HttpResponse:
         "selected_origin": origin,
         "selected_status": status,
         "summary": summary,
+        "pending_verification_count": Source.objects.filter(
+            is_verified=False,
+            seed_urls__is_active=True,
+            url_patterns__is_active=True,
+            url_patterns__pattern_type="allow",
+        ).distinct().count(),
     }
 
     return render(
@@ -859,7 +872,16 @@ def _build_validation_redirect_url(
     return f"{reverse('dashboard:article-validation')}?{query}"
 
 
+@require_role(*Roles.ALL)
 def article_validation(request: HttpRequest) -> HttpResponse:
+    if request.method == "POST" and not has_role(
+        request.user, *Roles.CONTRIBUTORS
+    ):
+        raise PermissionDenied(
+            "Peran Viewer hanya dapat melihat, tidak dapat mengubah "
+            "validasi artikel."
+        )
+
     articles = _validation_queryset()
 
     eligibility_filter = request.GET.get(
@@ -1413,6 +1435,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_role(*Roles.ALL)
 def article_list(request: HttpRequest) -> HttpResponse:
     """Halaman "Daftar Artikel": daftar seluruh artikel hasil crawling
     dengan filter lengkap (sumber, penyakit, lokasi, tanggal, status
@@ -1785,6 +1808,7 @@ def _synchronize_article_status(
     )
 
 
+@require_role(*Roles.ALL)
 def source_detail(
     request: HttpRequest,
     source_id: int,
@@ -1814,6 +1838,104 @@ def source_detail(
     )
 
 
+@require_role(Roles.ADMIN)
+def source_verification_queue(request: HttpRequest) -> HttpResponse:
+    """Daftar sumber yang sudah punya seed URL + pola allow aktif
+    (secara teknis siap dites) tapi belum diverifikasi manusia
+    (`is_verified=False`). Dipakai untuk menindaklanjuti sumber draft
+    (mis. hasil kurasi media nasional besar) satu per satu.
+    """
+    sources = (
+        _source_readiness_queryset()
+        .filter(
+            is_verified=False,
+            active_seed_count__gt=0,
+            active_pattern_count__gt=0,
+        )
+        .prefetch_related(
+            "seed_urls",
+            "url_patterns",
+        )
+        .order_by("name")
+    )
+
+    rows = []
+
+    for source in sources:
+        _attach_source_readiness(source)
+        rows.append(source)
+
+    context = {
+        "page_title": "Verifikasi Sumber",
+        "active_menu": "source_verification",
+        "sources": rows,
+    }
+
+    return render(
+        request,
+        "dashboard/source_verification_queue.html",
+        context,
+    )
+
+
+@require_POST
+@require_role(Roles.ADMIN)
+def source_verification_mark_reviewed(
+    request: HttpRequest,
+    source_id: int,
+) -> HttpResponse:
+    """Aksi cepat dari antrean verifikasi: tandai sumber terverifikasi,
+    opsional sekaligus aktifkan crawling kalau syarat lain sudah
+    terpenuhi (is_active + seed aktif + pola allow aktif).
+    """
+    source = get_object_or_404(
+        Source,
+        id=source_id,
+    )
+
+    also_enable_crawl = (
+        request.POST.get("enable_crawl") == "1"
+    )
+
+    source.is_verified = True
+
+    if not source.verified_at:
+        source.verified_at = timezone.now()
+
+    update_fields = ["is_verified", "verified_at", "updated_at"]
+
+    if also_enable_crawl:
+        readiness = check_source_crawl_readiness(source)
+        non_crawl_errors = [
+            error
+            for error in readiness.errors
+            if "Crawling belum diaktifkan" not in error
+        ]
+
+        if not non_crawl_errors:
+            source.crawl_enabled = True
+            update_fields.append("crawl_enabled")
+        else:
+            messages.warning(
+                request,
+                (
+                    f"{source.name} ditandai terverifikasi, tapi "
+                    "crawling belum diaktifkan otomatis karena: "
+                    + " ".join(non_crawl_errors)
+                ),
+            )
+
+    source.save(update_fields=update_fields)
+
+    messages.success(
+        request,
+        f"{source.name} ditandai terverifikasi.",
+    )
+
+    return redirect("dashboard:source-verification-queue")
+
+
+@require_role(Roles.ADMIN)
 def source_create(request: HttpRequest) -> HttpResponse:
     if request.method == "POST":
         form = SourceForm(request.POST)
@@ -1846,6 +1968,7 @@ def source_create(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_role(Roles.ADMIN)
 def source_update(
     request: HttpRequest,
     source_id: int,
@@ -1892,6 +2015,7 @@ def source_update(
     )
 
 
+@require_role(Roles.ADMIN)
 def source_seed_create(
     request: HttpRequest,
     source_id: int,
@@ -1943,6 +2067,7 @@ def source_seed_create(
     )
 
 
+@require_role(Roles.ADMIN)
 def source_seed_update(
     request: HttpRequest,
     source_id: int,
@@ -1997,6 +2122,7 @@ def source_seed_update(
     )
 
 
+@require_role(Roles.ADMIN)
 def source_pattern_create(
     request: HttpRequest,
     source_id: int,
@@ -2045,6 +2171,7 @@ def source_pattern_create(
     )
 
 
+@require_role(Roles.ADMIN)
 def source_pattern_update(
     request: HttpRequest,
     source_id: int,

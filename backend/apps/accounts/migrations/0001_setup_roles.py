@@ -184,6 +184,15 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("auth", "0001_initial"),
+        # Wajib eksplisit: memastikan migration bawaan Django yang
+        # menghapus kolom lama `name` dari django_content_type sudah
+        # jalan SEBELUM create_permissions() dipanggil di bawah. Tanpa
+        # dependency ini, Django tidak menjamin urutannya -- migration
+        # ini bisa saja dijalankan lebih dulu (tergantung urutan
+        # topological sort di environment masing-masing), sehingga
+        # create_contenttypes() masih menemukan skema tabel lama dan
+        # gagal dengan NotNullViolation pada kolom "name".
+        ("contenttypes", "0002_remove_content_type_name"),
         ("sources", "0002_sourceseedurl_alter_sourceurlpattern_options_and_more"),
         ("articles", "0003_alter_article_locations_app"),
         ("collection", "0001_initial"),

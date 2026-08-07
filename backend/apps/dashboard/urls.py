@@ -89,6 +89,16 @@ urlpatterns = [
         name="source-list",
     ),
     path(
+        "sumber-osint/verifikasi/",
+        views.source_verification_queue,
+        name="source-verification-queue",
+    ),
+    path(
+        "sumber-osint/verifikasi/<int:source_id>/tandai/",
+        views.source_verification_mark_reviewed,
+        name="source-verification-mark-reviewed",
+    ),
+    path(
         "sumber-osint/<int:source_id>/",
         views.source_detail,
         name="source-detail",

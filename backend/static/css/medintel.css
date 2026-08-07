@@ -104,3 +104,18 @@ body {
 .list-group-item.active .text-secondary {
     color: #5d6b82 !important;
 }
+
+/* Panel daftar artikel pada workspace Validasi Artikel: dibatasi
+   tingginya dan discroll sendiri, supaya halaman tidak memanjang
+   mengikuti jumlah artikel (bisa puluhan/ratusan baris). Panel detail
+   di sebelahnya tetap terlihat penuh tanpa perlu scroll jauh. */
+.medintel-article-list {
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
+@media (max-width: 991.98px) {
+    .medintel-article-list {
+        max-height: 60vh;
+    }
+}

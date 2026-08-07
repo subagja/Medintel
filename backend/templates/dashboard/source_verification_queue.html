@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Verifikasi Sumber | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Sumber OSINT</div>
+            <h2 class="page-title">Antrean Verifikasi Sumber</h2>
+            <div class="text-secondary mt-1">
+                Sumber yang sudah punya seed URL dan pola allow aktif
+                (siap dites) tapi belum ditandai terverifikasi manusia.
+                Uji "Jalankan Crawler" untuk masing-masing sebelum
+                menandainya terverifikasi.
+            </div>
+        </div>
+        <div class="col-auto">
+            <span class="badge bg-azure-lt fs-3">{{ sources|length }} menunggu</span>
+        </div>
+    </div>
+</div>
+
+{% if not sources %}
+    <div class="card">
+        <div class="card-body text-center text-secondary py-5">
+            Tidak ada sumber yang menunggu verifikasi saat ini.
+        </div>
+    </div>
+{% endif %}
+
+{% for source in sources %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row align-items-start">
+                <div class="col-md-4">
+                    <div class="fw-semibold fs-4">{{ source.name }}</div>
+                    <div class="text-secondary small">{{ source.domain }} · {{ source.code }}</div>
+                    <div class="mt-1">
+                        <span class="badge bg-secondary-lt">{{ source.get_source_type_display }}</span>
+                        {% if source.is_active %}
+                            <span class="badge bg-success-lt">Aktif</span>
+                        {% else %}
+                            <span class="badge bg-secondary-lt">Tidak aktif</span>
+                        {% endif %}
+                    </div>
+                    <a href="{{ source.base_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mt-2">Buka Situs</a>
+                    <a href="{% url 'dashboard:source-detail' source.id %}" class="btn btn-outline-secondary btn-sm mt-2">Detail Sumber</a>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="text-secondary small mb-1">Seed URL aktif</div>
+                    {% for seed in source.seed_urls.all %}
+                        {% if seed.is_active %}
+                            <div class="small mb-1">
+                                <a href="{{ seed.url }}" target="_blank" rel="noopener">{{ seed.url }}</a>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+
+                    <div class="text-secondary small mt-3 mb-1">Pola allow aktif</div>
+                    {% for pattern in source.url_patterns.all %}
+                        {% if pattern.pattern_type == "allow" and pattern.is_active %}
+                            <div class="small mb-1">
+                                <code>{{ pattern.pattern }}</code>
+                                {% if pattern.description %}
+                                    <div class="text-secondary">{{ pattern.description }}</div>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <div class="col-md-4">
+                    {% if source.crawler_notes %}
+                        <div class="text-secondary small mb-1">Catatan crawler</div>
+                        <div class="small mb-3" style="white-space: pre-line;">{{ source.crawler_notes }}</div>
+                    {% endif %}
+
+                    {% if source.crawl_readiness.errors %}
+                        <div class="alert alert-warning py-2 px-3 small mb-3">
+                            <div class="fw-semibold">Belum siap crawling:</div>
+                            <ul class="mb-0 ps-3">
+                                {% for error in source.crawl_readiness.errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'dashboard:source-verification-mark-reviewed' source.id %}">
+                        {% csrf_token %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" name="enable_crawl" value="1" id="enable-crawl-{{ source.id }}" checked>
+                            <label class="form-check-label small" for="enable-crawl-{{ source.id }}">
+                                Aktifkan crawling sekaligus (kalau syarat lain terpenuhi)
+                            </label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">Tandai Terverifikasi</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+{% endblock %}

@@ -34,6 +34,8 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
         self.analyst = User.objects.create_user(
             username="disease-analyst",
             password="test-password-123",
+            is_superuser=True,
+            is_staff=True,
         )
         self.source = Source.objects.create(
             name="Media Penyakit Uji",

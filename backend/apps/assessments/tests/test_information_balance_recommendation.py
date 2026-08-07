@@ -28,6 +28,8 @@ class InformationBalanceRecommendationTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="analyst",
+            is_superuser=True,
+            is_staff=True,
         )
         self.source = self._source(
             name="RRI",

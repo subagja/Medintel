@@ -5,6 +5,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 
+from apps.accounts.permissions import Roles, require_role
+
 from .services.disease_priority import (
     ATTENTION_LEVELS,
     build_disease_priority_dataset,
@@ -18,6 +20,7 @@ def _valid_uuid(value: str) -> str:
         return ""
 
 
+@require_role(*Roles.ALL)
 def disease_priority_workspace(request: HttpRequest) -> HttpResponse:
     as_of = timezone.now()
     all_items = build_disease_priority_dataset(as_of=as_of)

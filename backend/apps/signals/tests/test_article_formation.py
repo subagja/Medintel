@@ -37,6 +37,8 @@ class ArticleSignalFormationTests(TestCase):
         self.user = User.objects.create_user(
             username="suryadi",
             password="test-password-123",
+            is_superuser=True,
+            is_staff=True,
         )
         self.source = Source.objects.create(
             name="RRI",

@@ -1,0 +1,68 @@
+{% load static %}
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Masuk — MEDINTEL OSINT</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css">
+    <link rel="stylesheet" href="{% static 'css/medintel.css' %}">
+</head>
+<body class="border-top-wide border-primary d-flex flex-column">
+    <div class="page page-center">
+        <div class="container container-tight py-4">
+            <div class="text-center mb-4">
+                <span class="navbar-brand navbar-brand-autodark h1">MEDINTEL OSINT</span>
+                <div class="text-secondary small mt-1">Sistem Intelijen Medik</div>
+            </div>
+
+            <form class="card card-md" method="post" action="{% url 'login' %}">
+                {% csrf_token %}
+                <div class="card-body">
+                    <h2 class="h2 text-center mb-4">Masuk ke akun Anda</h2>
+
+                    {% if form.errors %}
+                        <div class="alert alert-danger" role="alert">
+                            Username atau password salah. Silakan coba lagi.
+                        </div>
+                    {% endif %}
+
+                    {% if next %}
+                        <div class="alert alert-warning" role="alert">
+                            Anda perlu login untuk mengakses halaman tersebut.
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input
+                            type="text"
+                            name="username"
+                            class="form-control"
+                            autofocus
+                            required
+                        >
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label">Password</label>
+                        <input
+                            type="password"
+                            name="password"
+                            class="form-control"
+                            required
+                        >
+                    </div>
+
+                    <input type="hidden" name="next" value="{{ next }}">
+
+                    <div class="form-footer">
+                        <button type="submit" class="btn btn-primary w-100">Masuk</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
