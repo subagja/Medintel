@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan & Arsip | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Laporan & Arsip</h2>
+            <div class="text-secondary mt-1">
+                Arsip Sinyal, Early Warning, dan Rekomendasi Intelijen
+                yang pernah diterbitkan.
+            </div>
+        </div>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link {% if report_type == 'signal' %}active{% endif %}" href="?type=signal">Sinyal</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if report_type == 'warning' %}active{% endif %}" href="?type=warning">Early Warning</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if report_type == 'recommendation' %}active{% endif %}" href="?type=recommendation">Rekomendasi Intelijen</a>
+    </li>
+</ul>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2">
+            <input type="hidden" name="type" value="{{ report_type }}">
+
+            <div class="col-md-3">
+                <label class="form-label small">Penyakit</label>
+                <select name="disease" class="form-select">
+                    <option value="">Semua penyakit</option>
+                    {% for disease in diseases %}
+                        <option value="{{ disease.code }}" {% if selected_disease == disease.code %}selected{% endif %}>{{ disease.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Semua status</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small">Dari Tanggal</label>
+                <input type="date" name="date_from" value="{{ date_from }}" class="form-control">
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small">Sampai Tanggal</label>
+                <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
+            </div>
+
+            <div class="col-md-2 d-flex gap-2 align-items-end">
+                <button type="submit" class="btn btn-primary flex-fill">Terapkan</button>
+            </div>
+
+            <div class="col-12">
+                <a
+                    href="{% url 'dashboard:report-archive-export' %}?type={{ report_type }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}"
+                    class="btn btn-outline-secondary btn-sm mt-2"
+                >
+                    Ekspor CSV (sesuai filter ini)
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{{ page_obj.paginator.count }} {% if report_type == "signal" %}sinyal{% elif report_type == "warning" %}early warning{% else %}rekomendasi{% endif %} ditemukan</h3>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-vcenter table-sm card-table">
+            <thead>
+                <tr>
+                    <th>Kode</th>
+                    <th>Judul</th>
+                    <th>Penyakit</th>
+                    <th>Lokasi</th>
+                    <th>Status</th>
+                    <th>Tanggal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if report_type == "signal" %}
+                    {% for item in page_obj %}
+                        <tr>
+                            <td class="text-secondary small">{{ item.code }}</td>
+                            <td><a href="{% url 'dashboard:signal-workspace' %}?signal={{ item.id }}">{{ item.title }}</a></td>
+                            <td>{{ item.primary_disease.name|default:"-" }}</td>
+                            <td>{{ item.primary_location.name|default:"-" }}</td>
+                            <td><span class="badge bg-secondary-lt">{{ item.get_status_display }}</span></td>
+                            <td class="text-nowrap">{{ item.first_detected_at|date:"d M Y" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
+                    {% endfor %}
+                {% elif report_type == "warning" %}
+                    {% for item in page_obj %}
+                        <tr>
+                            <td class="text-secondary small">{{ item.code }}</td>
+                            <td><a href="{% url 'dashboard:early-warning' %}?assessment={{ item.assessment_id }}">{{ item.title }}</a></td>
+                            <td>{{ item.signal.primary_disease.name|default:"-" }}</td>
+                            <td>{{ item.signal.primary_location.name|default:"-" }}</td>
+                            <td><span class="badge bg-secondary-lt">{{ item.get_status_display }}</span></td>
+                            <td class="text-nowrap">{{ item.issued_at|date:"d M Y" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
+                    {% endfor %}
+                {% else %}
+                    {% for item in page_obj %}
+                        <tr>
+                            <td class="text-secondary small">{{ item.code }}</td>
+                            <td>{{ item.title }}</td>
+                            <td>{{ item.signal.primary_disease.name|default:"-" }}</td>
+                            <td>{{ item.signal.primary_location.name|default:"-" }}</td>
+                            <td><span class="badge bg-secondary-lt">{{ item.get_status_display }}</span></td>
+                            <td class="text-nowrap">{{ item.created_at|date:"d M Y" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?type={{ report_type }}&page={{ page_obj.previous_page_number }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?type={{ report_type }}&page={{ page_obj.next_page_number }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

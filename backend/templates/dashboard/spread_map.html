@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Peta Sebaran Penyakit | MEDINTEL OSINT{% endblock %}
+
+{% block extra_css %}
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+>
+<style>
+#spread-map-canvas {
+    height: 560px;
+    border-radius: 8px;
+    z-index: 0;
+}
+.spread-legend {
+    background: white;
+    padding: 8px 10px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    font-size: 12px;
+    line-height: 1.6;
+}
+.spread-legend .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
+            <h2 class="page-title">Peta Sebaran Penyakit</h2>
+            <div class="text-secondary mt-1">
+                Visualisasi persebaran kasus berdasarkan lokasi kejadian
+                dan waktu, untuk menelusuri titik mula dan arah
+                pergeserannya.
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:location-list' %}" class="btn btn-outline-secondary btn-sm">Kembali</a>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Penyakit</label>
+                <select class="form-select" id="spread-disease-select">
+                    <option value="">Pilih penyakit</option>
+                    {% for disease in diseases %}
+                        <option value="{{ disease.code }}">{{ disease.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label small">Level Wilayah</label>
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-outline-primary active" id="level-btn-province" data-level="province">Provinsi</button>
+                    <button type="button" class="btn btn-outline-primary" id="level-btn-regency" data-level="regency_city">Kabupaten/Kota</button>
+                </div>
+            </div>
+
+            <div class="col-md-4 d-flex gap-2">
+                <button type="button" class="btn btn-primary flex-fill" id="spread-play-btn" disabled>
+                    Putar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div id="spread-map-canvas"></div>
+
+        <div class="mt-3">
+            <div class="d-flex justify-content-between text-secondary small mb-1">
+                <span id="spread-date-start"></span>
+                <span class="fw-semibold" id="spread-date-current">Pilih penyakit untuk mulai</span>
+                <span id="spread-date-end"></span>
+            </div>
+            <input
+                type="range"
+                class="form-range"
+                id="spread-timeline-slider"
+                min="0"
+                max="0"
+                value="0"
+                disabled
+            >
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    crossorigin=""
+></script>
+<script>
+(function () {
+    "use strict";
+
+    var map = L.map("spread-map-canvas").setView([-2.5, 118], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 12,
+    }).addTo(map);
+
+    var geoLayer = null;
+    var geojsonCache = {};
+    var timelineData = null;
+    var currentLevel = "province";
+    var playTimer = null;
+
+    var GEOJSON_URLS = {
+        province: "{% static 'geo/indonesia_provinces.geojson' %}",
+        regency_city: "{% static 'geo/indonesia_kabkota.geojson' %}"
+    };
+
+    var diseaseSelect = document.getElementById("spread-disease-select");
+    var slider = document.getElementById("spread-timeline-slider");
+    var playBtn = document.getElementById("spread-play-btn");
+    var dateStart = document.getElementById("spread-date-start");
+    var dateEnd = document.getElementById("spread-date-end");
+    var dateCurrent = document.getElementById("spread-date-current");
+    var levelButtons = document.querySelectorAll("[data-level]");
+
+    function normalizeName(name) {
+        return (name || "").toLowerCase().replace(/[^a-z]/g, "");
+    }
+
+    function colorForCount(count, maxCount) {
+        if (!count) {
+            return "#e5e7eb";
+        }
+        var ratio = Math.min(count / (maxCount || 1), 1);
+        var stops = ["#fde8d8", "#fac775", "#ef9f27", "#ba7517", "#854f0b"];
+        var index = Math.min(
+            Math.floor(ratio * stops.length),
+            stops.length - 1
+        );
+        return stops[index];
+    }
+
+    function loadGeojson(level) {
+        if (geojsonCache[level]) {
+            return Promise.resolve(geojsonCache[level]);
+        }
+        return fetch(GEOJSON_URLS[level])
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                geojsonCache[level] = data;
+                return data;
+            });
+    }
+
+    function featureCode(feature) {
+        return (
+            feature.properties.bps_code ||
+            normalizeName(feature.properties.name)
+        );
+    }
+
+    function renderFrame(index) {
+        if (!timelineData || !timelineData.timeline.length) {
+            return;
+        }
+
+        var frame = timelineData.timeline[index];
+        dateCurrent.textContent = frame.date;
+
+        var maxCount = 0;
+        Object.keys(frame.locations).forEach(function (code) {
+            maxCount = Math.max(maxCount, frame.locations[code].case_count);
+        });
+
+        if (geoLayer) {
+            geoLayer.eachLayer(function (layer) {
+                var code = featureCode(layer.feature);
+                var entry = frame.locations[code];
+
+                if (!entry) {
+                    // Coba cocokkan lewat nama kalau kode tidak ketemu.
+                    var normalized = normalizeName(layer.feature.properties.name);
+                    Object.keys(timelineData.locations).forEach(function (locCode) {
+                        if (normalizeName(timelineData.locations[locCode].name) === normalized) {
+                            entry = frame.locations[locCode];
+                        }
+                    });
+                }
+
+                var count = entry ? entry.case_count : 0;
+                var isNew = entry ? entry.is_new : false;
+
+                layer.setStyle({
+                    fillColor: colorForCount(count, maxCount),
+                    fillOpacity: 0.75,
+                    color: isNew ? "#e24b4a" : "#9c9a92",
+                    weight: isNew ? 2.5 : 0.5,
+                });
+
+                if (count > 0) {
+                    layer.bindTooltip(
+                        layer.feature.properties.name + ": " + count + " kasus" +
+                        (isNew ? " (kejadian baru)" : ""),
+                        { sticky: true }
+                    );
+                } else {
+                    layer.unbindTooltip();
+                }
+            });
+        }
+    }
+
+    function setupTimeline() {
+        slider.max = timelineData.timeline.length - 1;
+        slider.value = timelineData.timeline.length - 1;
+        slider.disabled = false;
+        playBtn.disabled = false;
+
+        dateStart.textContent = timelineData.timeline[0].date;
+        dateEnd.textContent = timelineData.timeline[timelineData.timeline.length - 1].date;
+
+        renderFrame(parseInt(slider.value, 10));
+    }
+
+    function loadAndRender() {
+        var disease = diseaseSelect.value;
+        if (!disease) {
+            return;
+        }
+
+        stopPlayback();
+
+        Promise.all([
+            loadGeojson(currentLevel),
+            fetch(
+                "{% url 'dashboard:spread-map-data' %}?disease=" +
+                    encodeURIComponent(disease) +
+                    "&level=" + currentLevel
+            ).then(function (r) { return r.json(); })
+        ]).then(function (results) {
+            var geojson = results[0];
+            timelineData = results[1];
+
+            if (geoLayer) {
+                map.removeLayer(geoLayer);
+            }
+
+            geoLayer = L.geoJSON(geojson, {
+                style: { fillColor: "#e5e7eb", fillOpacity: 0.6, color: "#9c9a92", weight: 0.5 }
+            }).addTo(map);
+
+            if (timelineData.timeline.length > 0) {
+                setupTimeline();
+            } else {
+                dateCurrent.textContent = "Tidak ada data kejadian untuk penyakit ini.";
+                slider.disabled = true;
+                playBtn.disabled = true;
+            }
+        });
+    }
+
+    function stopPlayback() {
+        if (playTimer) {
+            clearInterval(playTimer);
+            playTimer = null;
+            playBtn.textContent = "Putar";
+        }
+    }
+
+    playBtn.addEventListener("click", function () {
+        if (playTimer) {
+            stopPlayback();
+            return;
+        }
+
+        playBtn.textContent = "Jeda";
+        playTimer = setInterval(function () {
+            var next = parseInt(slider.value, 10) + 1;
+            if (next > parseInt(slider.max, 10)) {
+                stopPlayback();
+                return;
+            }
+            slider.value = next;
+            renderFrame(next);
+        }, 800);
+    });
+
+    slider.addEventListener("input", function () {
+        stopPlayback();
+        renderFrame(parseInt(slider.value, 10));
+    });
+
+    diseaseSelect.addEventListener("change", loadAndRender);
+
+    levelButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            levelButtons.forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            currentLevel = btn.getAttribute("data-level");
+            loadAndRender();
+        });
+    });
+})();
+</script>
+{% endblock %}

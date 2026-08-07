@@ -60,7 +60,7 @@ from apps.entities.models import (
     ExtractionReviewLog,
     ValidationStatus,
 )
-from apps.locations.models import Location
+from apps.locations.models import Location, LocationAlias
 from apps.entities.services.review import (
     validate_article_disease,
     validate_article_fact,
@@ -2224,3 +2224,485 @@ def source_pattern_update(
             "submit_label": "Simpan Perubahan",
         },
     )
+
+
+@require_role(*Roles.ALL)
+def location_list(request: HttpRequest) -> HttpResponse:
+    """Halaman "Geocoding & Lokasi": ringkasan kesehatan data master
+    wilayah (provinsi/kabupaten/kota/dst) dan daftar lokasi yang bisa
+    dicari/difilter, dengan jumlah alias dan penyebutan artikel.
+    """
+    from django.db.models import Count, Q as DjangoQ
+
+    locations = (
+        Location.objects.annotate(
+            alias_count=Count("aliases", distinct=True),
+            mention_count=Count("article_mentions", distinct=True),
+        )
+        .select_related("parent")
+    )
+
+    search_query = request.GET.get("q", "").strip()
+    level_filter = request.GET.get("level", "").strip()
+    coordinate_filter = request.GET.get("coordinates", "").strip()
+
+    if search_query:
+        locations = locations.filter(
+            DjangoQ(name__icontains=search_query)
+            | DjangoQ(code__icontains=search_query)
+            | DjangoQ(aliases__alias__icontains=search_query)
+        ).distinct()
+
+    valid_levels = {
+        value for value, _label in Location.AdministrativeLevel.choices
+    }
+    if level_filter in valid_levels:
+        locations = locations.filter(administrative_level=level_filter)
+
+    if coordinate_filter == "missing":
+        locations = locations.filter(
+            DjangoQ(latitude__isnull=True) | DjangoQ(longitude__isnull=True)
+        )
+    elif coordinate_filter == "present":
+        locations = locations.filter(
+            latitude__isnull=False,
+            longitude__isnull=False,
+        )
+
+    locations = locations.order_by("administrative_level", "name")
+
+    paginator = Paginator(locations, 30)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    all_locations = Location.objects.all()
+    summary = {
+        "total": all_locations.count(),
+        "by_level": list(
+            all_locations.values("administrative_level")
+            .annotate(count=Count("id"))
+            .order_by("administrative_level")
+        ),
+        "missing_coordinates": all_locations.filter(
+            DjangoQ(latitude__isnull=True) | DjangoQ(longitude__isnull=True)
+        ).count(),
+        "inactive": all_locations.filter(is_active=False).count(),
+        "total_aliases": LocationAlias.objects.filter(
+            is_active=True
+        ).count(),
+    }
+
+    level_labels = dict(Location.AdministrativeLevel.choices)
+    for row in summary["by_level"]:
+        row["label"] = level_labels.get(
+            row["administrative_level"],
+            row["administrative_level"],
+        )
+
+    context = {
+        "page_title": "Geocoding & Lokasi",
+        "active_menu": "geocoding",
+        "page_obj": page_obj,
+        "summary": summary,
+        "level_choices": Location.AdministrativeLevel.choices,
+        "search_query": search_query,
+        "selected_level": level_filter,
+        "selected_coordinates": coordinate_filter,
+    }
+
+    return render(
+        request,
+        "dashboard/location_list.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def spread_map(request: HttpRequest) -> HttpResponse:
+    """Halaman peta persebaran penyakit berbasis timeline (provinsi
+    atau kabupaten/kota, bisa di-toggle), dibangun dari ArticleFact
+    yang punya event_date + lokasi + penyakit lengkap.
+    """
+    diseases = Disease.objects.filter(
+        article_facts__event_date__isnull=False,
+        article_facts__location__isnull=False,
+    ).distinct().order_by("name")
+
+    context = {
+        "page_title": "Peta Sebaran Penyakit",
+        "active_menu": "spread_map",
+        "diseases": diseases,
+    }
+
+    return render(
+        request,
+        "dashboard/spread_map.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def spread_map_data(request: HttpRequest) -> HttpResponse:
+    """API JSON: rangkaian waktu jumlah kasus kumulatif per lokasi
+    (level provinsi ATAU kabupaten/kota) untuk satu penyakit, dipakai
+    peta persebaran timeline di frontend.
+    """
+    from datetime import timedelta
+
+    disease_code = request.GET.get("disease", "").strip()
+    level = request.GET.get("level", "province").strip()
+
+    if level not in ("province", "regency_city"):
+        level = "province"
+
+    target_levels = (
+        {Location.AdministrativeLevel.PROVINCE}
+        if level == "province"
+        else {
+            Location.AdministrativeLevel.REGENCY,
+            Location.AdministrativeLevel.CITY,
+        }
+    )
+
+    facts = (
+        ArticleFact.objects.filter(
+            event_date__isnull=False,
+            location__isnull=False,
+        )
+        .select_related(
+            "location",
+            "location__parent",
+            "location__parent__parent",
+            "location__parent__parent__parent",
+        )
+    )
+
+    if disease_code:
+        facts = facts.filter(disease__code=disease_code)
+
+    facts = list(facts.order_by("event_date"))
+
+    if not facts:
+        return JsonResponse({"timeline": [], "locations": {}})
+
+    def resolve_ancestor(location):
+        """Naik rantai parent sampai ketemu level target, None kalau
+        tidak ketemu (mis. lokasi luar negeri atau data tidak lengkap).
+        """
+        current = location
+        hops = 0
+        while current is not None and hops < 6:
+            if current.administrative_level in target_levels:
+                return current
+            current = current.parent
+            hops += 1
+        return None
+
+    # Cache resolusi supaya tidak mengulang jalan yang sama untuk
+    # lokasi yang muncul di banyak ArticleFact.
+    ancestor_cache = {}
+    locations_meta = {}
+
+    def get_ancestor(location):
+        if location.id not in ancestor_cache:
+            ancestor_cache[location.id] = resolve_ancestor(location)
+        return ancestor_cache[location.id]
+
+    earliest = facts[0].event_date
+    latest = max(f.event_date for f in facts)
+
+    # Bucket mingguan dari tanggal paling awal ke paling akhir.
+    buckets = []
+    cursor = earliest
+    while cursor <= latest:
+        buckets.append(cursor)
+        cursor = cursor + timedelta(days=7)
+    if not buckets or buckets[-1] < latest:
+        buckets.append(latest)
+
+    # cumulative[location_code] -> {"case_count": int, "is_new": bool}
+    cumulative = {}
+    timeline = []
+    fact_index = 0
+    facts_sorted = facts
+
+    for bucket_end in buckets:
+        new_this_bucket = set()
+
+        while (
+            fact_index < len(facts_sorted)
+            and facts_sorted[fact_index].event_date <= bucket_end
+        ):
+            fact = facts_sorted[fact_index]
+            ancestor = get_ancestor(fact.location)
+            fact_index += 1
+
+            if ancestor is None:
+                continue
+
+            code = ancestor.code or str(ancestor.id)
+            locations_meta[code] = {
+                "name": ancestor.name,
+                "id": str(ancestor.id),
+            }
+
+            entry = cumulative.setdefault(
+                code,
+                {"case_count": 0, "is_new": False},
+            )
+            entry["case_count"] += fact.case_count or 0
+
+            if fact.trend == ArticleFact.Trend.NEW_OCCURRENCE:
+                new_this_bucket.add(code)
+
+        timeline.append(
+            {
+                "date": bucket_end.isoformat(),
+                "locations": {
+                    code: {
+                        "case_count": data["case_count"],
+                        "is_new": code in new_this_bucket,
+                    }
+                    for code, data in cumulative.items()
+                    if data["case_count"] > 0
+                },
+            }
+        )
+
+    return JsonResponse(
+        {
+            "timeline": timeline,
+            "locations": locations_meta,
+            "level": level,
+        }
+    )
+
+
+@require_role(*Roles.ALL)
+def location_detail(
+    request: HttpRequest,
+    location_id,
+) -> HttpResponse:
+    """Halaman detail satu lokasi: info dasar, alias, wilayah anak,
+    dan riwayat artikel yang menyebutnya (urut waktu, sebagai
+    pengganti audit log karena Location tidak punya model riwayat
+    formal).
+    """
+    location = get_object_or_404(
+        Location.objects.select_related("parent"),
+        id=location_id,
+    )
+
+    children = location.children.order_by(
+        "administrative_level", "name"
+    )
+
+    aliases = location.aliases.order_by("-is_active", "alias")
+
+    from apps.entities.models import ArticleLocation
+
+    mentions = (
+        ArticleLocation.objects.filter(location=location)
+        .select_related("article", "article__source")
+        .order_by("-article__published_at", "-article__crawled_at")
+    )
+
+    paginator = Paginator(mentions, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    summary = {
+        "total_mentions": mentions.count(),
+        "primary_mentions": mentions.filter(is_primary=True).count(),
+        "validated_mentions": mentions.filter(
+            validation_status=ValidationStatus.VALIDATED
+        ).count(),
+        "child_count": children.count(),
+        "alias_count": aliases.count(),
+    }
+
+    context = {
+        "page_title": f"Lokasi — {location.name}",
+        "active_menu": "geocoding",
+        "location": location,
+        "children": children,
+        "aliases": aliases,
+        "page_obj": page_obj,
+        "summary": summary,
+    }
+
+    return render(
+        request,
+        "dashboard/location_detail.html",
+        context,
+    )
+
+
+def _parse_date_or_none(value: str):
+    from django.utils.dateparse import parse_date
+
+    value = (value or "").strip()
+    return parse_date(value) if value else None
+
+
+def _report_archive_queryset(request, report_type: str):
+    """Bangun queryset arsip sesuai tipe laporan + filter dari
+    querystring. Dipakai bersama oleh halaman & endpoint ekspor CSV
+    supaya hasilnya selalu konsisten.
+    """
+    from apps.signals.models import Signal
+    from apps.assessments.models import (
+        EarlyWarning,
+        IntelligenceRecommendation,
+    )
+
+    date_from = _parse_date_or_none(request.GET.get("date_from", ""))
+    date_to = _parse_date_or_none(request.GET.get("date_to", ""))
+    status_filter = request.GET.get("status", "").strip()
+    disease_code = request.GET.get("disease", "").strip()
+
+    if report_type == "warning":
+        qs = EarlyWarning.objects.select_related(
+            "signal__primary_disease",
+            "signal__primary_location",
+        ).order_by("-issued_at")
+        date_field = "issued_at"
+        disease_field = "signal__primary_disease__code"
+    elif report_type == "recommendation":
+        qs = IntelligenceRecommendation.objects.select_related(
+            "signal__primary_disease",
+            "signal__primary_location",
+        ).order_by("-created_at")
+        date_field = "created_at"
+        disease_field = "signal__primary_disease__code"
+    else:
+        report_type = "signal"
+        qs = Signal.objects.select_related(
+            "primary_disease",
+            "primary_location",
+        ).order_by("-first_detected_at")
+        date_field = "first_detected_at"
+        disease_field = "primary_disease__code"
+
+    if date_from:
+        qs = qs.filter(**{f"{date_field}__date__gte": date_from})
+    if date_to:
+        qs = qs.filter(**{f"{date_field}__date__lte": date_to})
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if disease_code:
+        qs = qs.filter(**{disease_field: disease_code})
+
+    return report_type, qs
+
+
+@require_role(*Roles.ALL)
+def report_archive(request: HttpRequest) -> HttpResponse:
+    """Halaman "Laporan & Arsip": arsip Sinyal, Early Warning, dan
+    Rekomendasi Intelijen yang bisa difilter tanggal/status/penyakit,
+    plus ekspor CSV.
+    """
+    from apps.signals.models import Signal
+    from apps.assessments.models import (
+        EarlyWarning,
+        IntelligenceRecommendation,
+    )
+
+    report_type = request.GET.get("type", "signal").strip()
+    if report_type not in ("signal", "warning", "recommendation"):
+        report_type = "signal"
+
+    report_type, records = _report_archive_queryset(request, report_type)
+
+    paginator = Paginator(records, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    status_choices = {
+        "signal": Signal.Status.choices,
+        "warning": EarlyWarning.Status.choices,
+        "recommendation": IntelligenceRecommendation.Status.choices,
+    }[report_type]
+
+    context = {
+        "page_title": "Laporan & Arsip",
+        "active_menu": "reports",
+        "report_type": report_type,
+        "page_obj": page_obj,
+        "status_choices": status_choices,
+        "diseases": Disease.objects.filter(is_active=True).order_by("name"),
+        "selected_status": request.GET.get("status", ""),
+        "selected_disease": request.GET.get("disease", ""),
+        "date_from": request.GET.get("date_from", ""),
+        "date_to": request.GET.get("date_to", ""),
+    }
+
+    return render(
+        request,
+        "dashboard/report_archive.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def report_archive_export(request: HttpRequest) -> HttpResponse:
+    """Ekspor arsip (dengan filter yang sedang aktif) ke CSV."""
+    import csv
+
+    report_type = request.GET.get("type", "signal").strip()
+    report_type, records = _report_archive_queryset(request, report_type)
+
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = (
+        f'attachment; filename="arsip_{report_type}.csv"'
+    )
+
+    writer = csv.writer(response)
+
+    if report_type == "warning":
+        writer.writerow(
+            ["Kode", "Judul", "Level", "Status", "Penyakit", "Lokasi", "Tanggal Terbit"]
+        )
+        for item in records:
+            writer.writerow(
+                [
+                    item.code,
+                    item.title,
+                    item.get_level_display(),
+                    item.get_status_display(),
+                    item.signal.primary_disease.name if item.signal.primary_disease else "",
+                    item.signal.primary_location.name if item.signal.primary_location else "",
+                    item.issued_at.strftime("%Y-%m-%d %H:%M") if item.issued_at else "",
+                ]
+            )
+    elif report_type == "recommendation":
+        writer.writerow(
+            ["Kode", "Judul", "Urgensi", "Status", "Penyakit", "Lokasi", "Tanggal Dibuat"]
+        )
+        for item in records:
+            writer.writerow(
+                [
+                    item.code,
+                    item.title,
+                    item.get_urgency_display(),
+                    item.get_status_display(),
+                    item.signal.primary_disease.name if item.signal.primary_disease else "",
+                    item.signal.primary_location.name if item.signal.primary_location else "",
+                    item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "",
+                ]
+            )
+    else:
+        writer.writerow(
+            ["Kode", "Judul", "Prioritas", "Status", "Penyakit", "Lokasi", "Terdeteksi"]
+        )
+        for item in records:
+            writer.writerow(
+                [
+                    item.code,
+                    item.title,
+                    item.get_priority_level_display(),
+                    item.get_status_display(),
+                    item.primary_disease.name if item.primary_disease else "",
+                    item.primary_location.name if item.primary_location else "",
+                    item.first_detected_at.strftime("%Y-%m-%d %H:%M") if item.first_detected_at else "",
+                ]
+            )
+
+    return response

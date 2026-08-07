@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Geocoding & Lokasi | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
+            <h2 class="page-title">Geocoding & Lokasi</h2>
+            <div class="text-secondary mt-1">
+                Data master wilayah administratif Indonesia yang dipakai
+                untuk resolusi lokasi artikel.
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:spread-map' %}" class="btn btn-outline-primary btn-sm">
+                Peta Sebaran Penyakit
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">Total Lokasi</div>
+                <div class="h1 mb-0">{{ summary.total }}</div>
+            </div>
+        </div>
+    </div>
+
+    {% for row in summary.by_level %}
+        <div class="col-sm-6 col-xl-2">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-secondary">{{ row.label }}</div>
+                    <div class="h1 mb-0">{{ row.count }}</div>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+
+    <div class="col-sm-6 col-xl-2">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">Tanpa Koordinat</div>
+                <div class="h1 mb-0 {% if summary.missing_coordinates %}text-warning{% endif %}">{{ summary.missing_coordinates }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2">
+            <div class="col-md-5">
+                <input
+                    type="search"
+                    name="q"
+                    value="{{ search_query }}"
+                    class="form-control"
+                    placeholder="Cari nama, kode, atau alias lokasi"
+                >
+            </div>
+
+            <div class="col-md-3">
+                <select name="level" class="form-select">
+                    <option value="">Semua tingkat</option>
+                    {% for value, label in level_choices %}
+                        <option value="{{ value }}" {% if selected_level == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <select name="coordinates" class="form-select">
+                    <option value="">Semua koordinat</option>
+                    <option value="present" {% if selected_coordinates == "present" %}selected{% endif %}>Ada koordinat</option>
+                    <option value="missing" {% if selected_coordinates == "missing" %}selected{% endif %}>Tanpa koordinat</option>
+                </select>
+            </div>
+
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">Terapkan</button>
+                <a href="{% url 'dashboard:location-list' %}" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">{{ page_obj.paginator.count }} lokasi ditemukan</h3>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-vcenter table-sm card-table">
+            <thead>
+                <tr>
+                    <th>Nama</th>
+                    <th>Tingkat</th>
+                    <th>Induk Wilayah</th>
+                    <th>Kode</th>
+                    <th>Koordinat</th>
+                    <th class="text-center">Alias</th>
+                    <th class="text-center">Disebut Artikel</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for location in page_obj %}
+                    <tr>
+                        <td class="fw-semibold">
+                            <a href="{% url 'dashboard:location-detail' location.id %}">{{ location.name }}</a>
+                        </td>
+                        <td><span class="badge bg-secondary-lt">{{ location.get_administrative_level_display }}</span></td>
+                        <td class="text-secondary">{{ location.parent.name|default:"-" }}</td>
+                        <td class="text-secondary small">{{ location.code|default:"-" }}</td>
+                        <td>
+                            {% if location.latitude and location.longitude %}
+                                <span class="text-secondary small">{{ location.latitude }}, {{ location.longitude }}</span>
+                            {% else %}
+                                <span class="badge bg-warning-lt">Tidak ada</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ location.alias_count }}</td>
+                        <td class="text-center">
+                            {% if location.mention_count %}
+                                <a href="{% url 'dashboard:article-list' %}?location={{ location.id }}">{{ location.mention_count }}</a>
+                            {% else %}
+                                0
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if location.is_active %}
+                                <span class="badge bg-success-lt">Aktif</span>
+                            {% else %}
+                                <span class="badge bg-secondary-lt">Nonaktif</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:location-detail' location.id %}">Detail</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="9" class="text-center text-secondary py-5">Tidak ada lokasi yang cocok dengan filter ini.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ search_query }}&level={{ selected_level }}&coordinates={{ selected_coordinates }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ search_query }}&level={{ selected_level }}&coordinates={{ selected_coordinates }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

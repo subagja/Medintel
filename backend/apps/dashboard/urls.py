@@ -139,4 +139,34 @@ urlpatterns = [
         views.source_pattern_update,
         name="source-pattern-update",
     ),
+    path(
+        "geocoding-lokasi/",
+        views.location_list,
+        name="location-list",
+    ),
+    path(
+        "peta-sebaran/",
+        views.spread_map,
+        name="spread-map",
+    ),
+    path(
+        "peta-sebaran/data/",
+        views.spread_map_data,
+        name="spread-map-data",
+    ),
+    path(
+        "geocoding-lokasi/<uuid:location_id>/",
+        views.location_detail,
+        name="location-detail",
+    ),
+    path(
+        "laporan-arsip/",
+        views.report_archive,
+        name="report-archive",
+    ),
+    path(
+        "laporan-arsip/ekspor/",
+        views.report_archive_export,
+        name="report-archive-export",
+    ),
 ]
