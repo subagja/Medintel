@@ -656,29 +656,26 @@ def evaluate_cheap_filter(
             ),
         )
 
+    # Angka kasus/pasien/kematian TIDAK wajib ada di sini -- artikel yang
+    # menyebut penyakit tapi belum ada angka pasti tetap lolos filter awal
+    # dan disimpan, supaya bisa dilengkapi analis lewat Validasi Artikel.
+    # Dulu ini gerbang keras (wajib ada angka juga), yang membuang banyak
+    # artikel relevan sebelum sempat tersimpan sama sekali.
     counts = extract_count_mentions(
         preview
     )
-
-    if not counts:
-        return CheapFilterResult(
-            passed=False,
-            disease_mentions=diseases,
-            count_mentions=(),
-            reason=(
-                "Filter awal: penyakit ditemukan, tetapi "
-                "jumlah kasus/pasien/suspek/kematian "
-                "tidak ditemukan."
-            ),
-        )
 
     return CheapFilterResult(
         passed=True,
         disease_mentions=diseases,
         count_mentions=counts,
         reason=(
-            "Filter awal lolos: penyakit dan jumlah kejadian "
-            "ditemukan."
+            "Filter awal lolos: penyakit ditemukan."
+            if not counts
+            else (
+                "Filter awal lolos: penyakit dan jumlah "
+                "kejadian ditemukan."
+            )
         ),
     )
 

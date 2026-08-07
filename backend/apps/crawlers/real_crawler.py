@@ -531,41 +531,14 @@ class GenericHtmlCrawler(BaseCrawler):
             cheap_result=cheap_result,
         )
 
-        if not eligibility.is_eligible:
-            self._record_item(
-                original_url=article_url,
-                normalized_url=page.final_url,
-                title=parsed.title,
-                status=CrawlItemStatus.REJECTED,
-                reason=eligibility.reason,
-                metadata={
-                    "stage": "full_filter",
-                },
-            )
-
-            logger.info(
-                (
-                    "Artikel ditolak filter lengkap "
-                    "source=%s url=%s reason=%s"
-                ),
-                source.code,
-                page.final_url,
-                eligibility.reason,
-            )
-
-            if getattr(
-                settings,
-                "CRAWLER_SAVE_REJECTED_DEBUG_HTML",
-                False,
-            ):
-                save_debug_html(
-                    source_code=source.code,
-                    url=page.final_url,
-                    html=page.text,
-                    category="rejected",
-                )
-
-            return None
+        # Artikel TIDAK ditolak lagi walau penyakit, angka kejadian, dan
+        # lokasi tidak lengkap/tidak saling berdekatan -- cukup lolos
+        # filter awal (evaluate_cheap_filter, minimal ada penyakit).
+        # Kelengkapan data (has_extracted_disease/location/numeric_fact)
+        # tetap tercatat lewat metadata di bawah dan bisa dilengkapi
+        # analis lewat halaman Validasi Artikel (filter "Perlu Review").
+        # Ini menggantikan gerbang keras lama yang membuang artikel
+        # relevan hanya karena satu aspek datanya belum lengkap.
 
         if getattr(
             settings,
