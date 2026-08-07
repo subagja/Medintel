@@ -141,11 +141,102 @@ Validasi Artikel | MEDINTEL OSINT
                             <option value="rejected">Tidak relevan</option>
                         </select>
                     </div>
+
+                    <div class="col-auto">
+                        <button
+                            class="btn btn-outline-secondary"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#article-advanced-filters"
+                        >
+                            Filter Lanjutan
+                        </button>
+                    </div>
+                </div>
+
+                <div class="collapse{% if active_filters.source or active_filters.disease or active_filters.location or active_filters.processing_status or active_filters.trend or active_filters.date_from or active_filters.date_to %} show{% endif %} mb-2" id="article-advanced-filters">
+                    <form method="get" class="row g-2 border rounded p-2 mb-2">
+                        <input type="hidden" name="eligibility" value="{{ eligibility_filter }}">
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Sumber OSINT</label>
+                            <select class="form-select form-select-sm" name="source">
+                                <option value="">Semua sumber</option>
+                                {% for source in filter_sources %}
+                                    <option value="{{ source.code }}" {% if active_filters.source == source.code %}selected{% endif %}>{{ source.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Penyakit</label>
+                            <select class="form-select form-select-sm" name="disease">
+                                <option value="">Semua penyakit</option>
+                                {% for disease in filter_diseases %}
+                                    <option value="{{ disease.code }}" {% if active_filters.disease == disease.code %}selected{% endif %}>{{ disease.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Lokasi</label>
+                            <select class="form-select form-select-sm" name="location">
+                                <option value="">Semua lokasi</option>
+                                {% for location in filter_locations %}
+                                    <option value="{{ location.id }}" {% if active_filters.location == location.id|stringformat:"s" %}selected{% endif %}>{{ location.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Status Pemrosesan</label>
+                            <select class="form-select form-select-sm" name="processing_status">
+                                <option value="">Semua status</option>
+                                {% for value, label in filter_processing_statuses %}
+                                    <option value="{{ value }}" {% if active_filters.processing_status == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Tren Kasus</label>
+                            <select class="form-select form-select-sm" name="trend">
+                                <option value="">Semua tren</option>
+                                {% for value, label in filter_trends %}
+                                    <option value="{{ value }}" {% if active_filters.trend == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Berdasarkan Tanggal</label>
+                            <select class="form-select form-select-sm" name="date_field">
+                                {% for value, label in filter_date_fields %}
+                                    <option value="{{ value }}" {% if active_filters.date_field == value %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Dari Tanggal</label>
+                            <input type="date" class="form-control form-control-sm" name="date_from" value="{{ active_filters.date_from }}">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label small">Sampai Tanggal</label>
+                            <input type="date" class="form-control form-control-sm" name="date_to" value="{{ active_filters.date_to }}">
+                        </div>
+
+                        <div class="col-12 d-flex gap-2 mt-1">
+                            <button type="submit" class="btn btn-sm btn-primary">Terapkan Filter</button>
+                            <a href="{% url 'dashboard:article-validation' %}?eligibility={{ eligibility_filter }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+                        </div>
+                    </form>
                 </div>
 
                 <div class="btn-group w-100" role="group">
                     <a
-                        href="{% url 'dashboard:article-validation' %}?eligibility=all"
+                        href="{% url 'dashboard:article-validation' %}?eligibility=all{{ extra_filter_qs }}"
                         class="btn btn-sm
                         {% if eligibility_filter == 'all' %}
                             btn-primary
@@ -157,7 +248,7 @@ Validasi Artikel | MEDINTEL OSINT
                     </a>
 
                     <a
-                        href="{% url 'dashboard:article-validation' %}?eligibility=eligible"
+                        href="{% url 'dashboard:article-validation' %}?eligibility=eligible{{ extra_filter_qs }}"
                         class="btn btn-sm
                         {% if eligibility_filter == 'eligible' %}
                             btn-success
@@ -169,7 +260,7 @@ Validasi Artikel | MEDINTEL OSINT
                     </a>
 
                     <a
-                        href="{% url 'dashboard:article-validation' %}?eligibility=needs_review"
+                        href="{% url 'dashboard:article-validation' %}?eligibility=needs_review{{ extra_filter_qs }}"
                         class="btn btn-sm
                         {% if eligibility_filter == 'needs_review' %}
                             btn-warning
@@ -189,7 +280,7 @@ Validasi Artikel | MEDINTEL OSINT
                 {% for article in articles %}
                     {% with article_assessment=article.validation_assessment %}
                         <a
-                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}&eligibility={{ eligibility_filter }}"
+                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}&eligibility={{ eligibility_filter }}{{ extra_filter_qs }}"
                             class="
                                 list-group-item
                                 list-group-item-action

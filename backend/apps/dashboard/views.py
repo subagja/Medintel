@@ -5,8 +5,10 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from urllib.parse import urlencode
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
 
 from apps.sources.models import (
@@ -23,6 +25,14 @@ from apps.sources.services import (
     check_source_crawl_readiness,
 )
 from apps.articles.models import Article
+from apps.articles.filters import (
+    apply_article_filters,
+    build_article_filter_options,
+)
+from apps.sources.origin import (
+    ORIGIN_CHOICES,
+    apply_origin_filter,
+)
 from apps.collection.models import (
     CollectionJob,
     CollectionJobItem,
@@ -182,11 +192,18 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     )
 
     ready_sources = _ready_html_sources()
+    ready_indonesia_count = sum(
+        1
+        for source in ready_sources
+        if source.source_type
+        != Source.SourceType.INTERNATIONAL_MEDIA
+    )
 
     context = {
         "page_title": "Crawler Artikel/Web",
         "active_menu": "crawler-artikel",
         "ready_sources": ready_sources,
+        "ready_indonesia_count": ready_indonesia_count,
         "filter_sources": Source.objects.order_by("name"),
         "job_statuses": CollectionJob.Status.choices,
         "selected_source": source_code,
@@ -238,6 +255,9 @@ def _parse_optional_positive_int(
 
 @require_POST
 def crawler_run(request: HttpRequest) -> HttpResponse:
+    is_ajax = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
     source_code = request.POST.get(
         "source",
         "",
@@ -253,6 +273,11 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
             label="Batas kandidat",
         )
     except ValidationError as exc:
+        if is_ajax:
+            return JsonResponse(
+                {"error": exc.messages[0]},
+                status=400,
+            )
         messages.error(
             request,
             exc.messages[0],
@@ -263,6 +288,13 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
 
     if source_code == "all":
         selected_sources = ready_sources
+    elif source_code == "all_indonesia":
+        selected_sources = [
+            source
+            for source in ready_sources
+            if source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+        ]
     else:
         selected_sources = [
             source
@@ -271,6 +303,11 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         ]
 
     if not source_code:
+        if is_ajax:
+            return JsonResponse(
+                {"error": "Pilih sumber yang akan dijalankan."},
+                status=400,
+            )
         messages.error(
             request,
             "Pilih sumber yang akan dijalankan.",
@@ -278,12 +315,18 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         return redirect("dashboard:crawler-list")
 
     if not selected_sources:
+        error_text = (
+            "Sumber tidak ditemukan atau belum memenuhi "
+            "status Siap Crawling."
+        )
+        if is_ajax:
+            return JsonResponse(
+                {"error": error_text},
+                status=400,
+            )
         messages.error(
             request,
-            (
-                "Sumber tidak ditemukan atau belum memenuhi "
-                "status Siap Crawling."
-            ),
+            error_text,
         )
         return redirect("dashboard:crawler-list")
 
@@ -294,6 +337,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
     )
     started_sources = []
     skipped_sources = []
+    request_started_at = timezone.now()
 
     for source in selected_sources:
         already_running = CollectionJob.objects.filter(
@@ -323,6 +367,18 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         )
         started_sources.append(source.code)
 
+    if is_ajax:
+        return JsonResponse(
+            {
+                "started": started_sources,
+                "skipped": skipped_sources,
+                # ISO 8601 dengan offset UTC eksplisit, dipakai client
+                # untuk polling "job apa saja yang baru muncul sejak
+                # request ini dikirim" lewat crawler-status.
+                "since": request_started_at.isoformat(),
+            }
+        )
+
     if started_sources:
         messages.success(
             request,
@@ -346,12 +402,47 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
     return redirect("dashboard:crawler-list")
 
 
+def _serialize_job_status(job: CollectionJob) -> dict:
+    status_labels = dict(CollectionJob.Status.choices)
+
+    return {
+        "id": str(job.id),
+        "source_code": job.source.code,
+        "status": job.status,
+        "status_label": status_labels.get(
+            job.status,
+            job.status,
+        ),
+        "started_at": (
+            timezone.localtime(job.started_at).strftime(
+                "%d %b %Y %H:%M"
+            )
+            if job.started_at
+            else None
+        ),
+        "total_found": job.total_found,
+        "total_created": job.total_created,
+        "total_duplicate": job.total_duplicate,
+        "total_rejected": job.total_rejected,
+        "total_failed": job.total_failed,
+        "is_finished": job.status
+        not in (
+            CollectionJob.Status.PENDING,
+            CollectionJob.Status.RUNNING,
+        ),
+    }
+
+
 def crawler_status(request: HttpRequest) -> HttpResponse:
     """Endpoint JSON untuk polling status job crawler dari JavaScript.
 
-    Client mengirim daftar UUID job yang sedang ditampilkan di tabel
-    (parameter `job_ids`, dipisah koma) dan mendapat data terbaru untuk
-    job-job tersebut, supaya tabel bisa diperbarui tanpa reload halaman.
+    Dua mode pemakaian:
+    - `job_ids` (dipisah koma): job yang sudah tampil di tabel, dicek
+      progresnya (dipakai polling rutin).
+    - `source_codes` (dipisah koma) + `since` (ISO datetime): dipakai
+      begitu crawler baru saja dimulai lewat AJAX, untuk menemukan
+      CollectionJob yang baru terbentuk di background thread sebelum
+      client tahu UUID job-nya.
     """
     raw_ids = request.GET.get("job_ids", "")
     job_ids = [
@@ -360,45 +451,51 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
         if value.strip()
     ]
 
-    if not job_ids:
-        return JsonResponse({"jobs": []})
+    if job_ids:
+        jobs = CollectionJob.objects.filter(
+            id__in=job_ids,
+        ).select_related("source")
 
-    jobs = CollectionJob.objects.filter(
-        id__in=job_ids,
-    ).select_related("source")
+        return JsonResponse(
+            {"jobs": [_serialize_job_status(job) for job in jobs]}
+        )
 
-    status_labels = dict(CollectionJob.Status.choices)
-
-    data = [
-        {
-            "id": str(job.id),
-            "status": job.status,
-            "status_label": status_labels.get(
-                job.status,
-                job.status,
-            ),
-            "started_at": (
-                timezone.localtime(job.started_at).strftime(
-                    "%d %b %Y %H:%M"
-                )
-                if job.started_at
-                else None
-            ),
-            "total_found": job.total_found,
-            "total_created": job.total_created,
-            "total_duplicate": job.total_duplicate,
-            "total_rejected": job.total_rejected,
-            "total_failed": job.total_failed,
-            "is_finished": job.status
-            not in (
-                CollectionJob.Status.PENDING,
-                CollectionJob.Status.RUNNING,
-            ),
-        }
-        for job in jobs
+    raw_codes = request.GET.get("source_codes", "")
+    source_codes = [
+        value.strip()
+        for value in raw_codes.split(",")
+        if value.strip()
     ]
 
-    return JsonResponse({"jobs": data})
+    since_raw = request.GET.get("since", "")
+    since = parse_datetime(since_raw) if since_raw else None
+
+    if since and timezone.is_naive(since):
+        since = timezone.make_aware(since, timezone.utc)
+
+    if not source_codes or since is None:
+        return JsonResponse({"jobs": []})
+
+    found_jobs = []
+
+    for code in source_codes:
+        job = (
+            CollectionJob.objects.filter(
+                source__code=code,
+                job_type=CollectionJob.JobType.CRAWLER,
+                created_at__gte=since,
+            )
+            .select_related("source")
+            .order_by("-created_at")
+            .first()
+        )
+
+        if job:
+            found_jobs.append(job)
+
+    return JsonResponse(
+        {"jobs": [_serialize_job_status(job) for job in found_jobs]}
+    )
 
 
 def crawler_job_detail(
@@ -545,6 +642,11 @@ def source_list(request: HttpRequest) -> HttpResponse:
         "",
     ).strip()
 
+    origin = request.GET.get(
+        "origin",
+        "",
+    ).strip()
+
     status = request.GET.get(
         "status",
         "",
@@ -565,6 +667,8 @@ def source_list(request: HttpRequest) -> HttpResponse:
         sources = sources.filter(
             source_type=source_type,
         )
+
+    sources = apply_origin_filter(sources, origin)
 
     if status == "active":
         sources = sources.filter(
@@ -616,6 +720,17 @@ def source_list(request: HttpRequest) -> HttpResponse:
             source.crawl_readiness.is_ready
             for source in all_sources
         ),
+        "indonesia": sum(
+            source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+            for source in all_sources
+        ),
+        "indonesia_crawl_ready": sum(
+            source.crawl_readiness.is_ready
+            and source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+            for source in all_sources
+        ),
     }
 
     context = {
@@ -623,8 +738,10 @@ def source_list(request: HttpRequest) -> HttpResponse:
         "active_menu": "sources",
         "sources": source_rows,
         "source_types": Source.SourceType.choices,
+        "origin_choices": ORIGIN_CHOICES,
         "search_query": search_query,
         "selected_source_type": source_type,
+        "selected_origin": origin,
         "selected_status": status,
         "summary": summary,
     }
@@ -685,6 +802,63 @@ def _validation_queryset():
     )
 
 
+def _extra_filter_querystring(filters: dict) -> str:
+    """Querystring (diawali '&') dari filter lanjutan yang sedang aktif,
+    dipakai template supaya link eligibility/pagination tidak me-reset
+    filter lanjutan yang sudah dipilih pengguna.
+    """
+    params = {
+        key: value
+        for key, value in filters.items()
+        if value and key != "date_field"
+    }
+    if filters.get("date_field") and filters.get(
+        "date_field"
+    ) != "published_at":
+        params["date_field"] = filters["date_field"]
+
+    if not params:
+        return ""
+
+    return "&" + urlencode(params)
+
+
+def _build_validation_redirect_url(
+    *,
+    article_id,
+    tab: str,
+    eligibility: str,
+    filters: dict,
+) -> str:
+    """URL kembali ke workspace Validasi Artikel setelah aksi POST,
+    dengan seluruh filter (eligibility + filter artikel baru) tetap
+    dipertahankan supaya daftar artikel tidak ter-reset ke tanpa filter.
+    """
+    params = {
+        "article": str(article_id),
+        "eligibility": eligibility,
+        "tab": tab,
+    }
+
+    for key in (
+        "source",
+        "disease",
+        "location",
+        "processing_status",
+        "trend",
+        "date_field",
+        "date_from",
+        "date_to",
+    ):
+        value = filters.get(key)
+        if value:
+            params[key] = value
+
+    query = urlencode(params)
+
+    return f"{reverse('dashboard:article-validation')}?{query}"
+
+
 def article_validation(request: HttpRequest) -> HttpResponse:
     articles = _validation_queryset()
 
@@ -705,6 +879,11 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             | Q(has_extracted_location=False)
             | Q(has_numeric_fact=False)
         )
+
+    articles, active_filters = apply_article_filters(
+        articles,
+        request.GET,
+    )
 
     selected_article_id = (
         request.POST.get("article_id")
@@ -903,16 +1082,12 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             ),
                         )
 
-                    redirect_url = reverse(
-                        "dashboard:article-validation"
-                    )
-
                     return redirect(
-                        (
-                            f"{redirect_url}"
-                            f"?article={selected_article.id}"
-                            "&eligibility=all"
-                            "&tab=disease"
+                        _build_validation_redirect_url(
+                            article_id=selected_article.id,
+                            tab="disease",
+                            eligibility=eligibility_filter,
+                            filters=active_filters,
                         )
                     )
         elif (
@@ -982,16 +1157,12 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             ),
                         )
 
-                    redirect_url = reverse(
-                        "dashboard:article-validation"
-                    )
-
                     return redirect(
-                        (
-                            f"{redirect_url}"
-                            f"?article={selected_article.id}"
-                            "&eligibility=all"
-                            "&tab=location"
+                        _build_validation_redirect_url(
+                            article_id=selected_article.id,
+                            tab="location",
+                            eligibility=eligibility_filter,
+                            filters=active_filters,
                         )
                     )
         else:
@@ -1133,16 +1304,12 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             ),
                         )
 
-                    redirect_url = reverse(
-                        "dashboard:article-validation"
-                    )
-
                     return redirect(
-                        (
-                            f"{redirect_url}"
-                            f"?article={selected_article.id}"
-                            f"&eligibility={eligibility_filter}"
-                            f"&tab={active_validation_tab}"
+                        _build_validation_redirect_url(
+                            article_id=selected_article.id,
+                            tab=active_validation_tab,
+                            eligibility=eligibility_filter,
+                            filters=active_filters,
                         )
                     )
             else:
@@ -1226,6 +1393,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "selected_facts": selected_facts,
         "selected_eligibility": selected_eligibility,
         "eligibility_filter": eligibility_filter,
+        "active_filters": active_filters,
+        "extra_filter_qs": _extra_filter_querystring(active_filters),
+        **build_article_filter_options(),
         "summary": {
             "total": total_articles,
             "pending": pending_count,
@@ -1239,6 +1409,53 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "dashboard/article_validation.html",
+        context,
+    )
+
+
+def article_list(request: HttpRequest) -> HttpResponse:
+    """Halaman "Daftar Artikel": daftar seluruh artikel hasil crawling
+    dengan filter lengkap (sumber, penyakit, lokasi, tanggal, status
+    pemrosesan, tren kasus), terpisah dari workspace Validasi Artikel
+    yang berfokus pada aksi validasi satu per satu.
+    """
+    articles = (
+        Article.objects.select_related(
+            "source",
+            "validation_assessment",
+        )
+        .prefetch_related(
+            "diseases",
+            "locations",
+        )
+        .order_by(
+            "-published_at",
+            "-crawled_at",
+        )
+    )
+
+    articles, active_filters = apply_article_filters(
+        articles,
+        request.GET,
+    )
+
+    paginator = Paginator(articles, 25)
+    page_obj = paginator.get_page(
+        request.GET.get("page")
+    )
+
+    context = {
+        "page_title": "Daftar Artikel",
+        "active_menu": "article_list",
+        "page_obj": page_obj,
+        "active_filters": active_filters,
+        "extra_filter_qs": _extra_filter_querystring(active_filters),
+        **build_article_filter_options(),
+    }
+
+    return render(
+        request,
+        "dashboard/article_list.html",
         context,
     )
 

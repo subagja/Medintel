@@ -15,8 +15,8 @@ from apps.sources.models import Source
 
 
 DEFAULT_USER_AGENT = (
-    "MedIntelBot/1.0 "
-    "(Medical Intelligence OSINT Research Crawler)"
+    "Mozilla/5.0 (compatible; MedIntelBot/1.0; "
+    "Medical Intelligence Surveillance Research)"
 )
 
 DEFAULT_ACCEPT = (

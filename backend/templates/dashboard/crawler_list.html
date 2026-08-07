@@ -66,8 +66,20 @@
                 Hanya sumber HTML berstatus Siap Crawling yang dapat dipilih.
             </div>
         </div>
+        <div class="card-actions">
+            <button
+                class="btn btn-outline-secondary btn-sm"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#crawler-run-panel"
+                aria-expanded="false"
+            >
+                Buka/Tutup
+            </button>
+        </div>
     </div>
-    <form method="post" action="{% url 'dashboard:crawler-run' %}">
+    <div class="collapse" id="crawler-run-panel">
+    <form method="post" action="{% url 'dashboard:crawler-run' %}" id="crawler-run-form">
         {% csrf_token %}
         <div class="card-body">
             <div class="row g-3">
@@ -77,6 +89,7 @@
                         <option value="">Pilih sumber</option>
                         {% if ready_sources %}
                             <option value="all">Semua sumber siap ({{ ready_sources|length }})</option>
+                            <option value="all_indonesia">Semua sumber Indonesia siap ({{ ready_indonesia_count }})</option>
                         {% endif %}
                         {% for source in ready_sources %}
                             <option value="{{ source.code }}">{{ source.name }} ({{ source.code }})</option>
@@ -92,16 +105,17 @@
                     <input class="form-control" id="candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Default sistem">
                 </div>
                 <div class="col-md-1 d-flex align-items-end">
-                    <button class="btn btn-primary w-100" type="submit" {% if not ready_sources %}disabled{% endif %}>
+                    <button class="btn btn-primary w-100" type="submit" id="crawler-run-submit" {% if not ready_sources %}disabled{% endif %}>
                         Jalankan
                     </button>
                 </div>
             </div>
-            <div class="form-hint mt-2">
+            <div class="form-hint mt-2" id="crawler-run-hint">
                 Crawler berjalan di latar belakang. Anda bisa berpindah
                 halaman; status pada tabel di bawah akan diperbarui
                 otomatis.
             </div>
+            <div class="alert alert-danger mt-3 mb-0 d-none" role="alert" id="crawler-run-error"></div>
             {% if not ready_sources %}
                 <div class="alert alert-warning mt-3 mb-0" role="alert">
                     Belum ada sumber HTML berstatus Siap Crawling. Periksa konfigurasi pada menu Sumber OSINT.
@@ -109,6 +123,7 @@
             {% endif %}
         </div>
     </form>
+    </div>
 </div>
 
 <div class="card">
@@ -143,7 +158,7 @@
         </form>
     </div>
     <div class="table-responsive">
-        <table class="table table-vcenter card-table">
+        <table class="table table-vcenter table-sm card-table">
             <thead>
                 <tr>
                     <th>Waktu</th>
@@ -157,19 +172,19 @@
                     <th></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="crawler-jobs-tbody">
                 {% for job in page_obj %}
                     <tr
                         data-job-id="{{ job.id }}"
                         data-job-running="{% if job.status == 'running' or job.status == 'pending' %}1{% else %}0{% endif %}"
                     >
                         <td class="text-nowrap">
-                            <div class="js-started-at">{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</div>
-                            <div class="text-secondary small">{{ job.get_trigger_type_display|default:job.trigger_type }}</div>
+                            <span class="js-started-at">{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</span>
+                            <span class="text-secondary small">· {{ job.get_trigger_type_display|default:job.trigger_type }}</span>
                         </td>
-                        <td>
-                            <div class="fw-semibold">{{ job.source.name }}</div>
-                            <div class="text-secondary small">{{ job.source.code }}</div>
+                        <td class="text-nowrap">
+                            <span class="fw-semibold">{{ job.source.name }}</span>
+                            <span class="text-secondary small">({{ job.source.code }})</span>
                         </td>
                         <td class="js-status">
                             {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
@@ -184,12 +199,12 @@
                         <td class="text-center js-total-duplicate">{{ job.total_duplicate }}</td>
                         <td class="text-center text-warning js-total-rejected">{{ job.total_rejected }}</td>
                         <td class="text-center text-danger js-total-failed">{{ job.total_failed }}</td>
-                        <td class="text-end">
+                        <td class="text-end js-detail-cell">
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
                         </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="9" class="text-center text-secondary py-5">Belum ada riwayat crawler untuk filter ini.</td></tr>
+                    <tr id="crawler-jobs-empty-row"><td colspan="9" class="text-center text-secondary py-5">Belum ada riwayat crawler untuk filter ini.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -206,12 +221,27 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+@keyframes crawler-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .45; }
+}
+.crawler-pulse {
+    animation: crawler-pulse 1.4s ease-in-out infinite;
+}
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 (function () {
     "use strict";
 
     var POLL_INTERVAL_MS = 4000;
+    var PENDING_POLL_INTERVAL_MS = 1200;
+    var PENDING_TIMEOUT_MS = 20000;
+
     var STATUS_BADGES = {
         completed: '<span class="badge bg-success-lt">Selesai</span>',
         completed_with_errors: '<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>',
@@ -220,10 +250,25 @@
         cancelled: '<span class="badge bg-secondary-lt">Dibatalkan</span>',
         pending: '<span class="badge bg-secondary-lt">Menunggu</span>'
     };
+    var STARTING_BADGE = '<span class="badge bg-blue-lt crawler-pulse">Memulai...</span>';
+
+    var tbody = document.getElementById("crawler-jobs-tbody");
+    var emptyRow = document.getElementById("crawler-jobs-empty-row");
+    var form = document.getElementById("crawler-run-form");
+    var submitButton = document.getElementById("crawler-run-submit");
+    var errorBox = document.getElementById("crawler-run-error");
+    var pendingSourceCodes = [];
+    var pendingSince = null;
+    var JOB_DETAIL_URL_PLACEHOLDER = "00000000-0000-0000-0000-000000000000";
+    var jobDetailUrlTemplate = "{% url 'dashboard:crawler-job-detail' job_id='00000000-0000-0000-0000-000000000000' %}";
+
+    function jobDetailUrl(jobId) {
+        return jobDetailUrlTemplate.replace(JOB_DETAIL_URL_PLACEHOLDER, jobId);
+    }
 
     function runningRows() {
         return Array.prototype.slice.call(
-            document.querySelectorAll('tr[data-job-running="1"]')
+            tbody.querySelectorAll('tr[data-job-running="1"]')
         );
     }
 
@@ -245,10 +290,22 @@
         row.querySelector(".js-total-failed").textContent = job.total_failed;
 
         row.setAttribute("data-job-running", job.is_finished ? "0" : "1");
+        row.setAttribute("data-job-id", job.id);
+        row.removeAttribute("data-pending-source");
+
+        var detailCell = row.querySelector(".js-detail-cell");
+        if (detailCell && !detailCell.querySelector("a")) {
+            detailCell.innerHTML =
+                '<a class="btn btn-sm btn-outline-primary" href="' +
+                jobDetailUrl(job.id) +
+                '">Detail</a>';
+        }
     }
 
-    function poll() {
-        var rows = runningRows();
+    function pollRunningJobs() {
+        var rows = runningRows().filter(function (row) {
+            return row.getAttribute("data-job-id");
+        });
 
         if (rows.length === 0) {
             return;
@@ -265,7 +322,7 @@
             .then(function (response) { return response.json(); })
             .then(function (data) {
                 data.jobs.forEach(function (job) {
-                    var row = document.querySelector(
+                    var row = tbody.querySelector(
                         'tr[data-job-id="' + job.id + '"]'
                     );
                     if (row) {
@@ -278,9 +335,151 @@
             });
     }
 
-    if (runningRows().length > 0) {
-        setInterval(poll, POLL_INTERVAL_MS);
+    function createPlaceholderRow(sourceName, sourceCode) {
+        if (emptyRow) {
+            emptyRow.remove();
+            emptyRow = null;
+        }
+
+        var row = document.createElement("tr");
+        row.setAttribute("data-pending-source", sourceCode);
+        row.setAttribute("data-job-running", "1");
+        row.innerHTML =
+            '<td class="text-nowrap"><span class="js-started-at">Baru saja</span>' +
+            ' <span class="text-secondary small">· user</span></td>' +
+            '<td class="text-nowrap"><span class="fw-semibold">' + sourceName + '</span>' +
+            ' <span class="text-secondary small">(' + sourceCode + ')</span></td>' +
+            '<td class="js-status">' + STARTING_BADGE + '</td>' +
+            '<td class="text-center js-total-found">\u2013</td>' +
+            '<td class="text-center text-success js-total-created">\u2013</td>' +
+            '<td class="text-center js-total-duplicate">\u2013</td>' +
+            '<td class="text-center text-warning js-total-rejected">\u2013</td>' +
+            '<td class="text-center text-danger js-total-failed">\u2013</td>' +
+            '<td class="text-end js-detail-cell"></td>';
+
+        tbody.insertBefore(row, tbody.firstChild);
     }
+
+    function resolvePendingSources() {
+        if (pendingSourceCodes.length === 0 || !pendingSince) {
+            return;
+        }
+
+        fetch(
+            "{% url 'dashboard:crawler-status' %}" +
+                "?source_codes=" + encodeURIComponent(pendingSourceCodes.join(",")) +
+                "&since=" + encodeURIComponent(pendingSince),
+            { headers: { "X-Requested-With": "XMLHttpRequest" } }
+        )
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                data.jobs.forEach(function (job) {
+                    var row = tbody.querySelector(
+                        'tr[data-pending-source="' + job.source_code + '"]'
+                    );
+                    if (row) {
+                        updateRow(row, job);
+                    }
+                    pendingSourceCodes = pendingSourceCodes.filter(
+                        function (code) { return code !== job.source_code; }
+                    );
+                });
+            })
+            .catch(function () {
+                // Diamkan saja; percobaan berikutnya akan mencoba lagi.
+            });
+    }
+
+    function startPendingResolution() {
+        var elapsed = 0;
+        var timer = setInterval(function () {
+            elapsed += PENDING_POLL_INTERVAL_MS;
+
+            if (pendingSourceCodes.length === 0 || elapsed >= PENDING_TIMEOUT_MS) {
+                clearInterval(timer);
+                return;
+            }
+
+            resolvePendingSources();
+        }, PENDING_POLL_INTERVAL_MS);
+    }
+
+    function showError(text) {
+        errorBox.textContent = text;
+        errorBox.classList.remove("d-none");
+    }
+
+    function hideError() {
+        errorBox.classList.add("d-none");
+    }
+
+    if (form) {
+        form.addEventListener("submit", function (event) {
+            event.preventDefault();
+            hideError();
+
+            var formData = new FormData(form);
+            var sourceSelect = document.getElementById("crawler-source");
+
+            var codeToName = {};
+            Array.prototype.forEach.call(sourceSelect.options, function (option) {
+                if (!option.value || option.value === "all" || option.value === "all_indonesia") {
+                    return;
+                }
+                codeToName[option.value] = option.textContent.replace(/\s*\(.*\)$/, "");
+            });
+
+            submitButton.disabled = true;
+            submitButton.textContent = "Memulai...";
+
+            fetch(form.action, {
+                method: "POST",
+                body: formData,
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        showError(result.data.error || "Gagal menjalankan crawler.");
+                        return;
+                    }
+
+                    var data = result.data;
+
+                    data.started.forEach(function (code) {
+                        createPlaceholderRow(codeToName[code] || code, code);
+                    });
+
+                    if (data.started.length > 0) {
+                        pendingSourceCodes = pendingSourceCodes.concat(data.started);
+                        pendingSince = data.since;
+                        startPendingResolution();
+                    }
+
+                    if (data.skipped.length > 0) {
+                        showError(
+                            "Dilewati karena masih berjalan: " + data.skipped.join(", ") + "."
+                        );
+                    }
+                })
+                .catch(function () {
+                    showError("Tidak dapat menghubungi server. Coba lagi.");
+                })
+                .finally(function () {
+                    submitButton.disabled = false;
+                    submitButton.textContent = "Jalankan";
+                });
+        });
+    }
+
+    // Selalu jalan; pollRunningJobs otomatis no-op kalau belum ada baris
+    // yang berstatus running (termasuk baris placeholder yang baru
+    // dibuat via AJAX setelah halaman ini pertama kali dimuat).
+    setInterval(pollRunningJobs, POLL_INTERVAL_MS);
 })();
 </script>
 {% endblock %}

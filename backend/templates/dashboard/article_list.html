@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Daftar Artikel | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
+            <h2 class="page-title">Daftar Artikel</h2>
+            <div class="text-secondary mt-1">
+                Seluruh artikel hasil crawling dengan filter lengkap
+                berdasarkan sumber, penyakit, lokasi, tanggal, status
+                pemrosesan, dan tren kasus.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2">
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Sumber OSINT</label>
+                <select class="form-select form-select-sm" name="source">
+                    <option value="">Semua sumber</option>
+                    {% for source in filter_sources %}
+                        <option value="{{ source.code }}" {% if active_filters.source == source.code %}selected{% endif %}>{{ source.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Penyakit</label>
+                <select class="form-select form-select-sm" name="disease">
+                    <option value="">Semua penyakit</option>
+                    {% for disease in filter_diseases %}
+                        <option value="{{ disease.code }}" {% if active_filters.disease == disease.code %}selected{% endif %}>{{ disease.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Lokasi</label>
+                <select class="form-select form-select-sm" name="location">
+                    <option value="">Semua lokasi</option>
+                    {% for location in filter_locations %}
+                        <option value="{{ location.id }}" {% if active_filters.location == location.id|stringformat:"s" %}selected{% endif %}>{{ location.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Status Pemrosesan</label>
+                <select class="form-select form-select-sm" name="processing_status">
+                    <option value="">Semua status</option>
+                    {% for value, label in filter_processing_statuses %}
+                        <option value="{{ value }}" {% if active_filters.processing_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Tren Kasus</label>
+                <select class="form-select form-select-sm" name="trend">
+                    <option value="">Semua tren</option>
+                    {% for value, label in filter_trends %}
+                        <option value="{{ value }}" {% if active_filters.trend == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Berdasarkan Tanggal</label>
+                <select class="form-select form-select-sm" name="date_field">
+                    {% for value, label in filter_date_fields %}
+                        <option value="{{ value }}" {% if active_filters.date_field == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Dari Tanggal</label>
+                <input type="date" class="form-control form-control-sm" name="date_from" value="{{ active_filters.date_from }}">
+            </div>
+
+            <div class="col-md-4 col-lg-2">
+                <label class="form-label small">Sampai Tanggal</label>
+                <input type="date" class="form-control form-control-sm" name="date_to" value="{{ active_filters.date_to }}">
+            </div>
+
+            <div class="col-12 d-flex gap-2 mt-2">
+                <button type="submit" class="btn btn-sm btn-primary">Terapkan Filter</button>
+                <a href="{% url 'dashboard:article-list' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            {{ page_obj.paginator.count }} artikel ditemukan
+        </h3>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Judul</th>
+                    <th>Sumber</th>
+                    <th>Penyakit</th>
+                    <th>Lokasi</th>
+                    <th>Tanggal Terbit</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for article in page_obj %}
+                    <tr>
+                        <td style="max-width: 320px;">
+                            <div class="fw-semibold text-truncate">{{ article.title }}</div>
+                        </td>
+                        <td>
+                            <div class="text-secondary small">{{ article.source.name }}</div>
+                        </td>
+                        <td>
+                            {% for disease in article.diseases.all|slice:":3" %}
+                                <span class="badge bg-teal-lt">{{ disease.name }}</span>
+                            {% empty %}
+                                <span class="text-secondary small">&ndash;</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {% for location in article.locations.all|slice:":3" %}
+                                <span class="badge bg-blue-lt">{{ location.name }}</span>
+                            {% empty %}
+                                <span class="text-secondary small">&ndash;</span>
+                            {% endfor %}
+                        </td>
+                        <td class="text-nowrap">
+                            {{ article.published_at|default:article.crawled_at|date:"d M Y" }}
+                        </td>
+                        <td>
+                            {% if article.processing_status == "validated" %}<span class="badge bg-success-lt">Tervalidasi</span>
+                            {% elif article.processing_status == "processed" %}<span class="badge bg-success-lt">Selesai Diproses</span>
+                            {% elif article.processing_status == "processing" %}<span class="badge bg-blue-lt">Sedang Diproses</span>
+                            {% elif article.processing_status == "rejected" %}<span class="badge bg-danger-lt">Ditolak</span>
+                            {% elif article.processing_status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                            {% else %}<span class="badge bg-secondary-lt">Baru</span>{% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-validation' %}?article={{ article.id }}">Buka</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="7" class="text-center text-secondary py-5">Tidak ada artikel yang cocok dengan filter ini.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ extra_filter_qs }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{{ extra_filter_qs }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -84,6 +84,24 @@ Sumber OSINT | MEDINTEL OSINT
         </div>
     </div>
 
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-secondary">
+                    Sumber Indonesia
+                </div>
+
+                <div class="h1 text-teal mb-0">
+                    {{ summary.indonesia|default:0 }}
+                </div>
+
+                <div class="text-secondary small">
+                    {{ summary.indonesia_crawl_ready|default:0 }} siap crawling
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 
@@ -117,7 +135,7 @@ Sumber OSINT | MEDINTEL OSINT
         <form method="get">
             <div class="row g-2">
 
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <input
                         type="search"
                         name="q"
@@ -127,7 +145,29 @@ Sumber OSINT | MEDINTEL OSINT
                     >
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <select
+                        name="origin"
+                        class="form-select"
+                    >
+                        <option value="">
+                            Semua asal
+                        </option>
+
+                        {% for value, label in origin_choices %}
+                            <option
+                                value="{{ value }}"
+                                {% if selected_origin == value %}
+                                    selected
+                                {% endif %}
+                            >
+                                {{ label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-2">
                     <select
                         name="source_type"
                         class="form-select"

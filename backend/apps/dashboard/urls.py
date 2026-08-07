@@ -24,6 +24,11 @@ urlpatterns = [
         name="article-validation",
     ),
     path(
+        "daftar-artikel/",
+        views.article_list,
+        name="article-list",
+    ),
+    path(
         "sinyal-intelijen/",
         signal_views.signal_workspace,
         name="signal-workspace",
