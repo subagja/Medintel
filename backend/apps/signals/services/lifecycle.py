@@ -536,6 +536,21 @@ def escalate_signal(
         },
     )
 
+    from apps.notifications.services import notify_users
+    from apps.notifications.models import Notification
+    from django.urls import reverse
+
+    notify_users(
+        notification_type=Notification.NotificationType.SIGNAL_ESCALATED,
+        title=f"Sinyal dieskalasi: {signal.title}",
+        body=f"Alasan eskalasi: {notes.strip()[:200]}",
+        link_url=(
+            reverse("dashboard:signal-workspace")
+            + f"?signal={signal.id}"
+        ),
+        exclude_user=reviewer,
+    )
+
     return signal
 
 

@@ -270,6 +270,23 @@ def issue_early_warning(
         },
     )
 
+    from apps.notifications.services import notify_users
+    from apps.notifications.models import Notification
+    from django.urls import reverse
+
+    notify_users(
+        notification_type=(
+            Notification.NotificationType.EARLY_WARNING_ISSUED
+        ),
+        title=f"Early Warning terbit: {warning.title}",
+        body=f"Level: {warning.get_level_display()}. {summary.strip()[:200]}",
+        link_url=(
+            reverse("dashboard:early-warning")
+            + f"?assessment={locked_assessment.pk}"
+        ),
+        exclude_user=analyst,
+    )
+
     return warning
 
 

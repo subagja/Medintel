@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Notifikasi | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="page-title">Notifikasi</h2>
+        </div>
+        <div class="col-auto">
+            <form method="post" action="{% url 'notifications:mark-all-read' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Tandai semua dibaca</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="list-group list-group-flush">
+        {% for item in page_obj %}
+            <form method="post" action="{% url 'notifications:mark-read' item.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ item.link_url }}">
+                <button
+                    type="submit"
+                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-start w-100 text-start{% if not item.is_read %} bg-azure-lt{% endif %}"
+                >
+                    <div>
+                        <div class="{% if not item.is_read %}fw-semibold{% endif %}">{{ item.title }}</div>
+                        {% if item.body %}
+                            <div class="text-secondary small mt-1">{{ item.body }}</div>
+                        {% endif %}
+                        <div class="text-secondary small mt-1">{{ item.created_at|date:"d M Y H:i" }}</div>
+                    </div>
+                    {% if not item.is_read %}
+                        <span class="badge bg-azure-lt">Baru</span>
+                    {% endif %}
+                </button>
+            </form>
+        {% empty %}
+            <div class="text-center text-secondary py-5">Belum ada notifikasi.</div>
+        {% endfor %}
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

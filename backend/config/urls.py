@@ -38,4 +38,8 @@ urlpatterns = [
         "indikator/",
         include("apps.indicators.urls"),
     ),
+    path(
+        "notifikasi/",
+        include("apps.notifications.urls"),
+    ),
 ]

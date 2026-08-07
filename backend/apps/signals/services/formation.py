@@ -351,6 +351,25 @@ def form_signal_from_article(
         },
     )
 
+    if created:
+        from apps.notifications.services import notify_users
+        from apps.notifications.models import Notification
+        from django.urls import reverse
+
+        notify_users(
+            notification_type=Notification.NotificationType.SIGNAL_CREATED,
+            title=f"Sinyal baru: {signal.title}",
+            body=(
+                f"Sinyal terbentuk dari artikel \"{article.title}\". "
+                f"Dasar pembentukan: {notes.strip()[:200]}"
+            ),
+            link_url=(
+                reverse("dashboard:signal-workspace")
+                + f"?signal={signal.id}"
+            ),
+            exclude_user=analyst,
+        )
+
     return SignalFormationResult(
         article=article,
         signal=signal,

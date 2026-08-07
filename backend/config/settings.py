@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "rest_framework",
 
     "apps.accounts",
+    "apps.notifications",
     "apps.sources",
     "apps.articles",
     "apps.ingestion",
@@ -73,6 +74,27 @@ ROOT_URLCONF = 'config.urls'
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard:overview"
 LOGOUT_REDIRECT_URL = "login"
+
+# Email untuk notifikasi (sinyal baru/eskalasi, early warning terbit).
+# Default: EMAIL_BACKEND console, jadi email cuma tercetak di terminal
+# runserver -- aman untuk dev, tidak butuh SMTP apapun. Untuk kirim
+# email sungguhan, set environment variable berikut di .env lalu ganti
+# EMAIL_BACKEND ke 'django.core.mail.backends.smtp.EmailBackend':
+#   EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD,
+#   EMAIL_USE_TLS
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    "medintel@localhost",
+)
+# Dipakai untuk membuat link lengkap (bukan relatif) di isi email.
+SITE_BASE_URL = os.getenv(
+    "SITE_BASE_URL",
+    "http://127.0.0.1:8000",
+)
 
 TEMPLATES = [
     {

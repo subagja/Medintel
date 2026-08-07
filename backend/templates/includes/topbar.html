@@ -2,6 +2,41 @@
     <div class="container-xl">
 
         <div class="navbar-nav flex-row order-md-last ms-auto">
+            {% if request.user.is_authenticated %}
+                <div class="nav-item dropdown me-2" id="notification-bell-wrapper">
+                    <a
+                        href="#"
+                        class="nav-link px-2"
+                        data-bs-toggle="dropdown"
+                        aria-label="Notifikasi"
+                    >
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"></path>
+                            <path d="M9 17v1a3 3 0 0 0 6 0v-1"></path>
+                        </svg>
+                        <span
+                            class="badge bg-red d-none"
+                            id="notification-badge"
+                            style="position: relative; top: -14px; left: -6px; padding: 2px 5px; font-size: 10px;"
+                        ></span>
+                    </a>
+
+                    <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow" style="width: 340px; max-height: 420px; overflow-y: auto;" id="notification-dropdown">
+                        <div class="dropdown-item text-secondary small">Memuat...</div>
+                    </div>
+                </div>
+            {% endif %}
+
             <div class="nav-item dropdown">
                 <a
                     href="#"
@@ -48,3 +83,81 @@
 
     </div>
 </header>
+
+{% if request.user.is_authenticated %}
+<script>
+(function () {
+    "use strict";
+
+    var POLL_INTERVAL_MS = 20000;
+    var badge = document.getElementById("notification-badge");
+    var dropdown = document.getElementById("notification-dropdown");
+
+    function escapeHtml(text) {
+        var div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function renderDropdown(items) {
+        if (items.length === 0) {
+            dropdown.innerHTML =
+                '<div class="dropdown-item text-secondary small">Belum ada notifikasi.</div>';
+            return;
+        }
+
+        var html = items.map(function (item) {
+            var unreadClass = item.is_read ? "" : " fw-semibold";
+            return (
+                '<form method="post" action="/notifikasi/' + item.id + '/baca/" class="d-block">' +
+                '<input type="hidden" name="csrfmiddlewaretoken" value="' + getCsrfToken() + '">' +
+                '<input type="hidden" name="next" value="' + escapeHtml(item.link_url || "") + '">' +
+                '<button type="submit" class="dropdown-item text-wrap py-2' + unreadClass + '">' +
+                '<div>' + escapeHtml(item.title) + '</div>' +
+                '<div class="text-secondary small">' + escapeHtml(item.created_at) + '</div>' +
+                '</button>' +
+                '</form>'
+            );
+        }).join("");
+
+        html += (
+            '<div class="dropdown-divider"></div>' +
+            '<form method="post" action="/notifikasi/tandai-semua-dibaca/">' +
+            '<input type="hidden" name="csrfmiddlewaretoken" value="' + getCsrfToken() + '">' +
+            '<button type="submit" class="dropdown-item text-center text-secondary small">Tandai semua dibaca</button>' +
+            '</form>' +
+            '<a href="/notifikasi/" class="dropdown-item text-center small">Lihat semua</a>'
+        );
+
+        dropdown.innerHTML = html;
+    }
+
+    function getCsrfToken() {
+        var match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? match[1] : "";
+    }
+
+    function poll() {
+        fetch("/notifikasi/status/", {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+        })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (data.unread_count > 0) {
+                    badge.textContent = data.unread_count > 99 ? "99+" : data.unread_count;
+                    badge.classList.remove("d-none");
+                } else {
+                    badge.classList.add("d-none");
+                }
+                renderDropdown(data.items || []);
+            })
+            .catch(function () {
+                // Diamkan; percobaan berikutnya akan mencoba lagi.
+            });
+    }
+
+    poll();
+    setInterval(poll, POLL_INTERVAL_MS);
+})();
+</script>
+{% endif %}
