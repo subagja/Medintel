@@ -6,6 +6,7 @@ from apps.assessments import early_warning_views
 from apps.assessments import threat_map_views
 from apps.assessments import disease_priority_views
 from apps.assessments import intelligence_recommendation_views
+from apps.assessments import executive_dashboard_views
 from apps.signals import views as signal_views
 
 
@@ -51,6 +52,11 @@ urlpatterns = [
         "rekomendasi-intelijen/",
         intelligence_recommendation_views.intelligence_recommendation_workspace,
         name="intelligence-recommendation",
+    ),
+    path(
+        "dashboard-eksekutif/",
+        executive_dashboard_views.executive_dashboard,
+        name="executive-dashboard",
     ),
     path(
         "crawler-artikel/",

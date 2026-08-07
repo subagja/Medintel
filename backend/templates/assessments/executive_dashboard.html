@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Eksekutif | MEDINTEL OSINT{% endblock %}
+
+{% block extra_css %}
+<style>
+    .executive-hero {
+        background: linear-gradient(135deg, #102a43 0%, #1f4e78 62%, #2f75b5 100%);
+        border: 0;
+        color: #fff;
+        overflow: hidden;
+        position: relative;
+    }
+    .executive-hero::after {
+        background: rgba(255, 255, 255, .08);
+        border-radius: 50%;
+        content: "";
+        height: 280px;
+        position: absolute;
+        right: -90px;
+        top: -135px;
+        width: 280px;
+    }
+    .executive-hero .text-secondary { color: rgba(255, 255, 255, .72) !important; }
+    .executive-kpi { border-left: 4px solid var(--tblr-primary); }
+    .executive-kpi.warning { border-left-color: var(--tblr-yellow); }
+    .executive-kpi.danger { border-left-color: var(--tblr-red); }
+    .executive-kpi.success { border-left-color: var(--tblr-green); }
+    .executive-section-title { letter-spacing: .02em; }
+    .executive-trend {
+        align-items: flex-end;
+        display: flex;
+        gap: 6px;
+        height: 150px;
+        padding-top: 12px;
+    }
+    .executive-trend-column {
+        align-items: center;
+        display: flex;
+        flex: 1 1 0;
+        flex-direction: column;
+        height: 100%;
+        justify-content: flex-end;
+        min-width: 0;
+    }
+    .executive-trend-bar {
+        background: #cbd5e1;
+        border-radius: 5px 5px 0 0;
+        min-height: 3px;
+        transition: height .2s ease;
+        width: min(24px, 72%);
+    }
+    .executive-trend-column.current .executive-trend-bar { background: #2f75b5; }
+    .executive-trend-count { font-size: .7rem; margin-bottom: 3px; min-height: 1rem; }
+    .executive-trend-label { color: var(--tblr-secondary); font-size: .62rem; margin-top: 5px; transform: rotate(-35deg); white-space: nowrap; }
+    .executive-flow-step {
+        background: var(--tblr-bg-surface-secondary);
+        border-radius: var(--tblr-border-radius);
+        min-height: 88px;
+        padding: 14px;
+    }
+    .executive-region-bar { background: #e7eef6; border-radius: 999px; height: 7px; overflow: hidden; }
+    .executive-region-fill { background: #2f75b5; border-radius: 999px; height: 100%; }
+    .executive-briefing {
+        border-left: 4px solid #f59f00;
+        padding-left: 1rem;
+    }
+    .executive-empty {
+        align-items: center;
+        color: var(--tblr-secondary);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 180px;
+        text-align: center;
+    }
+    @media (max-width: 767.98px) {
+        .executive-trend-label { display: none; }
+        .executive-trend { gap: 3px; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Situational awareness & dukungan keputusan</div>
+            <h2 class="page-title">Dashboard Eksekutif</h2>
+            <div class="text-secondary mt-1">
+                Ringkasan produk intelijen yang telah melalui gerbang analisis dan keputusan analis.
+            </div>
+        </div>
+        <div class="col-auto ms-auto d-print-none">
+            <a href="{% url 'dashboard:executive-dashboard' %}" class="btn btn-outline-primary">
+                Segarkan Data
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="card executive-hero mb-3">
+    <div class="card-body py-4 position-relative">
+        <div class="row align-items-center g-3">
+            <div class="col-lg-8">
+                <div class="text-uppercase small text-secondary mb-2">Gambaran situasi saat ini</div>
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                    <h2 class="m-0">{{ dashboard.summary.highest_level.label }}</h2>
+                    <span class="badge {{ dashboard.summary.highest_level.badge }}">
+                        Level operasional tertinggi
+                    </span>
+                </div>
+                {% if dashboard.top_warning %}
+                    <div class="fs-3 fw-semibold mb-1">{{ dashboard.top_warning.disease }}</div>
+                    <div class="text-secondary">
+                        {{ dashboard.top_warning.location }}{% if dashboard.top_warning.province %}, {{ dashboard.top_warning.province }}{% endif %}
+                        · {{ dashboard.top_warning.code }}
+                    </div>
+                {% else %}
+                    <div class="text-secondary">
+                        Belum ada peringatan dini aktif yang memerlukan penyajian kepada pimpinan.
+                    </div>
+                {% endif %}
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <div class="text-secondary small">Diperbarui</div>
+                <div class="fw-semibold">{{ dashboard.last_updated_at|date:"d M Y, H:i" }} WIB</div>
+                <div class="text-secondary small mt-2">
+                    Ringkasan internal · bukan penetapan KLB
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card executive-kpi warning">
+            <div class="card-body">
+                <div class="text-secondary">Peringatan Aktif</div>
+                <div class="d-flex align-items-end gap-2 mt-1">
+                    <div class="h1 mb-0">{{ dashboard.summary.active_warning_count }}</div>
+                    <div class="text-secondary mb-1">produk</div>
+                </div>
+                <div class="small text-secondary mt-2">
+                    Tinggi/Kritis: {{ dashboard.warning_counts.high|add:dashboard.warning_counts.critical }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card executive-kpi">
+            <div class="card-body">
+                <div class="text-secondary">Penyakit Perhatian</div>
+                <div class="d-flex align-items-end gap-2 mt-1">
+                    <div class="h1 mb-0">{{ dashboard.summary.priority_disease_count }}</div>
+                    <div class="text-secondary mb-1">penyakit</div>
+                </div>
+                <div class="small text-secondary mt-2">
+                    {{ dashboard.summary.affected_province_count }} provinsi terpetakan
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card executive-kpi success">
+            <div class="card-body">
+                <div class="text-secondary">Rekomendasi Aktif</div>
+                <div class="d-flex align-items-end gap-2 mt-1">
+                    <div class="h1 mb-0">{{ dashboard.summary.active_recommendation_count }}</div>
+                    <div class="text-secondary mb-1">tindakan</div>
+                </div>
+                <div class="small text-secondary mt-2">
+                    Belum dimulai: {{ dashboard.summary.not_started_recommendation_count }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card executive-kpi{% if dashboard.summary.overdue_recommendation_count %} danger{% endif %}">
+            <div class="card-body">
+                <div class="text-secondary">Perlu Atensi Pimpinan</div>
+                <div class="d-flex align-items-end gap-2 mt-1">
+                    <div class="h1 mb-0">
+                        {{ dashboard.summary.draft_recommendation_count|add:dashboard.summary.overdue_recommendation_count }}
+                    </div>
+                    <div class="text-secondary mb-1">item</div>
+                </div>
+                <div class="small text-secondary mt-2">
+                    Draf {{ dashboard.summary.draft_recommendation_count }} · Lewat tenggat {{ dashboard.summary.overdue_recommendation_count }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-xl-7">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Briefing Situasi Utama</h3>
+                    <div class="text-secondary small">Peringatan aktif dengan level tertinggi dan terbaru.</div>
+                </div>
+                <div class="card-actions">
+                    <a href="{{ dashboard.links.warnings }}" class="btn btn-sm btn-outline-primary">Buka Peringatan Dini</a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if dashboard.top_warning %}
+                    <div class="executive-briefing">
+                        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                            <a href="{{ dashboard.top_warning.warning_url }}" class="fw-semibold">
+                                {{ dashboard.top_warning.code }}
+                            </a>
+                            <span class="badge {{ dashboard.top_warning.level_badge }}">
+                                {{ dashboard.top_warning.level_label }}
+                            </span>
+                            <span class="badge bg-secondary-lt">
+                                Keyakinan {{ dashboard.top_warning.confidence_label }}
+                            </span>
+                        </div>
+                        <h3 class="mb-2">{{ dashboard.top_warning.title }}</h3>
+                        <p class="mb-3">{{ dashboard.top_warning.summary }}</p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="text-secondary small text-uppercase mb-1">Judgement</div>
+                                <div>{{ dashboard.top_warning.judgement|default:"Belum dicantumkan." }}</div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="text-secondary small text-uppercase mb-1">Implikasi</div>
+                                <div>{{ dashboard.top_warning.implications|default:"Belum dicantumkan." }}</div>
+                            </div>
+                            <div class="col-12">
+                                <div class="text-secondary small text-uppercase mb-1">Tindakan yang direkomendasikan</div>
+                                <div>{{ dashboard.top_warning.recommended_actions }}</div>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="executive-empty">
+                        <div class="h3 mb-1">Belum ada peringatan aktif</div>
+                        <div>Dashboard tetap dapat digunakan; produk baru akan muncul setelah diterbitkan analis.</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Keputusan & Tindak Lanjut</h3>
+                    <div class="text-secondary small">Draf, rekomendasi aktif, dan tenggat operasional.</div>
+                </div>
+                <div class="card-actions">
+                    <a href="{{ dashboard.links.recommendations }}" class="btn btn-sm btn-outline-primary">Buka Rekomendasi</a>
+                </div>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for row in dashboard.recommendation_rows %}
+                    <a href="{{ row.url }}" class="list-group-item list-group-item-action">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div class="min-w-0">
+                                <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
+                                    <span class="fw-semibold">{{ row.code }}</span>
+                                    <span class="badge {{ row.action.badge }}">{{ row.action.label }}</span>
+                                </div>
+                                <div class="fw-medium text-truncate">{{ row.title }}</div>
+                                <div class="text-secondary small mt-1">
+                                    {{ row.category_label }} · {{ row.target_unit }}
+                                </div>
+                            </div>
+                            <div class="text-end text-nowrap">
+                                <div class="small{% if row.overdue %} text-danger fw-semibold{% else %} text-secondary{% endif %}">
+                                    {% if row.due_date %}{{ row.due_date|date:"d M Y" }}{% else %}Tanpa tenggat{% endif %}
+                                </div>
+                                <div class="small text-secondary">{{ row.urgency_label }}</div>
+                            </div>
+                        </div>
+                    </a>
+                {% empty %}
+                    <div class="executive-empty px-3">
+                        <div class="h4 mb-1">Tidak ada rekomendasi terbuka</div>
+                        <div>Belum ada draf atau tindak lanjut aktif.</div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-xl-7">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Perubahan Sinyal 14 Hari</h3>
+                    <div class="text-secondary small">Sinyal tervalidasi yang pertama kali terdeteksi; bukan volume artikel.</div>
+                </div>
+                <div class="card-actions text-end">
+                    <div class="fw-semibold {{ dashboard.trend.direction_class }}">{{ dashboard.trend.direction }}</div>
+                    <div class="small text-secondary">
+                        7 hari: {{ dashboard.trend.current_total }} vs {{ dashboard.trend.previous_total }}
+                    </div>
+                </div>
+            </div>
+            <div class="card-body pt-2">
+                <div class="executive-trend" aria-label="Grafik sinyal 14 hari">
+                    {% for point in dashboard.trend.points %}
+                        <div class="executive-trend-column{% if point.current_week %} current{% endif %}" title="{{ point.label }}: {{ point.count }} sinyal">
+                            <div class="executive-trend-count">{% if point.count %}{{ point.count }}{% endif %}</div>
+                            <div class="executive-trend-bar" style="height: {{ point.height }}%;"></div>
+                            <div class="executive-trend-label">{{ point.label }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="d-flex justify-content-between border-top pt-2 mt-3 small text-secondary">
+                    <span>Periode pembanding</span>
+                    <span>7 hari berjalan</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Wilayah Perhatian</h3>
+                    <div class="text-secondary small">Level tertinggi per provinsi dari peringatan aktif.</div>
+                </div>
+                <div class="card-actions">
+                    <a href="{{ dashboard.links.map }}" class="btn btn-sm btn-outline-primary">Buka Peta</a>
+                </div>
+            </div>
+            <div class="card-body">
+                {% for province in dashboard.provinces %}
+                    <div class="mb-3{% if forloop.last %} mb-0{% endif %}">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                            <div>
+                                <span class="fw-semibold">{{ province.name }}</span>
+                                <span class="text-secondary small">· {{ province.warning_count }} peringatan</span>
+                            </div>
+                            <span class="badge {{ province.badge }}">{{ province.level_label }}</span>
+                        </div>
+                        <div class="executive-region-bar">
+                            <div class="executive-region-fill" style="width: {{ province.bar_width }}%;"></div>
+                        </div>
+                        <div class="text-secondary small mt-1">{{ province.diseases|join:", " }}</div>
+                    </div>
+                {% empty %}
+                    <div class="executive-empty">
+                        <div class="h4 mb-1">Belum ada wilayah aktif</div>
+                        <div>Wilayah muncul setelah peringatan aktif dapat dipetakan.</div>
+                    </div>
+                {% endfor %}
+                {% if dashboard.unmapped_warning_count %}
+                    <div class="alert alert-warning mt-3 mb-0 py-2">
+                        {{ dashboard.unmapped_warning_count }} peringatan belum memiliki relasi provinsi.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-xl-7">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Penyakit Prioritas Operasional</h3>
+                    <div class="text-secondary small">Urutan perhatian dari peringatan aktif atau assessment terkonfirmasi.</div>
+                </div>
+                <div class="card-actions">
+                    <a href="{{ dashboard.links.diseases }}" class="btn btn-sm btn-outline-primary">Lihat 28 Penyakit</a>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-vcenter card-table">
+                    <thead>
+                        <tr>
+                            <th>Penyakit</th>
+                            <th>Level</th>
+                            <th>Lokasi Terkini</th>
+                            <th class="text-center">Sinyal</th>
+                            <th class="text-center">Peringatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for disease in dashboard.priority_diseases %}
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ disease.name }}</div>
+                                    <div class="text-secondary small">{{ disease.category_label }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge {{ disease.attention.badge }}">{{ disease.attention.label }}</span>
+                                </td>
+                                <td>{{ disease.latest_location|default:"—" }}</td>
+                                <td class="text-center">{{ disease.active_signal_count }}</td>
+                                <td class="text-center">{{ disease.active_warning_count }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-secondary py-5">
+                                    Belum ada penyakit dengan perhatian operasional.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title executive-section-title">Keterlacakan Produk</h3>
+                    <div class="text-secondary small">Jumlah objek aktif pada setiap tahap analisis.</div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <a href="{{ dashboard.links.signals }}" class="executive-flow-step d-block text-reset text-decoration-none">
+                            <div class="text-secondary small">Sinyal aktif</div>
+                            <div class="h2 mb-0">{{ dashboard.summary.active_signal_count }}</div>
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ dashboard.links.assessments }}" class="executive-flow-step d-block text-reset text-decoration-none">
+                            <div class="text-secondary small">Assessment terkini</div>
+                            <div class="h2 mb-0">{{ dashboard.summary.current_assessment_count }}</div>
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ dashboard.links.warnings }}" class="executive-flow-step d-block text-reset text-decoration-none">
+                            <div class="text-secondary small">Peringatan aktif</div>
+                            <div class="h2 mb-0">{{ dashboard.summary.active_warning_count }}</div>
+                        </a>
+                    </div>
+                    <div class="col-6">
+                        <a href="{{ dashboard.links.recommendations }}" class="executive-flow-step d-block text-reset text-decoration-none">
+                            <div class="text-secondary small">Rekomendasi aktif</div>
+                            <div class="h2 mb-0">{{ dashboard.summary.active_recommendation_count }}</div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3 mb-0">
+                    <div class="fw-semibold mb-1">Batas penggunaan</div>
+                    <div class="small">
+                        Dashboard mendukung kewaspadaan dini dan keputusan analis. Informasi bukan data epidemiologi resmi, tidak menetapkan KLB, dan tidak menjadi keputusan kebijakan otomatis.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

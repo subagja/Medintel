@@ -31,6 +31,7 @@ from .intelligence_recommendation import (
     evaluate_intelligence_recommendation_eligibility,
     start_intelligence_recommendation,
 )
+from .executive_dashboard import build_executive_dashboard_dataset
 from .scoring import (
     AssessmentScores,
     calculate_assessment_scores,
@@ -68,6 +69,7 @@ __all__ = [
     "approve_intelligence_recommendation",
     "assessment_recommendation_is_applied",
     "build_threat_map_dataset",
+    "build_executive_dashboard_dataset",
     "calculate_assessment_scores",
     "calculate_confidence_score",
     "calculate_priority_score",
