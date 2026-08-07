@@ -9,14 +9,13 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.entities.geolocation import clear_geolocation_cache
+from apps.locations.geolocation import clear_geolocation_cache
 from apps.entities.models import (
     ArticleFact,
     ArticleLocation,
-    Location,
-    LocationAlias,
     ValidationStatus,
 )
+from apps.locations.models import Location, LocationAlias
 
 
 REFERENCE_PATH = (

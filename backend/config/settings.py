@@ -69,6 +69,10 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'config.urls'
 
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "dashboard:overview"
+LOGOUT_REDIRECT_URL = "login"
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -129,7 +133,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Jakarta'
 
 USE_I18N = True
 
@@ -213,9 +217,7 @@ CRAWLER_CHEAP_FILTER_CHARS = 5000
 CRAWLER_SAVE_ACCEPTED_DEBUG_HTML = False
 CRAWLER_SAVE_REJECTED_DEBUG_HTML = False
 
-CRAWLER_CANDIDATE_LIMIT = 30
-
-CRAWLER_CHEAP_FILTER_CHARS = 5000
-
-CRAWLER_SAVE_ACCEPTED_DEBUG_HTML = False
-CRAWLER_SAVE_REJECTED_DEBUG_HTML = False
+# Jumlah kandidat link per halaman listing yang dievaluasi tiap crawl.
+# Dinaikkan dari 30 -> 100 karena banyak artikel relevan terlewat begitu
+# saja hanya karena berada di luar 30 link pertama pada halaman listing.
+CRAWLER_CANDIDATE_LIMIT = 100

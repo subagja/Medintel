@@ -7,13 +7,14 @@ from django.utils import timezone
 
 from apps.articles.models import Article
 
+from apps.locations.models import Location
+
 from ..models import (
     ArticleDisease,
     ArticleFact,
     ArticleLocation,
     Disease,
     ExtractionMethod,
-    Location,
     ValidationStatus,
 )
 

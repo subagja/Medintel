@@ -98,7 +98,9 @@
                 </div>
             </div>
             <div class="form-hint mt-2">
-                Proses berjalan langsung. Biarkan halaman tetap terbuka sampai hasil ditampilkan.
+                Crawler berjalan di latar belakang. Anda bisa berpindah
+                halaman; status pada tabel di bawah akan diperbarui
+                otomatis.
             </div>
             {% if not ready_sources %}
                 <div class="alert alert-warning mt-3 mb-0" role="alert">
@@ -157,16 +159,19 @@
             </thead>
             <tbody>
                 {% for job in page_obj %}
-                    <tr>
+                    <tr
+                        data-job-id="{{ job.id }}"
+                        data-job-running="{% if job.status == 'running' or job.status == 'pending' %}1{% else %}0{% endif %}"
+                    >
                         <td class="text-nowrap">
-                            <div>{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</div>
+                            <div class="js-started-at">{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</div>
                             <div class="text-secondary small">{{ job.get_trigger_type_display|default:job.trigger_type }}</div>
                         </td>
                         <td>
                             <div class="fw-semibold">{{ job.source.name }}</div>
                             <div class="text-secondary small">{{ job.source.code }}</div>
                         </td>
-                        <td>
+                        <td class="js-status">
                             {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
                             {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
                             {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
@@ -174,11 +179,11 @@
                             {% elif job.status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
                             {% else %}<span class="badge bg-secondary-lt">Menunggu</span>{% endif %}
                         </td>
-                        <td class="text-center">{{ job.total_found }}</td>
-                        <td class="text-center text-success">{{ job.total_created }}</td>
-                        <td class="text-center">{{ job.total_duplicate }}</td>
-                        <td class="text-center text-warning">{{ job.total_rejected }}</td>
-                        <td class="text-center text-danger">{{ job.total_failed }}</td>
+                        <td class="text-center js-total-found">{{ job.total_found }}</td>
+                        <td class="text-center text-success js-total-created">{{ job.total_created }}</td>
+                        <td class="text-center js-total-duplicate">{{ job.total_duplicate }}</td>
+                        <td class="text-center text-warning js-total-rejected">{{ job.total_rejected }}</td>
+                        <td class="text-center text-danger js-total-failed">{{ job.total_failed }}</td>
                         <td class="text-end">
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
                         </td>
@@ -199,4 +204,83 @@
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    "use strict";
+
+    var POLL_INTERVAL_MS = 4000;
+    var STATUS_BADGES = {
+        completed: '<span class="badge bg-success-lt">Selesai</span>',
+        completed_with_errors: '<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>',
+        running: '<span class="badge bg-blue-lt">Sedang berjalan</span>',
+        failed: '<span class="badge bg-danger-lt">Gagal</span>',
+        cancelled: '<span class="badge bg-secondary-lt">Dibatalkan</span>',
+        pending: '<span class="badge bg-secondary-lt">Menunggu</span>'
+    };
+
+    function runningRows() {
+        return Array.prototype.slice.call(
+            document.querySelectorAll('tr[data-job-running="1"]')
+        );
+    }
+
+    function updateRow(row, job) {
+        var statusCell = row.querySelector(".js-status");
+        if (statusCell) {
+            statusCell.innerHTML = STATUS_BADGES[job.status] || job.status_label;
+        }
+
+        var startedCell = row.querySelector(".js-started-at");
+        if (startedCell && job.started_at) {
+            startedCell.textContent = job.started_at;
+        }
+
+        row.querySelector(".js-total-found").textContent = job.total_found;
+        row.querySelector(".js-total-created").textContent = job.total_created;
+        row.querySelector(".js-total-duplicate").textContent = job.total_duplicate;
+        row.querySelector(".js-total-rejected").textContent = job.total_rejected;
+        row.querySelector(".js-total-failed").textContent = job.total_failed;
+
+        row.setAttribute("data-job-running", job.is_finished ? "0" : "1");
+    }
+
+    function poll() {
+        var rows = runningRows();
+
+        if (rows.length === 0) {
+            return;
+        }
+
+        var jobIds = rows
+            .map(function (row) { return row.getAttribute("data-job-id"); })
+            .join(",");
+
+        fetch(
+            "{% url 'dashboard:crawler-status' %}?job_ids=" + encodeURIComponent(jobIds),
+            { headers: { "X-Requested-With": "XMLHttpRequest" } }
+        )
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                data.jobs.forEach(function (job) {
+                    var row = document.querySelector(
+                        'tr[data-job-id="' + job.id + '"]'
+                    );
+                    if (row) {
+                        updateRow(row, job);
+                    }
+                });
+            })
+            .catch(function () {
+                // Diamkan saja; polling berikutnya akan mencoba lagi.
+            });
+    }
+
+    if (runningRows().length > 0) {
+        setInterval(poll, POLL_INTERVAL_MS);
+    }
+})();
+</script>
 {% endblock %}

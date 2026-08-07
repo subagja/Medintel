@@ -12,10 +12,10 @@ from apps.collection.models import (
 from apps.entities.models import (
     Disease,
     DiseaseAlias,
-    Location,
     SurveillanceDisease,
     SurveillanceProgram,
 )
+from apps.locations.models import Location
 from apps.sources.models import (
     Source,
     SourceUrlPattern,

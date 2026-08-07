@@ -5,18 +5,18 @@ from django.db import transaction
 
 from apps.articles.models import Article
 
-from ..geolocation import (
+from apps.locations.geolocation import (
     IndonesiaGeolocationResult,
     resolve_indonesia_locations,
 )
+from apps.locations.models import Location, LocationAlias
+
 from ..models import (
     ArticleDisease,
     ArticleLocation,
     Disease,
     DiseaseAlias,
     ExtractionMethod,
-    Location,
-    LocationAlias,
     ValidationStatus,
 )
 

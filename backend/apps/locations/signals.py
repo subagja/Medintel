@@ -17,7 +17,7 @@ def clear_location_indexes(**kwargs) -> None:
     clear_geolocation_cache()
 
     try:
-        from .eligibility import clear_eligibility_caches
+        from apps.entities.eligibility import clear_eligibility_caches
     except ImportError:
         return
 

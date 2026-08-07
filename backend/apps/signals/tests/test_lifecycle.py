@@ -5,7 +5,8 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from apps.articles.models import Article
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.indicators.models import Indicator, IndicatorType
 from apps.requirements.models import IntelligenceRequirement
 from apps.signals.models import (

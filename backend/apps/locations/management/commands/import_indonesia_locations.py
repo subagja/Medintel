@@ -13,8 +13,8 @@ from django.core.management.base import (
 )
 from django.db import transaction
 
-from apps.entities.geolocation import clear_geolocation_cache
-from apps.entities.models import Location, LocationAlias
+from apps.locations.geolocation import clear_geolocation_cache
+from apps.locations.models import Location, LocationAlias
 
 
 COLUMN_ALIASES = {

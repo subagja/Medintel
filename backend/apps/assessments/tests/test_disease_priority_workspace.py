@@ -11,10 +11,10 @@ from apps.assessments.services.disease_priority import (
 )
 from apps.entities.models import (
     Disease,
-    Location,
     SurveillanceDisease,
     SurveillanceProgram,
 )
+from apps.locations.models import Location
 from apps.signals.models import Signal, SignalHistory
 
 

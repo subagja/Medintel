@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.test import TestCase
 
 from apps.articles.models import Article
-from apps.entities.geolocation import (
+from apps.locations.geolocation import (
     clear_geolocation_cache,
     resolve_indonesia_locations,
 )
@@ -17,10 +17,9 @@ from apps.entities.models import (
     Disease,
     DiseaseAlias,
     ExtractionMethod,
-    Location,
-    LocationAlias,
     ValidationStatus,
 )
+from apps.locations.models import Location, LocationAlias
 from apps.entities.services import extract_article_entities
 from apps.sources.models import Source
 

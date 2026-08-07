@@ -198,7 +198,7 @@
                 <li class="nav-item">
                     <a
                         class="nav-link{% if active_menu == 'crawler-artikel' %} active{% endif %}"
-                        href="#"
+                        href="{% url 'dashboard:crawler-list' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -258,8 +258,11 @@
 
                 <li class="nav-item">
                     <a
-                        class="nav-link{% if active_menu == 'entity_extraction' %} active{% endif %}"
+                        class="nav-link disabled"
                         href="#"
+                        tabindex="-1"
+                        aria-disabled="true"
+                        onclick="return false;"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -283,13 +286,17 @@
                         <span class="nav-link-title">
                             Ekstraksi Entitas
                         </span>
+                        <span class="badge bg-secondary-lt ms-auto">Segera hadir</span>
                     </a>
                 </li>
 
                 <li class="nav-item">
                     <a
-                        class="nav-link{% if active_menu == 'geocoding' %} active{% endif %}"
+                        class="nav-link disabled"
                         href="#"
+                        tabindex="-1"
+                        aria-disabled="true"
+                        onclick="return false;"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -311,6 +318,7 @@
                         <span class="nav-link-title">
                             Geocoding & Lokasi
                         </span>
+                        <span class="badge bg-secondary-lt ms-auto">Segera hadir</span>
                     </a>
                 </li>
 
@@ -439,8 +447,11 @@
 
                 <li class="nav-item">
                     <a
-                        class="nav-link{% if active_menu == 'reports' %} active{% endif %}"
+                        class="nav-link disabled"
                         href="#"
+                        tabindex="-1"
+                        aria-disabled="true"
+                        onclick="return false;"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -464,6 +475,7 @@
                         <span class="nav-link-title">
                             Laporan & Arsip
                         </span>
+                        <span class="badge bg-secondary-lt ms-auto">Segera hadir</span>
                     </a>
                 </li>
 

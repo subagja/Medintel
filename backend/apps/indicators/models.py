@@ -11,8 +11,8 @@ from apps.articles.models import Article
 from apps.entities.models import (
     ArticleFact,
     Disease,
-    Location,
 )
+from apps.locations.models import Location
 
 
 class IndicatorType(models.Model):

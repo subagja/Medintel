@@ -11,7 +11,8 @@ from apps.assessments.models import (
     SignalAssessment,
     SourceEvaluation,
 )
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.indicators.models import Indicator, IndicatorType
 from apps.signals.models import Signal, SignalArticle, SignalIndicator
 from apps.sources.models import Source

@@ -8,7 +8,8 @@ from django.core.validators import (
 from django.db import models
 from django.db.models import Q
 
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.indicators.models import Indicator
 
 

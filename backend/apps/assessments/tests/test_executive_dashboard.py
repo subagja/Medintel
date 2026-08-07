@@ -5,7 +5,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.signals.models import Signal
 
 from apps.assessments.models import (

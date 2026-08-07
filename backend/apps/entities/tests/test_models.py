@@ -12,9 +12,9 @@ from apps.entities.models import (
     Disease,
     DiseaseAlias,
     ExtractionMethod,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 
 
 class EntityModelTests(TestCase):

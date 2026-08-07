@@ -4,15 +4,15 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
-from apps.entities.geolocation import (
+from apps.locations.geolocation import (
     clear_geolocation_cache,
     resolve_indonesia_locations,
 )
 from apps.entities.models import (
     Disease,
-    Location,
     SurveillanceProgram,
 )
+from apps.locations.models import Location
 
 
 SCALED_NUMBER_PATTERN = (
@@ -704,7 +704,12 @@ def evaluate_surveillance_eligibility(
     title: str,
     content: str,
     cheap_result: CheapFilterResult | None = None,
-    max_context_distance: int = 900,
+    # Radius kedekatan antar penyakit-angka-lokasi. Dinaikkan dari 900 ->
+    # 1500 karena artikel berita Indonesia yang lebih panjang sering
+    # menyebut lokasi kejadian di paragraf pembuka sementara angka kasus
+    # baru muncul beberapa paragraf kemudian, sehingga banyak artikel
+    # relevan gagal lolos dengan radius yang terlalu ketat.
+    max_context_distance: int = 1500,
 ) -> SurveillanceEligibilityResult:
     if cheap_result is None:
         cheap_result = evaluate_cheap_filter(

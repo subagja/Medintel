@@ -13,9 +13,9 @@ from apps.entities.models import (
     ArticleLocation,
     Disease,
     ExtractionMethod,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.sources.models import Source
 
 from apps.assessments.models import ArticleValidationAssessment

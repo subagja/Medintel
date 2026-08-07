@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.db.models import Count, Exists, OuterRef, Q, Sum
@@ -28,7 +28,7 @@ from apps.collection.models import (
     CollectionJobItem,
 )
 from apps.crawlers.real_crawler import GenericHtmlCrawler
-from apps.crawlers.services import run_crawler
+from apps.crawlers.services import run_crawler_in_background
 from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
     PrimaryArticleDiseaseForm,
@@ -47,9 +47,9 @@ from apps.entities.models import (
     ArticleLocation,
     Disease,
     ExtractionReviewLog,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.entities.services.review import (
     validate_article_disease,
     validate_article_fact,
@@ -185,7 +185,7 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
 
     context = {
         "page_title": "Crawler Artikel/Web",
-        "active_menu": "crawler",
+        "active_menu": "crawler-artikel",
         "ready_sources": ready_sources,
         "filter_sources": Source.objects.order_by("name"),
         "job_statuses": CollectionJob.Status.choices,
@@ -292,8 +292,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         if request.user.is_authenticated
         else None
     )
-    completed_results = []
-    failed_sources = []
+    started_sources = []
     skipped_sources = []
 
     for source in selected_sources:
@@ -313,38 +312,24 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
             candidate_limit=candidate_limit,
         )
 
-        try:
-            result = run_crawler(
-                crawler,
-                triggered_by=triggered_by,
-                trigger_type="user",
-            )
-        except Exception as exc:
-            failed_sources.append(
-                (source.code, str(exc)[:250])
-            )
-            continue
-
-        completed_results.append(
-            (source, result)
+        # Crawl berjalan di background thread supaya request ini tidak
+        # perlu menunggu proses selesai. Progres tetap terlihat karena
+        # CollectionJob langsung dibuat berstatus "Sedang Berjalan" dan
+        # tabel di halaman crawler-list akan mem-polling perubahannya.
+        run_crawler_in_background(
+            crawler,
+            triggered_by=triggered_by,
+            trigger_type="user",
         )
+        started_sources.append(source.code)
 
-    if completed_results:
-        created_count = sum(
-            result.total_created
-            for _source, result in completed_results
-        )
-        rejected_count = sum(
-            result.total_rejected
-            for _source, result in completed_results
-        )
-
+    if started_sources:
         messages.success(
             request,
             (
-                f"Crawler selesai untuk {len(completed_results)} "
-                f"sumber: {created_count} artikel baru dan "
-                f"{rejected_count} kandidat ditolak."
+                f"Crawler dimulai untuk {len(started_sources)} sumber: "
+                + ", ".join(started_sources)
+                + ". Status akan diperbarui otomatis pada tabel di bawah."
             ),
         )
 
@@ -358,29 +343,62 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
             ),
         )
 
-    if failed_sources:
-        messages.error(
-            request,
-            (
-                "Crawler gagal pada: "
-                + "; ".join(
-                    f"{code} ({error})"
-                    for code, error in failed_sources
-                )
-            ),
-        )
-
-    if (
-        len(selected_sources) == 1
-        and len(completed_results) == 1
-        and completed_results[0][1].job_id
-    ):
-        return redirect(
-            "dashboard:crawler-job-detail",
-            job_id=completed_results[0][1].job_id,
-        )
-
     return redirect("dashboard:crawler-list")
+
+
+def crawler_status(request: HttpRequest) -> HttpResponse:
+    """Endpoint JSON untuk polling status job crawler dari JavaScript.
+
+    Client mengirim daftar UUID job yang sedang ditampilkan di tabel
+    (parameter `job_ids`, dipisah koma) dan mendapat data terbaru untuk
+    job-job tersebut, supaya tabel bisa diperbarui tanpa reload halaman.
+    """
+    raw_ids = request.GET.get("job_ids", "")
+    job_ids = [
+        value.strip()
+        for value in raw_ids.split(",")
+        if value.strip()
+    ]
+
+    if not job_ids:
+        return JsonResponse({"jobs": []})
+
+    jobs = CollectionJob.objects.filter(
+        id__in=job_ids,
+    ).select_related("source")
+
+    status_labels = dict(CollectionJob.Status.choices)
+
+    data = [
+        {
+            "id": str(job.id),
+            "status": job.status,
+            "status_label": status_labels.get(
+                job.status,
+                job.status,
+            ),
+            "started_at": (
+                timezone.localtime(job.started_at).strftime(
+                    "%d %b %Y %H:%M"
+                )
+                if job.started_at
+                else None
+            ),
+            "total_found": job.total_found,
+            "total_created": job.total_created,
+            "total_duplicate": job.total_duplicate,
+            "total_rejected": job.total_rejected,
+            "total_failed": job.total_failed,
+            "is_finished": job.status
+            not in (
+                CollectionJob.Status.PENDING,
+                CollectionJob.Status.RUNNING,
+            ),
+        }
+        for job in jobs
+    ]
+
+    return JsonResponse({"jobs": data})
 
 
 def crawler_job_detail(
@@ -448,7 +466,7 @@ def crawler_job_detail(
 
     context = {
         "page_title": "Detail Proses Crawler",
-        "active_menu": "crawler",
+        "active_menu": "crawler-artikel",
         "job": job,
         "page_obj": page_obj,
         "item_statuses": CollectionJobItem.Status.choices,

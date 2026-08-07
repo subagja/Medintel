@@ -69,6 +69,11 @@ urlpatterns = [
         name="crawler-run",
     ),
     path(
+        "crawler-artikel/status/",
+        views.crawler_status,
+        name="crawler-status",
+    ),
+    path(
         "crawler-artikel/job/<uuid:job_id>/",
         views.crawler_job_detail,
         name="crawler-job-detail",

@@ -12,9 +12,9 @@ from apps.entities.models import (
     Disease,
     ExtractionMethod,
     ExtractionReviewLog,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.entities.services import (
     correct_article_fact,
     correct_article_location,

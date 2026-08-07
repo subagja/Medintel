@@ -34,7 +34,7 @@ class Article(models.Model):
     )
 
     locations = models.ManyToManyField(
-        "entities.Location",
+        "locations.Location",
         through="entities.ArticleLocation",
         related_name="articles",
         blank=True,

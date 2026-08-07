@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.articles.models import Article
-from apps.entities.geolocation import resolve_indonesia_locations
+from apps.locations.geolocation import resolve_indonesia_locations
 from apps.entities.models import (
     ArticleFact,
     ArticleLocation,

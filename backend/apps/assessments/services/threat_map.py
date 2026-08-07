@@ -7,7 +7,7 @@ import re
 
 from django.urls import reverse
 
-from apps.entities.models import Location
+from apps.locations.models import Location
 
 from ..models import EarlyWarning
 

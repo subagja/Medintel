@@ -8,9 +8,9 @@ from apps.entities.models import (
     ArticleLocation,
     ExtractionMethod,
     ExtractionReviewLog,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.entities.services.review import (
     set_primary_article_location,
 )

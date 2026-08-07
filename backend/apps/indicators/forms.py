@@ -1,6 +1,7 @@
 from django import forms
 
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 
 from .models import Indicator, IndicatorType
 

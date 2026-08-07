@@ -13,7 +13,8 @@ from apps.assessments.services.threat_map import (
     build_threat_map_dataset,
     resolve_province,
 )
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.signals.models import Signal, SignalArticle
 from apps.sources.models import Source
 

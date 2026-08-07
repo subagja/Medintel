@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.locations.models import Location
+
 from ..models import (
     ArticleDisease,
     ArticleFact,
@@ -13,7 +15,6 @@ from ..models import (
     Disease,
     ExtractionMethod,
     ExtractionReviewLog,
-    Location,
     ValidationStatus,
 )
 

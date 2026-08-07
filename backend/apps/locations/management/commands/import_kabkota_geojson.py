@@ -8,19 +8,12 @@ from django.core.management.base import (
 )
 from django.db import transaction
 
-from apps.entities.models import Location
+from apps.locations.models import Location
 
 
 def compute_representative_point(
     geometry: dict[str, Any],
 ) -> tuple[float | None, float | None]:
-    """
-    Menghasilkan latitude dan longitude representatif
-    menggunakan rata-rata titik polygon.
-
-    Ini bukan centroid geospasial presisi, tetapi cukup
-    sebagai titik awal marker administratif.
-    """
     if not geometry:
         return None, None
 
@@ -67,10 +60,37 @@ def compute_representative_point(
     return latitude, longitude
 
 
+def determine_level(
+    value: str,
+) -> str | None:
+    normalized = (
+        value or ""
+    ).strip().casefold()
+
+    if normalized in {
+        "city",
+        "kota",
+    }:
+        return (
+            Location.AdministrativeLevel.CITY
+        )
+
+    if normalized in {
+        "regency",
+        "kabupaten",
+        "kab",
+    }:
+        return (
+            Location.AdministrativeLevel.REGENCY
+        )
+
+    return None
+
+
 class Command(BaseCommand):
     help = (
-        "Mengimpor master provinsi Indonesia "
-        "dari GeoJSON ke Location."
+        "Mengimpor master kabupaten/kota "
+        "Indonesia dari GeoJSON."
     )
 
     def add_arguments(self, parser):
@@ -121,22 +141,25 @@ class Command(BaseCommand):
                 "GeoJSON tidak memiliki feature."
             )
 
-        indonesia, _ = Location.objects.get_or_create(
-            name="Indonesia",
+        indonesia = Location.objects.filter(
             administrative_level=(
                 Location.AdministrativeLevel.COUNTRY
             ),
-            parent=None,
             country_code="ID",
-            defaults={
-                "code": "ID",
-                "is_active": True,
-            },
-        )
+        ).first()
+
+        if indonesia is None:
+            raise CommandError(
+                (
+                    "Master Indonesia belum tersedia. "
+                    "Jalankan import provinsi dahulu."
+                )
+            )
 
         created_count = 0
         updated_count = 0
         skipped_count = 0
+        missing_parent_count = 0
 
         for index, feature in enumerate(
             features,
@@ -155,21 +178,59 @@ class Command(BaseCommand):
             name = (
                 properties.get("display_name")
                 or properties.get("name")
-                or properties.get("province_name")
+                or ""
+            ).strip()
+
+            province_name = (
+                properties.get("province_name")
                 or ""
             ).strip()
 
             code = (
                 properties.get("bps_code")
-                or properties.get("province_code")
+                or properties.get(
+                    "city_regency_code"
+                )
                 or ""
             ).strip()
 
-            if not name:
+            level = determine_level(
+                properties.get("level")
+                or ""
+            )
+
+            if not name or not province_name or not level:
                 skipped_count += 1
                 self.stdout.write(
                     self.style.WARNING(
-                        f"[SKIP {index}] nama kosong"
+                        (
+                            f"[SKIP {index}] "
+                            f"name={name!r} "
+                            f"province={province_name!r} "
+                            f"level={level!r}"
+                        )
+                    )
+                )
+                continue
+
+            parent = Location.objects.filter(
+                administrative_level=(
+                    Location.AdministrativeLevel.PROVINCE
+                ),
+                name__iexact=province_name,
+                parent=indonesia,
+                country_code="ID",
+                is_active=True,
+            ).first()
+
+            if parent is None:
+                missing_parent_count += 1
+                self.stdout.write(
+                    self.style.WARNING(
+                        (
+                            f"[NO PARENT] {name} "
+                            f"→ {province_name}"
+                        )
                     )
                 )
                 continue
@@ -182,11 +243,9 @@ class Command(BaseCommand):
 
             location = (
                 Location.objects.filter(
-                    administrative_level=(
-                        Location.AdministrativeLevel.PROVINCE
-                    ),
+                    administrative_level=level,
                     name__iexact=name,
-                    parent=indonesia,
+                    parent=parent,
                     country_code="ID",
                 ).first()
             )
@@ -218,7 +277,10 @@ class Command(BaseCommand):
                 updated_count += 1
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"[UPDATED] {name}"
+                        (
+                            f"[UPDATED] {name} "
+                            f"→ {parent.name}"
+                        )
                     )
                 )
                 continue
@@ -227,10 +289,8 @@ class Command(BaseCommand):
                 Location.objects.create(
                     name=name,
                     code=code,
-                    administrative_level=(
-                        Location.AdministrativeLevel.PROVINCE
-                    ),
-                    parent=indonesia,
+                    administrative_level=level,
+                    parent=parent,
                     latitude=latitude,
                     longitude=longitude,
                     country_code="ID",
@@ -241,7 +301,10 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"[CREATED] {name}"
+                    (
+                        f"[CREATED] {name} "
+                        f"→ {parent.name}"
+                    )
                 )
             )
 
@@ -251,18 +314,21 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write(
             self.style.SUCCESS(
-                "=== RINGKASAN IMPORT PROVINSI ==="
+                "=== RINGKASAN IMPORT KAB/KOTA ==="
             )
         )
         self.stdout.write(
-            f"Created : {created_count}"
+            f"Created        : {created_count}"
         )
         self.stdout.write(
-            f"Updated : {updated_count}"
+            f"Updated        : {updated_count}"
         )
         self.stdout.write(
-            f"Skipped : {skipped_count}"
+            f"Skipped        : {skipped_count}"
         )
         self.stdout.write(
-            f"Dry run : {options['dry_run']}"
+            f"Parent missing : {missing_parent_count}"
+        )
+        self.stdout.write(
+            f"Dry run        : {options['dry_run']}"
         )

@@ -5,7 +5,7 @@ import re
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count, Q
 
-from apps.entities.models import Location, LocationAlias
+from apps.locations.models import Location, LocationAlias
 
 
 EXPECTED_COUNTS = {

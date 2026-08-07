@@ -1,5 +1,7 @@
 import logging
+import threading
 
+from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.collection.models import (
@@ -415,3 +417,51 @@ def run_crawler(
         total_failed=total_failed,
         job_id=str(job.id),
     )
+
+
+def run_crawler_in_background(
+    crawler: BaseCrawler,
+    *,
+    triggered_by=None,
+    trigger_type: str = "system",
+) -> threading.Thread:
+    """Jalankan `run_crawler` di background thread, tidak memblokir request.
+
+    Status kemajuan tetap terlihat karena `run_crawler` sendiri sudah
+    menulis progres ke `CollectionJob` (status RUNNING di awal, lalu
+    COMPLETED/COMPLETED_WITH_ERRORS/FAILED di akhir beserta hitungannya).
+    Frontend cukup polling baris job tersebut untuk melihat pembaruan,
+    tanpa perlu request ini menunggu crawl selesai.
+    """
+
+    def _run() -> None:
+        # Setiap thread butuh koneksi DB sendiri; Django membuatnya
+        # otomatis saat dipakai, tapi harus ditutup manual saat thread
+        # selesai supaya tidak menumpuk koneksi menganggur.
+        close_old_connections()
+
+        try:
+            run_crawler(
+                crawler,
+                triggered_by=triggered_by,
+                trigger_type=trigger_type,
+            )
+        except Exception:
+            # run_crawler sudah menandai job sebagai FAILED di database
+            # sebelum melempar ulang exception-nya; di sini kita cuma
+            # perlu memastikan thread tidak mati diam-diam tanpa log.
+            logger.exception(
+                "Crawler background thread gagal: %s",
+                crawler.source_code,
+            )
+        finally:
+            close_old_connections()
+
+    thread = threading.Thread(
+        target=_run,
+        name=f"crawler-{crawler.source_code}",
+        daemon=True,
+    )
+    thread.start()
+
+    return thread

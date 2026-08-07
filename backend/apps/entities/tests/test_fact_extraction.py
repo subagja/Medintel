@@ -10,9 +10,9 @@ from apps.entities.models import (
     ArticleLocation,
     Disease,
     ExtractionMethod,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.entities.services import (
     exploit_article,
     extract_article_facts,

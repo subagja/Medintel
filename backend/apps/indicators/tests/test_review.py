@@ -9,9 +9,9 @@ from apps.entities.models import (
     ArticleFact,
     Disease,
     ExtractionMethod,
-    Location,
     ValidationStatus,
 )
+from apps.locations.models import Location
 from apps.indicators.models import (
     Indicator,
     IndicatorEvidence,

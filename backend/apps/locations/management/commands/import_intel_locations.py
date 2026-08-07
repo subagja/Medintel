@@ -9,7 +9,7 @@ from django.core.management.base import (
 )
 from django.db import transaction
 
-from apps.entities.models import Location
+from apps.locations.models import Location
 
 
 LEVEL_MAPPING = {

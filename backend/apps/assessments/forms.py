@@ -6,8 +6,8 @@ from apps.entities.models import (
     ArticleDisease,
     ArticleLocation,
     Disease,
-    Location,
 )
+from apps.locations.models import Location
 
 from .models import (
     ArticleValidationAssessment,

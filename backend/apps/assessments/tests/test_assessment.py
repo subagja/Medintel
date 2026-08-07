@@ -15,7 +15,8 @@ from apps.assessments.services import (
     evaluate_information,
     evaluate_source,
 )
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.indicators.models import (
     Indicator,
     IndicatorType,

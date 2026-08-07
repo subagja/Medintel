@@ -7,10 +7,9 @@ from apps.entities.models import (
     Disease,
     DiseaseAlias,
     ExtractionMethod,
-    Location,
-    LocationAlias,
     ValidationStatus,
 )
+from apps.locations.models import Location, LocationAlias
 from apps.entities.services import extract_article_entities
 from apps.sources.models import Source
 

@@ -12,7 +12,8 @@ from apps.assessments.models import (
     SignalAssessment,
 )
 from apps.assessments.services import apply_assessment_recommendation
-from apps.entities.models import Disease, Location
+from apps.entities.models import Disease
+from apps.locations.models import Location
 from apps.signals.models import Signal, SignalArticle
 from apps.sources.models import Source
 
