@@ -200,6 +200,12 @@
                         <td class="text-center text-warning js-total-rejected">{{ job.total_rejected }}</td>
                         <td class="text-center text-danger js-total-failed">{{ job.total_failed }}</td>
                         <td class="text-end js-detail-cell">
+                            {% if job.status == "running" or job.status == "pending" %}
+                                <form method="post" action="{% url 'dashboard:crawler-job-cancel' job.id %}" class="d-inline" onsubmit="return confirm('Batalkan job ini?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Batalkan</button>
+                                </form>
+                            {% endif %}
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
                         </td>
                     </tr>

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Ringkasan Periodik | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Ringkasan Periodik</h2>
+            <div class="text-secondary mt-1">
+                Rekap aktivitas periode {{ date_from|date:"d M Y" }} &ndash; {{ date_to|date:"d M Y" }}, untuk briefing rutin.
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:report-archive' %}" class="btn btn-outline-secondary btn-sm">Lihat Arsip Detail</a>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Periode</label>
+                <select name="preset" class="form-select" id="preset-select" onchange="document.getElementById('custom-dates').style.display = this.value === 'custom' ? 'flex' : 'none'; if(this.value !== 'custom') this.form.submit();">
+                    <option value="30hari" {% if preset == "30hari" %}selected{% endif %}>30 Hari Terakhir</option>
+                    <option value="minggu_ini" {% if preset == "minggu_ini" %}selected{% endif %}>Minggu Ini</option>
+                    <option value="bulan_ini" {% if preset == "bulan_ini" %}selected{% endif %}>Bulan Ini</option>
+                    <option value="custom" {% if preset == "custom" %}selected{% endif %}>Rentang Kustom</option>
+                </select>
+            </div>
+
+            <div class="col-md-6 d-flex gap-2" id="custom-dates" style="{% if preset != 'custom' %}display:none;{% endif %}">
+                <div class="flex-fill">
+                    <label class="form-label small">Dari</label>
+                    <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}" class="form-control">
+                </div>
+                <div class="flex-fill">
+                    <label class="form-label small">Sampai</label>
+                    <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}" class="form-control">
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Terapkan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Sinyal Baru</div>
+            <div class="h1 mb-0">{{ summary.new_signals_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Sinyal Dieskalasi</div>
+            <div class="h1 mb-0 text-warning">{{ summary.escalations_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Early Warning Terbit</div>
+            <div class="h1 mb-0 text-danger">{{ summary.warnings_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Rekomendasi Dibuat</div>
+            <div class="h1 mb-0 text-azure">{{ summary.recommendations_count }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Tren Mingguan</h3></div>
+    <div class="card-body">
+        <canvas id="trend-chart" height="90"></canvas>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Early Warning per Level</h3></div>
+            <div class="card-body">
+                {% for row in warnings_by_level %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>{{ row.label }}</span>
+                        <span class="fw-semibold">{{ row.count }}</span>
+                    </div>
+                {% empty %}
+                    <div class="text-secondary small">Tidak ada early warning pada periode ini.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Rekomendasi per Status</h3></div>
+            <div class="card-body">
+                {% for row in recommendations_by_status %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>{{ row.label }}</span>
+                        <span class="fw-semibold">{{ row.count }}</span>
+                    </div>
+                {% empty %}
+                    <div class="text-secondary small">Tidak ada rekomendasi pada periode ini.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Penyakit Paling Sering Muncul</h3></div>
+            <div class="card-body">
+                {% if top_diseases %}
+                    <canvas id="disease-chart" height="200"></canvas>
+                {% else %}
+                    <div class="text-secondary small">Tidak ada data.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Lokasi Paling Terdampak</h3></div>
+            <div class="card-body">
+                {% if top_locations %}
+                    <canvas id="location-chart" height="200"></canvas>
+                {% else %}
+                    <div class="text-secondary small">Tidak ada data.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ trend_chart_data|json_script:"trend-chart-data" }}
+{{ disease_chart_data|json_script:"disease-chart-data" }}
+{{ location_chart_data|json_script:"location-chart-data" }}
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Early Warning yang Diterbitkan</h3></div>
+    <div class="list-group list-group-flush">
+        {% for warning in warnings_list %}
+            <a href="{% url 'dashboard:early-warning' %}?assessment={{ warning.assessment_id }}" class="list-group-item list-group-item-action">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-semibold">{{ warning.title }}</div>
+                        <div class="text-secondary small mt-1">
+                            {{ warning.signal.primary_disease.name|default:"-" }} &middot;
+                            {{ warning.signal.primary_location.name|default:"-" }} &middot;
+                            {{ warning.issued_at|date:"d M Y" }}
+                        </div>
+                    </div>
+                    <span class="badge bg-danger-lt">{{ warning.get_level_display }}</span>
+                </div>
+            </a>
+        {% empty %}
+            <div class="text-center text-secondary py-5">Tidak ada early warning pada periode ini.</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    var trendData = JSON.parse(document.getElementById("trend-chart-data").textContent);
+    var diseaseData = JSON.parse(document.getElementById("disease-chart-data").textContent);
+    var locationData = JSON.parse(document.getElementById("location-chart-data").textContent);
+
+    var trendCanvas = document.getElementById("trend-chart");
+    if (trendCanvas) {
+        new Chart(trendCanvas, {
+            type: "line",
+            data: {
+                labels: trendData.labels,
+                datasets: [
+                    {
+                        label: "Sinyal Baru",
+                        data: trendData.signals,
+                        borderColor: "#1a56db",
+                        backgroundColor: "rgba(26,86,219,0.1)",
+                        tension: 0.3,
+                        fill: true,
+                    },
+                    {
+                        label: "Early Warning",
+                        data: trendData.warnings,
+                        borderColor: "#d63939",
+                        backgroundColor: "rgba(214,57,57,0.1)",
+                        tension: 0.3,
+                        fill: true,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: "index", intersect: false },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+
+    var diseaseCanvas = document.getElementById("disease-chart");
+    if (diseaseCanvas) {
+        new Chart(diseaseCanvas, {
+            type: "bar",
+            data: {
+                labels: diseaseData.labels,
+                datasets: [
+                    {
+                        label: "Jumlah Sinyal",
+                        data: diseaseData.counts,
+                        backgroundColor: "#0ca678",
+                    },
+                ],
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+
+    var locationCanvas = document.getElementById("location-chart");
+    if (locationCanvas) {
+        new Chart(locationCanvas, {
+            type: "bar",
+            data: {
+                labels: locationData.labels,
+                datasets: [
+                    {
+                        label: "Jumlah Sinyal",
+                        data: locationData.counts,
+                        backgroundColor: "#1a56db",
+                    },
+                ],
+            },
+            options: {
+                indexAxis: "y",
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+})();
+</script>
+{% endblock %}

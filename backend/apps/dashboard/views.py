@@ -503,6 +503,45 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
     )
 
 
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def crawler_job_cancel(
+    request: HttpRequest,
+    job_id,
+) -> HttpResponse:
+    """Batalkan manual job yang macet di status RUNNING/PENDING --
+    dipakai kalau job dianggap macet tapi belum kena ambang waktu
+    auto-cleanup (30 menit).
+    """
+    job = get_object_or_404(CollectionJob, id=job_id)
+
+    if job.status not in (
+        CollectionJob.Status.RUNNING,
+        CollectionJob.Status.PENDING,
+    ):
+        messages.warning(
+            request,
+            "Job ini sudah selesai, tidak perlu dibatalkan.",
+        )
+        return redirect("dashboard:crawler-list")
+
+    job.status = CollectionJob.Status.FAILED
+    job.finished_at = timezone.now()
+    job.error_message = (
+        f"Dibatalkan manual oleh {request.user.get_username()}."
+    )
+    job.save(
+        update_fields=["status", "finished_at", "error_message"],
+    )
+
+    messages.success(
+        request,
+        f"Job untuk {job.source.name} dibatalkan.",
+    )
+
+    return redirect("dashboard:crawler-list")
+
+
 @require_role(*Roles.ALL)
 def crawler_job_detail(
     request: HttpRequest,
@@ -2545,42 +2584,100 @@ def _parse_date_or_none(value: str):
 
 def _report_archive_queryset(request, report_type: str):
     """Bangun queryset arsip sesuai tipe laporan + filter dari
-    querystring. Dipakai bersama oleh halaman & endpoint ekspor CSV
-    supaya hasilnya selalu konsisten.
+    querystring. Dipakai bersama oleh halaman & endpoint ekspor
+    CSV/PDF supaya hasilnya selalu konsisten.
     """
+    from django.db.models import Q as DjangoQ
+
     from apps.signals.models import Signal
     from apps.assessments.models import (
         EarlyWarning,
         IntelligenceRecommendation,
+        SignalAssessment,
     )
 
     date_from = _parse_date_or_none(request.GET.get("date_from", ""))
     date_to = _parse_date_or_none(request.GET.get("date_to", ""))
     status_filter = request.GET.get("status", "").strip()
     disease_code = request.GET.get("disease", "").strip()
+    search_query = request.GET.get("q", "").strip()
+    sort_key = request.GET.get("sort", "").strip()
+
+    # Kolom yang boleh dipakai buat sortir per tipe laporan (allowlist,
+    # bukan menerima nama field mentah dari querystring langsung --
+    # supaya tidak bisa dipakai untuk mengintip field/relasi lain).
+    sort_fields = {
+        "warning": {
+            "title": "title",
+            "code": "code",
+            "status": "status",
+            "level": "level",
+            "date": "issued_at",
+        },
+        "recommendation": {
+            "title": "title",
+            "code": "code",
+            "status": "status",
+            "urgency": "urgency",
+            "date": "created_at",
+        },
+        "assessment": {
+            "title": "signal__title",
+            "status": "status",
+            "priority": "recommended_priority",
+            "priority_score": "priority_score",
+            "confidence_score": "confidence_score",
+            "date": "assessed_at",
+        },
+        "signal": {
+            "title": "title",
+            "code": "code",
+            "status": "status",
+            "priority": "priority_level",
+            "date": "first_detected_at",
+        },
+    }
+
+    search_fields = {
+        "warning": ["code", "title"],
+        "recommendation": ["code", "title"],
+        "assessment": ["signal__title"],
+        "signal": ["code", "title"],
+    }
 
     if report_type == "warning":
         qs = EarlyWarning.objects.select_related(
             "signal__primary_disease",
             "signal__primary_location",
-        ).order_by("-issued_at")
+        )
         date_field = "issued_at"
         disease_field = "signal__primary_disease__code"
+        default_sort = "-issued_at"
     elif report_type == "recommendation":
         qs = IntelligenceRecommendation.objects.select_related(
             "signal__primary_disease",
             "signal__primary_location",
-        ).order_by("-created_at")
+        )
         date_field = "created_at"
         disease_field = "signal__primary_disease__code"
+        default_sort = "-created_at"
+    elif report_type == "assessment":
+        qs = SignalAssessment.objects.select_related(
+            "signal__primary_disease",
+            "signal__primary_location",
+        )
+        date_field = "assessed_at"
+        disease_field = "signal__primary_disease__code"
+        default_sort = "-assessed_at"
     else:
         report_type = "signal"
         qs = Signal.objects.select_related(
             "primary_disease",
             "primary_location",
-        ).order_by("-first_detected_at")
+        )
         date_field = "first_detected_at"
         disease_field = "primary_disease__code"
+        default_sort = "-first_detected_at"
 
     if date_from:
         qs = qs.filter(**{f"{date_field}__date__gte": date_from})
@@ -2591,7 +2688,29 @@ def _report_archive_queryset(request, report_type: str):
     if disease_code:
         qs = qs.filter(**{disease_field: disease_code})
 
-    return report_type, qs
+    if search_query:
+        fields = search_fields[report_type]
+        search_condition = DjangoQ()
+        for field in fields:
+            search_condition |= DjangoQ(
+                **{f"{field}__icontains": search_query}
+            )
+        qs = qs.filter(search_condition)
+
+    descending = sort_key.startswith("-")
+    sort_column = sort_key.lstrip("-")
+    allowed = sort_fields[report_type]
+
+    if sort_column in allowed:
+        order_field = allowed[sort_column]
+        qs = qs.order_by(
+            f"-{order_field}" if descending else order_field
+        )
+    else:
+        sort_key = ""
+        qs = qs.order_by(default_sort)
+
+    return report_type, qs, sort_key
 
 
 @require_role(*Roles.ALL)
@@ -2604,13 +2723,19 @@ def report_archive(request: HttpRequest) -> HttpResponse:
     from apps.assessments.models import (
         EarlyWarning,
         IntelligenceRecommendation,
+        SignalAssessment,
     )
 
     report_type = request.GET.get("type", "signal").strip()
-    if report_type not in ("signal", "warning", "recommendation"):
+    if report_type not in (
+        "signal",
+        "warning",
+        "recommendation",
+        "assessment",
+    ):
         report_type = "signal"
 
-    report_type, records = _report_archive_queryset(request, report_type)
+    report_type, records, active_sort = _report_archive_queryset(request, report_type)
 
     paginator = Paginator(records, 25)
     page_obj = paginator.get_page(request.GET.get("page"))
@@ -2619,6 +2744,7 @@ def report_archive(request: HttpRequest) -> HttpResponse:
         "signal": Signal.Status.choices,
         "warning": EarlyWarning.Status.choices,
         "recommendation": IntelligenceRecommendation.Status.choices,
+        "assessment": SignalAssessment.Status.choices,
     }[report_type]
 
     context = {
@@ -2630,6 +2756,18 @@ def report_archive(request: HttpRequest) -> HttpResponse:
         "diseases": Disease.objects.filter(is_active=True).order_by("name"),
         "selected_status": request.GET.get("status", ""),
         "selected_disease": request.GET.get("disease", ""),
+        "search_query": request.GET.get("q", ""),
+        "active_sort": active_sort,
+        "base_qs": urlencode(
+            {
+                "type": report_type,
+                "status": request.GET.get("status", ""),
+                "disease": request.GET.get("disease", ""),
+                "q": request.GET.get("q", ""),
+                "date_from": request.GET.get("date_from", ""),
+                "date_to": request.GET.get("date_to", ""),
+            }
+        ),
         "date_from": request.GET.get("date_from", ""),
         "date_to": request.GET.get("date_to", ""),
     }
@@ -2647,7 +2785,7 @@ def report_archive_export(request: HttpRequest) -> HttpResponse:
     import csv
 
     report_type = request.GET.get("type", "signal").strip()
-    report_type, records = _report_archive_queryset(request, report_type)
+    report_type, records, active_sort = _report_archive_queryset(request, report_type)
 
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = (
@@ -2688,6 +2826,23 @@ def report_archive_export(request: HttpRequest) -> HttpResponse:
                     item.created_at.strftime("%Y-%m-%d %H:%M") if item.created_at else "",
                 ]
             )
+    elif report_type == "assessment":
+        writer.writerow(
+            ["Sinyal", "Status", "Prioritas Rekomendasi", "Skor Prioritas", "Skor Keyakinan", "Penyakit", "Lokasi", "Tanggal Dinilai"]
+        )
+        for item in records:
+            writer.writerow(
+                [
+                    item.signal.title,
+                    item.get_status_display(),
+                    item.get_recommended_priority_display(),
+                    item.priority_score,
+                    item.confidence_score,
+                    item.signal.primary_disease.name if item.signal.primary_disease else "",
+                    item.signal.primary_location.name if item.signal.primary_location else "",
+                    item.assessed_at.strftime("%Y-%m-%d %H:%M") if item.assessed_at else "",
+                ]
+            )
     else:
         writer.writerow(
             ["Kode", "Judul", "Prioritas", "Status", "Penyakit", "Lokasi", "Terdeteksi"]
@@ -2706,3 +2861,341 @@ def report_archive_export(request: HttpRequest) -> HttpResponse:
             )
 
     return response
+
+
+REPORT_TYPE_LABELS = {
+    "signal": "Sinyal Intelijen",
+    "warning": "Early Warning",
+    "recommendation": "Rekomendasi Intelijen",
+    "assessment": "Assessment Ancaman",
+}
+
+
+@require_role(*Roles.ALL)
+def report_archive_export_pdf(request: HttpRequest) -> HttpResponse:
+    """Ekspor arsip (dengan filter yang sedang aktif) ke PDF -- format
+    laporan resmi dengan kop, judul, dan tabel, cocok untuk
+    didistribusikan ke pemangku kepentingan.
+    """
+    from io import BytesIO
+
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import landscape, A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
+    report_type = request.GET.get("type", "signal").strip()
+    report_type, records, active_sort = _report_archive_queryset(request, report_type)
+    label = REPORT_TYPE_LABELS.get(report_type, "Arsip")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("MEDINTEL OSINT", styles["Title"]))
+    story.append(
+        Paragraph(f"Arsip {label}", styles["Heading2"])
+    )
+
+    generated_at = timezone.localtime(timezone.now()).strftime(
+        "%d %B %Y %H:%M"
+    )
+    story.append(
+        Paragraph(
+            f"Dicetak: {generated_at} WIB &middot; Total data: {records.count()}",
+            styles["Normal"],
+        )
+    )
+    story.append(Spacer(1, 0.6 * cm))
+
+    if report_type == "warning":
+        header = ["Kode", "Judul", "Level", "Status", "Penyakit", "Lokasi", "Tanggal"]
+        rows = [
+            [
+                item.code,
+                item.title,
+                item.get_level_display(),
+                item.get_status_display(),
+                item.signal.primary_disease.name if item.signal.primary_disease else "-",
+                item.signal.primary_location.name if item.signal.primary_location else "-",
+                item.issued_at.strftime("%d-%m-%Y") if item.issued_at else "-",
+            ]
+            for item in records
+        ]
+    elif report_type == "recommendation":
+        header = ["Kode", "Judul", "Urgensi", "Status", "Penyakit", "Lokasi", "Tanggal"]
+        rows = [
+            [
+                item.code,
+                item.title,
+                item.get_urgency_display(),
+                item.get_status_display(),
+                item.signal.primary_disease.name if item.signal.primary_disease else "-",
+                item.signal.primary_location.name if item.signal.primary_location else "-",
+                item.created_at.strftime("%d-%m-%Y") if item.created_at else "-",
+            ]
+            for item in records
+        ]
+    elif report_type == "assessment":
+        header = ["Sinyal", "Prioritas", "Skor Prioritas", "Skor Keyakinan", "Status", "Tanggal"]
+        rows = [
+            [
+                item.signal.title,
+                item.get_recommended_priority_display(),
+                f"{item.priority_score:.1f}",
+                f"{item.confidence_score:.1f}",
+                item.get_status_display(),
+                item.assessed_at.strftime("%d-%m-%Y") if item.assessed_at else "-",
+            ]
+            for item in records
+        ]
+    else:
+        header = ["Kode", "Judul", "Prioritas", "Status", "Penyakit", "Lokasi", "Terdeteksi"]
+        rows = [
+            [
+                item.code,
+                item.title,
+                item.get_priority_level_display(),
+                item.get_status_display(),
+                item.primary_disease.name if item.primary_disease else "-",
+                item.primary_location.name if item.primary_location else "-",
+                item.first_detected_at.strftime("%d-%m-%Y") if item.first_detected_at else "-",
+            ]
+            for item in records
+        ]
+
+    # Bungkus teks panjang (judul) supaya tidak meluber keluar tabel.
+    body_style = styles["Normal"]
+    body_style.fontSize = 8
+    wrapped_rows = [
+        [
+            Paragraph(str(cell), body_style) if i == 1 else str(cell)
+            for i, cell in enumerate(row)
+        ]
+        for row in rows
+    ]
+
+    table_data = [header] + wrapped_rows
+
+    if len(rows) == 0:
+        story.append(
+            Paragraph(
+                "Tidak ada data yang cocok dengan filter ini.",
+                styles["Normal"],
+            )
+        )
+    else:
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a56db")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTSIZE", (0, 0), (-1, 0), 9),
+                    ("FONTSIZE", (0, 1), (-1, -1), 8),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f3f4f6")]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        story.append(table)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="arsip_{report_type}.pdf"'
+    )
+    return response
+
+
+@require_role(*Roles.ALL)
+def periodic_summary(request: HttpRequest) -> HttpResponse:
+    """Ringkasan periodik: rekap seluruh aktivitas (sinyal baru,
+    eskalasi, early warning terbit, rekomendasi dibuat) dalam satu
+    rentang waktu -- untuk briefing rutin, beda dari Dashboard
+    Eksekutif yang menampilkan kondisi TERKINI (bukan retrospektif
+    per periode).
+    """
+    from datetime import timedelta
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from apps.signals.models import Signal, SignalHistory
+    from apps.assessments.models import (
+        EarlyWarning,
+        IntelligenceRecommendation,
+    )
+
+    preset = request.GET.get("preset", "30hari").strip()
+    today = timezone.localdate()
+
+    if preset == "minggu_ini":
+        date_from = today - timedelta(days=today.weekday())
+        date_to = today
+    elif preset == "bulan_ini":
+        date_from = today.replace(day=1)
+        date_to = today
+    elif preset == "custom":
+        date_from = _parse_date_or_none(
+            request.GET.get("date_from", "")
+        ) or (today - timedelta(days=30))
+        date_to = _parse_date_or_none(
+            request.GET.get("date_to", "")
+        ) or today
+    else:
+        preset = "30hari"
+        date_from = today - timedelta(days=30)
+        date_to = today
+
+    new_signals = Signal.objects.filter(
+        first_detected_at__date__range=[date_from, date_to],
+    )
+
+    escalations = SignalHistory.objects.filter(
+        to_status=Signal.Status.ESCALATED,
+        changed_at__date__range=[date_from, date_to],
+    )
+
+    warnings = EarlyWarning.objects.filter(
+        issued_at__date__range=[date_from, date_to],
+    ).select_related("signal__primary_disease", "signal__primary_location")
+
+    recommendations = IntelligenceRecommendation.objects.filter(
+        created_at__date__range=[date_from, date_to],
+    )
+
+    warnings_by_level = {
+        row["level"]: row["count"]
+        for row in warnings.values("level").annotate(count=Count("id"))
+    }
+    level_labels = dict(EarlyWarning.Level.choices)
+
+    recommendations_by_status = {
+        row["status"]: row["count"]
+        for row in recommendations.values("status").annotate(
+            count=Count("id")
+        )
+    }
+    recommendation_status_labels = dict(
+        IntelligenceRecommendation.Status.choices
+    )
+
+    top_diseases = (
+        new_signals.exclude(primary_disease__isnull=True)
+        .values("primary_disease__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
+    top_locations = (
+        new_signals.exclude(primary_location__isnull=True)
+        .values("primary_location__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
+    # Bucket mingguan untuk grafik tren -- jumlah sinyal baru & early
+    # warning per minggu sepanjang periode yang dipilih. Dibatasi
+    # maksimal 52 bucket (~1 tahun) supaya rentang custom yang sangat
+    # panjang tidak memicu ratusan query kecil sekaligus.
+    week_labels = []
+    signal_weekly_counts = []
+    warning_weekly_counts = []
+
+    cursor = date_from
+    bucket_guard = 0
+    while cursor <= date_to and bucket_guard < 52:
+        week_end = min(cursor + timedelta(days=6), date_to)
+
+        week_labels.append(cursor.strftime("%d %b"))
+        signal_weekly_counts.append(
+            new_signals.filter(
+                first_detected_at__date__range=[cursor, week_end],
+            ).count()
+        )
+        warning_weekly_counts.append(
+            warnings.filter(
+                issued_at__date__range=[cursor, week_end],
+            ).count()
+        )
+
+        cursor = week_end + timedelta(days=1)
+        bucket_guard += 1
+
+    trend_chart_data = {
+        "labels": week_labels,
+        "signals": signal_weekly_counts,
+        "warnings": warning_weekly_counts,
+    }
+
+    disease_chart_data = {
+        "labels": [row["primary_disease__name"] for row in top_diseases],
+        "counts": [row["count"] for row in top_diseases],
+    }
+
+    location_chart_data = {
+        "labels": [row["primary_location__name"] for row in top_locations],
+        "counts": [row["count"] for row in top_locations],
+    }
+
+    context = {
+        "page_title": "Ringkasan Periodik",
+        "active_menu": "reports",
+        "preset": preset,
+        "date_from": date_from,
+        "date_to": date_to,
+        "summary": {
+            "new_signals_count": new_signals.count(),
+            "escalations_count": escalations.count(),
+            "warnings_count": warnings.count(),
+            "recommendations_count": recommendations.count(),
+        },
+        "warnings_by_level": [
+            {
+                "level": level,
+                "label": level_labels.get(level, level),
+                "count": count,
+            }
+            for level, count in warnings_by_level.items()
+        ],
+        "recommendations_by_status": [
+            {
+                "status": status,
+                "label": recommendation_status_labels.get(status, status),
+                "count": count,
+            }
+            for status, count in recommendations_by_status.items()
+        ],
+        "top_diseases": top_diseases,
+        "top_locations": top_locations,
+        "warnings_list": warnings.order_by("-level", "-issued_at")[:15],
+        "trend_chart_data": trend_chart_data,
+        "disease_chart_data": disease_chart_data,
+        "location_chart_data": location_chart_data,
+    }
+
+    return render(
+        request,
+        "dashboard/periodic_summary.html",
+        context,
+    )

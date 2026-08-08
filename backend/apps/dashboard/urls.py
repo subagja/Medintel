@@ -84,6 +84,11 @@ urlpatterns = [
         name="crawler-job-detail",
     ),
     path(
+        "crawler-artikel/job/<uuid:job_id>/batalkan/",
+        views.crawler_job_cancel,
+        name="crawler-job-cancel",
+    ),
+    path(
         "sumber-osint/",
         views.source_list,
         name="source-list",
@@ -168,5 +173,15 @@ urlpatterns = [
         "laporan-arsip/ekspor/",
         views.report_archive_export,
         name="report-archive-export",
+    ),
+    path(
+        "laporan-arsip/ekspor-pdf/",
+        views.report_archive_export_pdf,
+        name="report-archive-export-pdf",
+    ),
+    path(
+        "laporan-arsip/ringkasan/",
+        views.periodic_summary,
+        name="periodic-summary",
     ),
 ]

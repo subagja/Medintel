@@ -13,6 +13,11 @@
                 yang pernah diterbitkan.
             </div>
         </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:periodic-summary' %}" class="btn btn-outline-primary btn-sm">
+                Ringkasan Periodik
+            </a>
+        </div>
     </div>
 </div>
 
@@ -26,6 +31,9 @@
     <li class="nav-item">
         <a class="nav-link {% if report_type == 'recommendation' %}active{% endif %}" href="?type=recommendation">Rekomendasi Intelijen</a>
     </li>
+    <li class="nav-item">
+        <a class="nav-link {% if report_type == 'assessment' %}active{% endif %}" href="?type=assessment">Assessment Ancaman</a>
+    </li>
 </ul>
 
 <div class="card mb-3">
@@ -33,7 +41,12 @@
         <form method="get" class="row g-2">
             <input type="hidden" name="type" value="{{ report_type }}">
 
-            <div class="col-md-3">
+            <div class="col-md-4">
+                <label class="form-label small">Cari Judul/Kode</label>
+                <input type="search" name="q" value="{{ search_query }}" class="form-control" placeholder="Ketik lalu Terapkan">
+            </div>
+
+            <div class="col-md-4">
                 <label class="form-label small">Penyakit</label>
                 <select name="disease" class="form-select">
                     <option value="">Semua penyakit</option>
@@ -43,7 +56,7 @@
                 </select>
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <label class="form-label small">Status</label>
                 <select name="status" class="form-select">
                     <option value="">Semua status</option>
@@ -67,12 +80,18 @@
                 <button type="submit" class="btn btn-primary flex-fill">Terapkan</button>
             </div>
 
-            <div class="col-12">
+            <div class="col-12 d-flex gap-2">
                 <a
-                    href="{% url 'dashboard:report-archive-export' %}?type={{ report_type }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}"
+                    href="{% url 'dashboard:report-archive-export' %}?{{ base_qs }}&sort={{ active_sort }}"
                     class="btn btn-outline-secondary btn-sm mt-2"
                 >
                     Ekspor CSV (sesuai filter ini)
+                </a>
+                <a
+                    href="{% url 'dashboard:report-archive-export-pdf' %}?{{ base_qs }}&sort={{ active_sort }}"
+                    class="btn btn-outline-danger btn-sm mt-2"
+                >
+                    Ekspor PDF (sesuai filter ini)
                 </a>
             </div>
         </form>
@@ -81,19 +100,68 @@
 
 <div class="card">
     <div class="card-header">
-        <h3 class="card-title">{{ page_obj.paginator.count }} {% if report_type == "signal" %}sinyal{% elif report_type == "warning" %}early warning{% else %}rekomendasi{% endif %} ditemukan</h3>
+        <h3 class="card-title">{{ page_obj.paginator.count }} {% if report_type == "signal" %}sinyal{% elif report_type == "warning" %}early warning{% elif report_type == "assessment" %}assessment{% else %}rekomendasi{% endif %} ditemukan</h3>
     </div>
 
     <div class="table-responsive">
         <table class="table table-vcenter table-sm card-table">
             <thead>
                 <tr>
-                    <th>Kode</th>
-                    <th>Judul</th>
-                    <th>Penyakit</th>
-                    <th>Lokasi</th>
-                    <th>Status</th>
-                    <th>Tanggal</th>
+                    {% if report_type == "assessment" %}
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'title' %}-title{% else %}title{% endif %}" class="text-reset text-decoration-none">
+                                Sinyal {% if active_sort == 'title' %}&uarr;{% elif active_sort == '-title' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'priority' %}-priority{% else %}priority{% endif %}" class="text-reset text-decoration-none">
+                                Prioritas Rekomendasi {% if active_sort == 'priority' %}&uarr;{% elif active_sort == '-priority' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'priority_score' %}-priority_score{% else %}priority_score{% endif %}" class="text-reset text-decoration-none">
+                                Skor Prioritas {% if active_sort == 'priority_score' %}&uarr;{% elif active_sort == '-priority_score' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'confidence_score' %}-confidence_score{% else %}confidence_score{% endif %}" class="text-reset text-decoration-none">
+                                Skor Keyakinan {% if active_sort == 'confidence_score' %}&uarr;{% elif active_sort == '-confidence_score' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'status' %}-status{% else %}status{% endif %}" class="text-reset text-decoration-none">
+                                Status {% if active_sort == 'status' %}&uarr;{% elif active_sort == '-status' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'date' %}-date{% else %}date{% endif %}" class="text-reset text-decoration-none">
+                                Tanggal Dinilai {% if active_sort == 'date' %}&uarr;{% elif active_sort == '-date' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                    {% else %}
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'code' %}-code{% else %}code{% endif %}" class="text-reset text-decoration-none">
+                                Kode {% if active_sort == 'code' %}&uarr;{% elif active_sort == '-code' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'title' %}-title{% else %}title{% endif %}" class="text-reset text-decoration-none">
+                                Judul {% if active_sort == 'title' %}&uarr;{% elif active_sort == '-title' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>Penyakit</th>
+                        <th>Lokasi</th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'status' %}-status{% else %}status{% endif %}" class="text-reset text-decoration-none">
+                                Status {% if active_sort == 'status' %}&uarr;{% elif active_sort == '-status' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="?{{ base_qs }}&sort={% if active_sort == 'date' %}-date{% else %}date{% endif %}" class="text-reset text-decoration-none">
+                                Tanggal {% if active_sort == 'date' %}&uarr;{% elif active_sort == '-date' %}&darr;{% endif %}
+                            </a>
+                        </th>
+                    {% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -123,7 +191,7 @@
                     {% empty %}
                         <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
                     {% endfor %}
-                {% else %}
+                {% elif report_type == "recommendation" %}
                     {% for item in page_obj %}
                         <tr>
                             <td class="text-secondary small">{{ item.code }}</td>
@@ -132,6 +200,19 @@
                             <td>{{ item.signal.primary_location.name|default:"-" }}</td>
                             <td><span class="badge bg-secondary-lt">{{ item.get_status_display }}</span></td>
                             <td class="text-nowrap">{{ item.created_at|date:"d M Y" }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
+                    {% endfor %}
+                {% elif report_type == "assessment" %}
+                    {% for item in page_obj %}
+                        <tr>
+                            <td><a href="{% url 'dashboard:threat-assessment' %}?signal={{ item.signal_id }}">{{ item.signal.title }}</a></td>
+                            <td>{{ item.get_recommended_priority_display }}</td>
+                            <td>{{ item.priority_score|floatformat:1 }}</td>
+                            <td>{{ item.confidence_score|floatformat:1 }}</td>
+                            <td><span class="badge bg-secondary-lt">{{ item.get_status_display }}</span></td>
+                            <td class="text-nowrap">{{ item.assessed_at|date:"d M Y" }}</td>
                         </tr>
                     {% empty %}
                         <tr><td colspan="6" class="text-center text-secondary py-5">Tidak ada data.</td></tr>
@@ -145,8 +226,8 @@
         <div class="card-footer d-flex align-items-center">
             <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
             <ul class="pagination m-0 ms-auto">
-                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?type={{ report_type }}&page={{ page_obj.previous_page_number }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}">Sebelumnya</a></li>{% endif %}
-                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?type={{ report_type }}&page={{ page_obj.next_page_number }}&status={{ selected_status }}&disease={{ selected_disease }}&date_from={{ date_from }}&date_to={{ date_to }}">Berikutnya</a></li>{% endif %}
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?{{ base_qs }}&sort={{ active_sort }}&page={{ page_obj.previous_page_number }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?{{ base_qs }}&sort={{ active_sort }}&page={{ page_obj.next_page_number }}">Berikutnya</a></li>{% endif %}
             </ul>
         </div>
     {% endif %}

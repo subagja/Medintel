@@ -58,6 +58,19 @@ STRONG_EPIDEMIOLOGICAL_TERMS = (
 def listing_candidate_is_relevant(
     candidate: ArticleLinkCandidate,
 ) -> tuple[bool, str]:
+    """Cek relevansi awal kandidat SEBELUM artikel penuh di-fetch.
+
+    PENTING: gerbang ini TIDAK LAGI MENOLAK kandidat apapun -- selalu
+    mengembalikan True. Awalnya ini gerbang keras (wajib ada penyakit
+    atau istilah epidemiologis kuat di teks anchor/context/URL
+    listing), tapi teks listing itu sering terlalu sedikit/sekilas
+    untuk jadi dasar keputusan tolak yang andal (banyak artikel
+    relevan pakai frasa tidak baku di judul listing-nya). Keputusan
+    relevansi sebenarnya sekarang diserahkan ke evaluate_cheap_filter
+    setelah artikel penuh di-fetch, yang punya jauh lebih banyak teks
+    untuk dianalisis. Fungsi ini tetap dipertahankan (bukan dihapus)
+    supaya `reason` yang dihasilkan tetap berguna untuk log/debug.
+    """
     url_path = (
         urlparse(candidate.url)
         .path
@@ -77,8 +90,8 @@ def listing_candidate_is_relevant(
 
     if not listing_text:
         return (
-            False,
-            "Teks kandidat listing kosong.",
+            True,
+            "Teks kandidat listing kosong, tetap diloloskan ke tahap fetch.",
         )
 
     disease_mentions = extract_disease_mentions(
@@ -119,10 +132,10 @@ def listing_candidate_is_relevant(
         )
 
     return (
-        False,
+        True,
         (
-            "Tidak ada penyakit atau istilah "
-            "epidemiologis kuat pada listing."
+            "Tidak ada penyakit/istilah kuat pada listing, tetap "
+            "diloloskan ke tahap fetch untuk dicek lebih lanjut."
         ),
     )
 
