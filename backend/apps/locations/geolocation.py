@@ -219,6 +219,14 @@ def _automatic_terms(location: Location) -> set[str]:
     name = location.name.strip()
 
     prefix_variants = (
+        (
+            "Kota Administrasi ",
+            (),
+        ),
+        (
+            "Kabupaten Administrasi ",
+            (),
+        ),
         ("Kabupaten ", ("Kab ", "Kab. ")),
         ("Provinsi ", ()),
         ("Kota ", ()),

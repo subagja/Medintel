@@ -260,11 +260,8 @@
 
                 <li class="nav-item">
                     <a
-                        class="nav-link disabled"
-                        href="#"
-                        tabindex="-1"
-                        aria-disabled="true"
-                        onclick="return false;"
+                        class="nav-link{% if active_menu == 'entity_extraction' %} active{% endif %}"
+                        href="{% url 'dashboard:entity-extraction' %}"
                     >
                         <span class="nav-link-icon d-md-none d-lg-inline-block">
                             <svg
@@ -288,7 +285,6 @@
                         <span class="nav-link-title">
                             Ekstraksi Entitas
                         </span>
-                        <span class="badge bg-secondary-lt ms-auto">Segera hadir</span>
                     </a>
                 </li>
 

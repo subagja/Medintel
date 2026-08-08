@@ -371,7 +371,7 @@ Validasi Artikel | MEDINTEL OSINT
         </div>
     </div>
 
-    <div class="col-lg-7">
+    <div class="col-lg-7 medintel-detail-panel">
         {% if selected_article and assessment_form %}
             <form method="post" novalidate>
                 {% csrf_token %}
@@ -686,7 +686,7 @@ Validasi Artikel | MEDINTEL OSINT
                                 {% endif %}
                             </div>
 
-                            <div class="mt-2">
+                            <div class="mt-2 d-flex gap-2">
                                 <a
                                     href="{{ selected_article.original_url }}"
                                     target="_blank"
@@ -695,6 +695,20 @@ Validasi Artikel | MEDINTEL OSINT
                                 >
                                     Buka Artikel Asli
                                 </a>
+
+                                {% if selected_article.processing_status == "rejected" %}
+                                    <form
+                                        method="post"
+                                        action="{% url 'dashboard:article-delete' selected_article.id %}"
+                                        onsubmit="return confirm('Hapus artikel ini secara permanen? Tindakan ini tidak bisa dibatalkan.');"
+                                    >
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            Hapus Artikel
+                                        </button>
+                                    </form>
+                                {% endif %}
                             </div>
                         </div>
 
@@ -1355,6 +1369,40 @@ document.addEventListener("DOMContentLoaded", function () {
     const currentAdmiraltyCode = document.getElementById("current-admiralty-code");
     const recommendationButton = document.getElementById("apply-information-recommendation");
     const recommendationMessage = document.getElementById("recommendation-applied-message");
+
+    // Simpan & kembalikan posisi scroll daftar artikel supaya tidak
+    // "lompat" ke atas tiap kali klik satu artikel (halaman ini masih
+    // reload penuh saat pindah artikel, jadi scroll browser normalnya
+    // reset -- ini kompensasi manual pakai sessionStorage).
+    const SCROLL_STORAGE_KEY = "medintel-article-list-scroll";
+    const articleListEl = document.getElementById("article-list");
+
+    if (articleListEl) {
+        const savedScroll = sessionStorage.getItem(SCROLL_STORAGE_KEY);
+        if (savedScroll !== null) {
+            articleListEl.scrollTop = parseInt(savedScroll, 10) || 0;
+        }
+
+        articleListEl.querySelectorAll("a[href]").forEach(function (link) {
+            link.addEventListener("click", function () {
+                sessionStorage.setItem(
+                    SCROLL_STORAGE_KEY,
+                    String(articleListEl.scrollTop)
+                );
+            });
+        });
+
+        // Submit form validasi (Simpan Penilaian) juga redirect balik
+        // ke halaman ini -- posisi scroll perlu disimpan di sini juga.
+        document.querySelectorAll("form[method=\"post\"]").forEach(function (form) {
+            form.addEventListener("submit", function () {
+                sessionStorage.setItem(
+                    SCROLL_STORAGE_KEY,
+                    String(articleListEl.scrollTop)
+                );
+            });
+        });
+    }
 
     function applyFilters() {
         const query = (searchInput?.value || "").trim().toLowerCase();

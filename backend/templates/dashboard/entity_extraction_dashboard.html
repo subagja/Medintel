@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Ekstraksi Entitas | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
+            <h2 class="page-title">Ekstraksi Entitas</h2>
+            <div class="text-secondary mt-1">
+                Cakupan hasil ekstraksi penyakit, lokasi, dan fakta
+                numerik di seluruh artikel. Ekstraksi otomatis berjalan
+                begitu artikel baru selesai di-crawl -- halaman ini
+                untuk memproses ulang artikel yang belum/tidak lengkap.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-2">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Total Artikel</div>
+            <div class="h1 mb-0">{{ summary.total_articles }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-2">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Menunggu Diproses</div>
+            <div class="h1 mb-0 {% if summary.pending_count %}text-warning{% endif %}">{{ summary.pending_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-2">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Ada Penyakit</div>
+            <div class="h1 mb-0 text-teal">{{ summary.with_disease }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-2">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Ada Lokasi</div>
+            <div class="h1 mb-0 text-blue">{{ summary.with_location }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-2">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Ada Fakta Numerik</div>
+            <div class="h1 mb-0 text-azure">{{ summary.with_fact }}</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Jalankan Ekstraksi</h3></div>
+    <div class="card-body">
+        <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-3">
+                <label class="form-label small">Maks. artikel diproses</label>
+                <input type="number" name="limit" value="200" min="1" max="2000" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" name="force" value="1" id="force-check">
+                    <label class="form-check-label" for="force-check">
+                        Paksa proses ulang semua (termasuk yang sudah Tervalidasi/Ditolak)
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100">Proses Sekarang</button>
+            </div>
+        </form>
+        <div class="text-secondary small mt-2">
+            Berjalan di latar belakang -- refresh halaman ini beberapa saat untuk melihat progresnya.
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Status Pipeline Artikel</h3></div>
+            <div class="card-body">
+                {% for row in status_breakdown %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>{{ row.label }}</span>
+                        <span class="fw-semibold">{{ row.count }}</span>
+                    </div>
+                {% empty %}
+                    <div class="text-secondary small">Tidak ada data.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Metode Ekstraksi Penyakit</h3></div>
+            <div class="card-body">
+                {% for row in method_breakdown %}
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>{{ row.label }}</span>
+                        <span class="fw-semibold">{{ row.count }}</span>
+                    </div>
+                {% empty %}
+                    <div class="text-secondary small">Tidak ada data.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Artikel Terakhir Diproses</h3></div>
+    <div class="table-responsive">
+        <table class="table table-vcenter table-sm card-table">
+            <thead>
+                <tr>
+                    <th>Judul</th>
+                    <th>Sumber</th>
+                    <th>Status</th>
+                    <th>Diperbarui</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for article in recent_processed %}
+                    <tr>
+                        <td><a href="{% url 'dashboard:article-validation' %}?article={{ article.id }}">{{ article.title }}</a></td>
+                        <td class="text-secondary small">{{ article.source.name }}</td>
+                        <td>
+                            {% if article.processing_status == "processed" %}
+                                <span class="badge bg-success-lt">Selesai Diproses</span>
+                            {% elif article.processing_status == "failed" %}
+                                <span class="badge bg-danger-lt">Gagal</span>
+                            {% else %}
+                                <span class="badge bg-secondary-lt">{{ article.get_processing_status_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-nowrap text-secondary small">{{ article.updated_at|date:"d M Y H:i" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4" class="text-center text-secondary py-5">Belum ada artikel yang diproses.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

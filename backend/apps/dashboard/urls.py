@@ -24,6 +24,11 @@ urlpatterns = [
         name="article-validation",
     ),
     path(
+        "artikel/<uuid:article_id>/hapus/",
+        views.article_delete,
+        name="article-delete",
+    ),
+    path(
         "daftar-artikel/",
         views.article_list,
         name="article-list",
@@ -183,5 +188,15 @@ urlpatterns = [
         "laporan-arsip/ringkasan/",
         views.periodic_summary,
         name="periodic-summary",
+    ),
+    path(
+        "ekstraksi-entitas/",
+        views.entity_extraction_dashboard,
+        name="entity-extraction",
+    ),
+    path(
+        "ekstraksi-entitas/jalankan/",
+        views.entity_extraction_run,
+        name="entity-extraction-run",
     ),
 ]

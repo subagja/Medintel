@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
@@ -71,6 +73,9 @@ from apps.entities.services.review import (
 from apps.indicators.services.generation import (
     generate_indicators_from_fact,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @require_role(*Roles.ALL)
@@ -1472,6 +1477,58 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "dashboard/article_validation.html",
         context,
     )
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def article_delete(
+    request: HttpRequest,
+    article_id,
+) -> HttpResponse:
+    """Hapus artikel yang sudah ditandai "Tidak Relevan" oleh analis.
+
+    Dibatasi hanya untuk artikel REJECTED (bukan sembarang artikel)
+    supaya tidak sengaja menghapus data yang masih relevan untuk
+    surveilans. Kalau artikel ternyata sudah dipakai sebagai bukti
+    sinyal/assessment (FK on_delete=PROTECT), penghapusan ditolak
+    dengan pesan yang jelas -- bukan error mentah.
+    """
+    from django.db.models.deletion import ProtectedError
+
+    article = get_object_or_404(Article, id=article_id)
+
+    if article.processing_status != Article.ProcessingStatus.REJECTED:
+        messages.error(
+            request,
+            (
+                "Hanya artikel berstatus \"Tidak Relevan\" yang bisa "
+                "dihapus lewat halaman ini."
+            ),
+        )
+        return redirect(request.POST.get("next") or "dashboard:article-list")
+
+    article_title = article.title
+
+    try:
+        article.delete()
+    except ProtectedError:
+        messages.error(
+            request,
+            (
+                f'"{article_title}" tidak bisa dihapus karena sudah '
+                "dipakai sebagai bukti pada sinyal intelijen atau "
+                "evaluasi informasi. Hapus/lepaskan keterkaitan itu "
+                "dulu kalau memang perlu dihapus."
+            ),
+        )
+        return redirect(request.POST.get("next") or "dashboard:article-list")
+
+    messages.success(
+        request,
+        f'Artikel "{article_title}" berhasil dihapus.',
+    )
+
+    return redirect(request.POST.get("next") or "dashboard:article-list")
 
 
 @require_role(*Roles.ALL)
@@ -3199,3 +3256,171 @@ def periodic_summary(request: HttpRequest) -> HttpResponse:
         "dashboard/periodic_summary.html",
         context,
     )
+
+
+@require_role(*Roles.ALL)
+def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
+    """Halaman "Ekstraksi Entitas": cakupan hasil ekstraksi
+    penyakit/lokasi/fakta di seluruh artikel, plus tombol untuk
+    memicu pemrosesan artikel yang belum/tidak lengkap diekstraksi
+    langsung dari web (tanpa perlu buka terminal).
+    """
+    from apps.entities.models import (
+        ArticleDisease,
+        ArticleFact,
+        ArticleLocation,
+        ExtractionMethod,
+    )
+
+    total_articles = Article.objects.count()
+
+    pending_qs = Article.objects.exclude(
+        processing_status__in=[
+            Article.ProcessingStatus.VALIDATED,
+            Article.ProcessingStatus.REJECTED,
+        ],
+    )
+
+    with_disease = Article.objects.filter(
+        diseases__isnull=False,
+    ).distinct().count()
+
+    with_location = Article.objects.filter(
+        locations__isnull=False,
+    ).distinct().count()
+
+    with_fact = Article.objects.filter(
+        facts__isnull=False,
+    ).distinct().count()
+
+    status_counts = dict(
+        Article.objects.values("processing_status")
+        .annotate(count=Count("id"))
+        .values_list("processing_status", "count")
+    )
+    status_labels = dict(Article.ProcessingStatus.choices)
+
+    method_counts = dict(
+        ArticleDisease.objects.values("extraction_method")
+        .annotate(count=Count("id"))
+        .values_list("extraction_method", "count")
+    )
+    method_labels = dict(ExtractionMethod.choices)
+
+    recent_processed = Article.objects.filter(
+        processing_status__in=[
+            Article.ProcessingStatus.PROCESSED,
+            Article.ProcessingStatus.FAILED,
+        ],
+    ).select_related("source").order_by("-updated_at")[:15]
+
+    context = {
+        "page_title": "Ekstraksi Entitas",
+        "active_menu": "entity_extraction",
+        "summary": {
+            "total_articles": total_articles,
+            "pending_count": pending_qs.count(),
+            "with_disease": with_disease,
+            "with_location": with_location,
+            "with_fact": with_fact,
+        },
+        "status_breakdown": [
+            {
+                "label": status_labels.get(status, status),
+                "count": count,
+            }
+            for status, count in status_counts.items()
+        ],
+        "method_breakdown": [
+            {
+                "label": method_labels.get(method, method),
+                "count": count,
+            }
+            for method, count in method_counts.items()
+        ],
+        "recent_processed": recent_processed,
+    }
+
+    return render(
+        request,
+        "dashboard/entity_extraction_dashboard.html",
+        context,
+    )
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def entity_extraction_run(request: HttpRequest) -> HttpResponse:
+    """Picu pemrosesan (ekstraksi) artikel yang belum lengkap,
+    berjalan di background thread supaya tidak memblokir request --
+    pola sama seperti "Jalankan Crawler".
+    """
+    import threading
+
+    from django.db import close_old_connections
+
+    force = request.POST.get("force") == "1"
+    limit_raw = request.POST.get("limit", "").strip()
+
+    try:
+        limit = int(limit_raw) if limit_raw else 200
+    except ValueError:
+        limit = 200
+
+    if force:
+        articles_qs = Article.objects.all()
+    else:
+        articles_qs = Article.objects.exclude(
+            processing_status__in=[
+                Article.ProcessingStatus.VALIDATED,
+                Article.ProcessingStatus.REJECTED,
+            ],
+        )
+
+    article_ids = list(
+        articles_qs.order_by("-created_at").values_list(
+            "id", flat=True
+        )[:limit]
+    )
+
+    if not article_ids:
+        messages.warning(
+            request,
+            "Tidak ada artikel yang perlu diproses.",
+        )
+        return redirect("dashboard:entity-extraction")
+
+    def _run() -> None:
+        close_old_connections()
+
+        from apps.entities.services import process_article_full
+
+        for article_id in article_ids:
+            try:
+                article = Article.objects.get(id=article_id)
+                process_article_full(article)
+            except Exception:
+                logger.exception(
+                    "Ekstraksi manual gagal untuk artikel=%s",
+                    article_id,
+                )
+
+        close_old_connections()
+
+    thread = threading.Thread(
+        target=_run,
+        name="entity-extraction-batch",
+        daemon=True,
+    )
+    thread.start()
+
+    messages.success(
+        request,
+        (
+            f"Ekstraksi dimulai untuk {len(article_ids)} artikel di "
+            "latar belakang. Refresh halaman ini beberapa saat lagi "
+            "untuk melihat progresnya."
+        ),
+    )
+
+    return redirect("dashboard:entity-extraction")

@@ -14,8 +14,12 @@ from .rule_based import (
 )
 
 from .pipeline import (
+    ArticleEligibility,
     ArticleExploitationResult,
+    FullProcessingResult,
+    evaluate_article_eligibility,
     exploit_article,
+    process_article_full,
 )
 
 from .review import (
@@ -43,6 +47,10 @@ __all__ = [
     "extract_location_mentions",
     "ArticleExploitationResult",
     "exploit_article",
+    "ArticleEligibility",
+    "FullProcessingResult",
+    "evaluate_article_eligibility",
+    "process_article_full",
     "correct_article_disease",
     "correct_article_fact",
     "correct_article_location",

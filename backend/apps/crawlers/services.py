@@ -320,6 +320,27 @@ def run_crawler(
                     total_created += 1
                     item.status = CollectionJobItem.Status.CREATED
 
+                    # Ekstraksi otomatis: begitu artikel baru tersimpan,
+                    # langsung ekstrak penyakit/lokasi/fakta -- supaya
+                    # analis tidak perlu jalankan `process_articles`
+                    # manual lagi setiap habis crawling. Dibungkus
+                    # try/except supaya kegagalan ekstraksi (mis. bug
+                    # parsing pada satu artikel) tidak menggagalkan
+                    # keseluruhan crawl job.
+                    try:
+                        from apps.entities.services import exploit_article
+
+                        exploit_article(result.article)
+                    except Exception:
+                        logger.exception(
+                            (
+                                "Ekstraksi otomatis gagal untuk artikel "
+                                "job=%s article=%s"
+                            ),
+                            job.id,
+                            result.article.id if result.article else None,
+                        )
+
                 elif result.status == "rejected":
                     total_rejected += 1
                     item.status = CollectionJobItem.Status.REJECTED
