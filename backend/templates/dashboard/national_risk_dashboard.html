@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Skor Risiko Nasional | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Skor Risiko Nasional</h2>
+            <div class="text-secondary mt-1">
+                Pandangan agregat lintas wilayah dari seluruh assessment
+                yang ada -- berbeda dari workspace Assessment Ancaman
+                yang menilai satu sinyal per satu.
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:threat-assessment' %}" class="btn btn-outline-secondary btn-sm">
+                Buka Workspace Assessment
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path><path d="M13.41 10.59l2.59 -2.59"></path><path d="M7 20.66v-1.66a5 5 0 0 1 5 -5a5 5 0 0 1 5 5v1.66"></path><path d="M12 3a9 9 0 0 1 9 9"></path><path d="M12 3a9 9 0 0 0 -9 9"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Skor Risiko Nasional</div>
+                <div class="h1 mb-0">{{ national_score }}<span class="text-secondary fs-4">/100</span></div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Wilayah Risiko Tinggi</div>
+                <div class="h1 mb-0 text-danger">{{ high_risk_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6 -6l4 4l8 -8"></path><path d="M14 7l7 0l0 7"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Tren Skor (7 Hari)</div>
+                <div class="h1 mb-0 {% if score_trend > 0 %}text-danger{% elif score_trend < 0 %}text-success{% endif %}">
+                    {% if score_trend > 0 %}+{% endif %}{{ score_trend }}
+                </div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-azure-lt text-azure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8l4 -16l3 8h4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Sinyal Dianalisis</div>
+                <div class="h1 mb-0">{{ total_analyzed }}</div>
+            </div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Peringkat Wilayah Berdasarkan Skor Risiko</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-sm card-table">
+                    <thead>
+                        <tr>
+                            <th>Peringkat</th>
+                            <th>Wilayah</th>
+                            <th>Skor Risiko</th>
+                            <th>Level</th>
+                            <th class="text-center">Sinyal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in location_rows %}
+                            <tr>
+                                <td class="fw-semibold">{{ forloop.counter }}</td>
+                                <td>{{ row.name }}</td>
+                                <td>{{ row.score }}</td>
+                                <td><span class="badge {{ row.badge_class }}">{{ row.level }}</span></td>
+                                <td class="text-center">{{ row.signal_count }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="5" class="text-center text-secondary py-5">Belum ada assessment aktif dengan lokasi.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Komposisi Faktor Risiko</h3></div>
+            <div class="card-body">
+                {% if risk_composition %}
+                    <canvas id="risk-composition-chart" height="220"></canvas>
+                    <div class="mt-2 small text-secondary">
+                        Berdasarkan bobot resmi formula skor prioritas sistem.
+                    </div>
+                {% else %}
+                    <div class="text-secondary small">Belum ada data assessment.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Interpretasi Ancaman</h3></div>
+            <div class="card-body">
+                {% if top_location %}
+                    <div class="text-secondary small">Wilayah skor tertinggi</div>
+                    <div class="h3 mb-2">
+                        {{ top_location.name }}
+                        <span class="badge {{ top_location.badge_class }}">{{ top_location.level }}</span>
+                    </div>
+                    <p class="text-secondary small">
+                        Skor risiko {{ top_location.score }}/100 dari
+                        {{ top_location.signal_count }} sinyal yang dianalisis.
+                        {% if dominant_factor %}
+                            Faktor risiko paling dominan secara nasional saat
+                            ini adalah <strong>{{ dominant_factor.label }}</strong>
+                            (berkontribusi {{ dominant_factor.percentage }}%
+                            dari skor prioritas).
+                        {% endif %}
+                    </p>
+                {% else %}
+                    <div class="text-secondary small">Belum ada data yang cukup untuk interpretasi.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    var canvas = document.getElementById("risk-composition-chart");
+    if (!canvas) {
+        return;
+    }
+
+    var labels = [
+        {% for row in risk_composition %}"{{ row.label }}"{% if not forloop.last %},{% endif %}{% endfor %}
+    ];
+    var values = [
+        {% for row in risk_composition %}{{ row.percentage }}{% if not forloop.last %},{% endif %}{% endfor %}
+    ];
+
+    new Chart(canvas, {
+        type: "doughnut",
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    data: values,
+                    backgroundColor: ["#d63939", "#f76707", "#f59f00", "#2fb344", "#1a56db"],
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: "bottom" },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return context.label + ": " + context.parsed + "%";
+                        },
+                    },
+                },
+            },
+        },
+    });
+})();
+</script>
+{% endblock %}

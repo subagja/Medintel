@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}{{ report.hal|default:"Edit Laporan" }} | MEDINTEL OSINT{% endblock %}
+
+{% block extra_css %}
+<style>
+.report-doc-preview {
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.7;
+    background: white;
+    padding: 2rem;
+    border: 1px solid var(--tblr-border-color);
+    border-radius: 6px;
+}
+.report-doc-preview textarea {
+    font-family: Georgia, 'Times New Roman', serif;
+    width: 100%;
+    border: 1px dashed #cbd5e1;
+    border-radius: 4px;
+    padding: 8px;
+    min-height: 90px;
+}
+.report-doc-preview h4 {
+    margin-top: 1.5rem;
+    font-weight: 700;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                <a href="{% url 'dashboard:report-document-list' %}">Laporan Dokumen</a>
+            </div>
+            <h2 class="page-title">{{ report.hal|default:"(Belum ada judul)" }}</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:report-document-export-pdf' report.id %}" class="btn btn-outline-danger btn-sm">
+                Ekspor PDF
+            </a>
+        </div>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Kop Laporan</h3></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Kepada</label>
+                    <input type="text" name="kepada" class="form-control" value="{{ report.kepada }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Dari</label>
+                    <input type="text" name="dari" class="form-control" value="{{ report.dari }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tembusan</label>
+                    <input type="text" name="tembusan" class="form-control" value="{{ report.tembusan }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Nilai</label>
+                    <input type="text" name="nilai" class="form-control" value="{{ report.nilai }}" maxlength="10">
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">Hal</label>
+                    <input type="text" name="hal" class="form-control" value="{{ report.hal }}" placeholder="mis. Perkembangan Situasi Wabah Penyakit di Indonesia, {{ report.report_date|date:'l, j F Y' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}" {% if report.status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Tanda Tangan (footer)</label>
+                    <input type="text" name="signature_block" class="form-control" value="{{ report.signature_block }}" placeholder="mis. DMMP, Direktur 53">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="report-doc-preview mb-3">
+        <h4>I. INDIKASI</h4>
+        {% for section in report.sections.all %}
+            <p><strong>{{ section.letter }}. {{ section.disease.name|default:"(Topik belum ditentukan)" }}</strong></p>
+            <textarea name="section_{{ section.id }}_indikasi">{{ section.indikasi_text }}</textarea>
+            {% if section.source_articles.all %}
+                <div class="text-secondary small mt-1 mb-3">
+                    Sumber: {% for article in section.source_articles.all %}{{ article.source.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                </div>
+            {% endif %}
+        {% endfor %}
+
+        <h4>II. ANALISIS</h4>
+        {% for section in report.sections.all %}
+            <p><strong>{{ section.letter }}.</strong></p>
+            <textarea name="section_{{ section.id }}_analisis">{{ section.analisis_text }}</textarea>
+        {% endfor %}
+
+        <h4>III. DAMPAK</h4>
+        {% for section in report.sections.all %}
+            <p><strong>{{ section.letter }}.</strong></p>
+            <textarea name="section_{{ section.id }}_dampak">{{ section.dampak_text }}</textarea>
+        {% endfor %}
+
+        <h4>IV. UPAYA</h4>
+        {% for section in report.sections.all %}
+            <p><strong>{{ section.letter }}.</strong></p>
+            <textarea name="section_{{ section.id }}_upaya">{{ section.upaya_text }}</textarea>
+        {% endfor %}
+
+        <h4>V. SARAN TINDAK</h4>
+        {% for section in report.sections.all %}
+            <p><strong>{{ section.letter }}.</strong></p>
+            <textarea name="section_{{ section.id }}_saran_tindak">{{ section.saran_tindak_text }}</textarea>
+        {% endfor %}
+
+        {% if not report.sections.all %}
+            <div class="text-secondary py-4 text-center">
+                Laporan ini belum punya poin apapun.
+            </div>
+        {% endif %}
+    </div>
+
+    {% if request.user|has_role:"contributors" %}
+        <button type="submit" class="btn btn-primary">Simpan Laporan</button>
+    {% endif %}
+    <a href="{% url 'dashboard:report-document-list' %}" class="btn btn-outline-secondary">Kembali</a>
+</form>
+{% endblock %}

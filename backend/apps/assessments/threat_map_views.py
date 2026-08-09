@@ -68,6 +68,28 @@ def threat_map_workspace(request: HttpRequest) -> HttpResponse:
         "unmapped": len(dataset.unmapped_warnings),
     }
 
+    # Baris tabel "Hotspot Terbaru" -- terpisah dari `warnings` (yang
+    # tetap ISO string untuk dikonsumsi JS peta interaktif), supaya
+    # tanggalnya bisa ditampilkan human-friendly di tabel.
+    from django.utils.dateparse import parse_datetime
+    from django.utils import timezone as django_timezone
+
+    hotspot_rows = []
+    for warning in dataset.warnings[:10]:
+        issued_dt = parse_datetime(warning["issued_at"])
+        hotspot_rows.append(
+            {
+                **warning,
+                "issued_at_display": (
+                    django_timezone.localtime(issued_dt).strftime(
+                        "%d %b %Y %H:%M"
+                    )
+                    if issued_dt
+                    else warning["issued_at"]
+                ),
+            }
+        )
+
     return render(
         request,
         "assessments/threat_map_workspace.html",
@@ -78,6 +100,7 @@ def threat_map_workspace(request: HttpRequest) -> HttpResponse:
             "level_choices": EarlyWarning.Level.choices,
             "selected_disease": selected_disease,
             "selected_level": selected_level,
+            "hotspot_rows": hotspot_rows,
             "selected_warning": selected_warning,
             "warnings": dataset.warnings,
             "provinces": dataset.provinces,

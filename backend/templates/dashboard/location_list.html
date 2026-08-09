@@ -24,9 +24,12 @@
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl-2">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Total Lokasi</div>
-                <div class="h1 mb-0">{{ summary.total }}</div>
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4l0 16"></path><path d="M15 4l0 16"></path><path d="M4 7l16 0"></path><path d="M4 17l16 0"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Total Lokasi</div>
+                    <div class="h1 mb-0">{{ summary.total }}</div>
+                </div>
             </div>
         </div>
     </div>
@@ -34,9 +37,12 @@
     {% for row in summary.by_level %}
         <div class="col-sm-6 col-xl-2">
             <div class="card">
-                <div class="card-body">
-                    <div class="text-secondary">{{ row.label }}</div>
-                    <div class="h1 mb-0">{{ row.count }}</div>
+                <div class="card-body medintel-stat-card">
+                    <div class="medintel-stat-icon bg-teal-lt text-teal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
+                    <div class="medintel-stat-body">
+                        <div class="text-secondary">{{ row.label }}</div>
+                        <div class="h1 mb-0">{{ row.count }}</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -44,9 +50,12 @@
 
     <div class="col-sm-6 col-xl-2">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Tanpa Koordinat</div>
-                <div class="h1 mb-0 {% if summary.missing_coordinates %}text-warning{% endif %}">{{ summary.missing_coordinates }}</div>
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Tanpa Koordinat</div>
+                    <div class="h1 mb-0 {% if summary.missing_coordinates %}text-warning{% endif %}">{{ summary.missing_coordinates }}</div>
+                </div>
             </div>
         </div>
     </div>

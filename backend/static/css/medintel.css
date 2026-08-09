@@ -105,17 +105,50 @@ body {
     color: #5d6b82 !important;
 }
 
-/* Panel daftar artikel pada workspace Validasi Artikel: dibatasi
-   tingginya dan discroll sendiri, supaya halaman tidak memanjang
-   mengikuti jumlah artikel (bisa puluhan/ratusan baris). Panel detail
-   di sebelahnya tetap terlihat penuh tanpa perlu scroll jauh. */
+/* Workspace Validasi Artikel: panel daftar (kiri) dan panel detail
+   (kanan) dikunci ke tinggi viewport yang sama dan scroll sendiri
+   masing-masing (pola split-pane/email client), supaya halaman tidak
+   ikut memanjang mengikuti konten terpanjang di antara keduanya. */
 .medintel-article-list {
     max-height: 75vh;
     overflow-y: auto;
 }
 
+.medintel-detail-panel {
+    max-height: 75vh;
+    overflow-y: auto;
+}
+
 @media (max-width: 991.98px) {
-    .medintel-article-list {
-        max-height: 60vh;
+    .medintel-article-list,
+    .medintel-detail-panel {
+        max-height: none;
+        overflow-y: visible;
     }
+}
+
+/* Kartu statistik dengan kotak ikon berwarna, mengikuti gaya visual
+   mockup referensi (icon box di kiri, label+angka di kanan) --
+   dipakai konsisten di semua halaman ringkasan/dashboard. */
+.medintel-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+.medintel-stat-icon {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.medintel-stat-icon svg {
+    width: 1.4rem;
+    height: 1.4rem;
+}
+.medintel-stat-body .h1,
+.medintel-stat-body .h2 {
+    line-height: 1.1;
 }

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 
 {% block title %}
 Validasi Artikel | MEDINTEL OSINT
@@ -50,10 +51,11 @@ Validasi Artikel | MEDINTEL OSINT
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Artikel Ditampilkan</div>
-                <div class="h1 mb-0">
-                    {{ summary.total|default:0 }}
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v5"></path><path d="M4.5 19.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0"></path><path d="M6.5 21.5l-1.5 -1.5"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Artikel Ditampilkan</div>
+                    <div class="h1 mb-0">{{ summary.total|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -61,10 +63,11 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Eligible</div>
-                <div class="h1 text-success mb-0">
-                    {{ summary.eligible|default:0 }}
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-success-lt text-success"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Eligible</div>
+                    <div class="h1 text-success mb-0">{{ summary.eligible|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -72,10 +75,11 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Data Belum Lengkap</div>
-                <div class="h1 text-warning mb-0">
-                    {{ summary.needs_review|default:0 }}
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Data Belum Lengkap</div>
+                    <div class="h1 text-warning mb-0">{{ summary.needs_review|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -83,10 +87,11 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Tervalidasi</div>
-                <div class="h1 text-primary mb-0">
-                    {{ summary.validated|default:0 }}
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-primary-lt text-primary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M9 12l2 2l4 -4"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Tervalidasi</div>
+                    <div class="h1 text-primary mb-0">{{ summary.validated|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -94,10 +99,11 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">Tidak Relevan</div>
-                <div class="h1 text-danger mb-0">
-                    {{ summary.rejected|default:0 }}
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M10 10l4 4m0 -4l-4 4"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Tidak Relevan</div>
+                    <div class="h1 text-danger mb-0">{{ summary.rejected|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -696,7 +702,7 @@ Validasi Artikel | MEDINTEL OSINT
                                     Buka Artikel Asli
                                 </a>
 
-                                {% if selected_article.processing_status == "rejected" %}
+                                {% if selected_article.processing_status == "rejected" and request.user|has_role:"Admin,Analyst" %}
                                     <form
                                         method="post"
                                         action="{% url 'dashboard:article-delete' selected_article.id %}"
@@ -1327,14 +1333,18 @@ Validasi Artikel | MEDINTEL OSINT
                     </div>
 
                     <div class="card-footer d-flex justify-content-end">
-                        <button
-                            type="submit"
-                            name="action"
-                            value="save_assessment"
-                            class="btn btn-primary"
-                        >
-                            Simpan Penilaian
-                        </button>
+                        {% if request.user|has_role:"contributors" %}
+                            <button
+                                type="submit"
+                                name="action"
+                                value="save_assessment"
+                                class="btn btn-primary"
+                            >
+                                Simpan Penilaian
+                            </button>
+                        {% else %}
+                            <span class="text-secondary small">Peran Anda hanya bisa melihat, tidak dapat mengubah validasi.</span>
+                        {% endif %}
                     </div>
                 </div>
             </form>

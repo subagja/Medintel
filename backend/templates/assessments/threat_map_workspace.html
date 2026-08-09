@@ -146,27 +146,39 @@
 
     <div class="row row-cards mb-3">
         <div class="col-sm-6 col-lg-3">
-            <div class="card"><div class="card-body">
-                <div class="text-secondary">Peringatan Aktif</div>
-                <div class="h1 mb-0">{{ summary.active }}</div>
+            <div class="card"><div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"></path><path d="M9 17v1a3 3 0 0 0 6 0v-1"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Peringatan Aktif</div>
+                    <div class="h1 mb-0">{{ summary.active }}</div>
+                </div>
             </div></div>
         </div>
         <div class="col-sm-6 col-lg-3">
-            <div class="card"><div class="card-body">
-                <div class="text-secondary">Provinsi Terdampak</div>
-                <div class="h1 mb-0 text-warning">{{ summary.provinces }}</div>
+            <div class="card"><div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4l0 16"></path><path d="M15 4l0 16"></path><path d="M4 7l16 0"></path><path d="M4 17l16 0"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Provinsi Terdampak</div>
+                    <div class="h1 mb-0 text-warning">{{ summary.provinces }}</div>
+                </div>
             </div></div>
         </div>
         <div class="col-sm-6 col-lg-3">
-            <div class="card"><div class="card-body">
-                <div class="text-secondary">Level Tertinggi</div>
-                <div class="h2 mb-0">{{ summary.highest_level }}</div>
+            <div class="card"><div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12c2 -2.96 0 -7 -1 -8c0 3.038 -1.773 4.741 -3 6c-1.226 1.26 -2 3.24 -2 5c0 3.314 2.686 6 6 6s6 -2.686 6 -6c0 -1.26 -0.5 -3 -1.5 -4.5c-0.5 1 -1.5 2 -2.5 1.5c-0.5 -1 -0.5 -0.5 -0.5 -0.5z"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Level Tertinggi</div>
+                    <div class="h2 mb-0">{{ summary.highest_level }}</div>
+                </div>
             </div></div>
         </div>
         <div class="col-sm-6 col-lg-3">
-            <div class="card"><div class="card-body">
-                <div class="text-secondary">Belum Terpetakan</div>
-                <div class="h1 mb-0{% if summary.unmapped %} text-danger{% endif %}">{{ summary.unmapped }}</div>
+            <div class="card"><div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-secondary-lt text-secondary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9a3 3 0 1 0 4.163 4.163"></path><path d="M18.657 17.673l-4.243 4.244a2 2 0 0 1 -2.828 0l-4.243 -4.243a8 8 0 0 1 -1.939 -8.284m2.62 -4.365a8 8 0 0 1 11.632 7.539"></path><path d="M3 3l18 18"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Belum Terpetakan</div>
+                    <div class="h1 mb-0{% if summary.unmapped %} text-danger{% endif %}">{{ summary.unmapped }}</div>
+                </div>
             </div></div>
         </div>
     </div>
@@ -343,6 +355,40 @@
             Pastikan lokasi utama memiliki relasi ke provinsi Indonesia atau kode wilayah BPS yang sesuai.
         </div>
     {% endif %}
+
+    <div class="card mt-3">
+        <div class="card-header"><h3 class="card-title">Hotspot Terbaru</h3></div>
+        <div class="table-responsive">
+            <table class="table table-vcenter table-sm card-table">
+                <thead>
+                    <tr>
+                        <th>Wilayah</th>
+                        <th>Penyakit</th>
+                        <th>Sinyal</th>
+                        <th>Level</th>
+                        <th>Update</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for warning in hotspot_rows %}
+                        <tr>
+                            <td>{{ warning.location|default:"-" }}</td>
+                            <td>{{ warning.disease|default:"-" }}</td>
+                            <td class="text-secondary small">{{ warning.code }}</td>
+                            <td>
+                                <span class="badge {% if warning.level == 'critical' %}bg-danger{% elif warning.level == 'high' %}bg-orange-lt{% elif warning.level == 'advisory' %}bg-yellow-lt{% else %}bg-blue-lt{% endif %}">
+                                    {{ warning.level_label }}
+                                </span>
+                            </td>
+                            <td class="text-nowrap text-secondary small">{{ warning.issued_at_display }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="text-center text-secondary py-4">Belum ada hotspot aktif.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 {{ provinces|json_script:"threat-map-provinces-data" }}

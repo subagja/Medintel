@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Ekstraksi Entitas — {{ article.title }} | MEDINTEL OSINT{% endblock %}
+
+{% block extra_css %}
+<style>
+mark.medintel-hl-disease {
+    background: #ffd8e0;
+    color: #a3123a;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+mark.medintel-hl-location {
+    background: #cfe4ff;
+    color: #17458f;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+mark.medintel-hl-fact {
+    background: #fff2c9;
+    color: #8a6a00;
+    padding: 1px 3px;
+    border-radius: 3px;
+}
+.medintel-article-body {
+    white-space: pre-line;
+    line-height: 1.8;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                <a href="{% url 'dashboard:entity-extraction' %}">Ekstraksi Entitas</a>
+            </div>
+            <h2 class="page-title">{{ article.title }}</h2>
+            <div class="text-secondary mt-1">
+                {{ article.source.name }} &middot;
+                {{ article.published_at|default:article.crawled_at|date:"d M Y" }}
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:article-validation' %}?article={{ article.id }}" class="btn btn-outline-secondary btn-sm">
+                Buka di Validasi Artikel
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l11 0"></path><path d="M9 12l7 0"></path><path d="M9 18l7 0"></path><path d="M5 6l0 .01"></path><path d="M5 12l0 .01"></path><path d="M5 18l0 .01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Entitas Terdeteksi</div>
+                <div class="h1 mb-0">{{ evidence_rows|length }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-pink-lt text-pink"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Penyakit</div>
+                <div class="h1 mb-0 text-pink">{{ disease_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Lokasi</div>
+                <div class="h1 mb-0 text-blue">{{ location_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-yellow-lt text-yellow"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v7a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M9 8m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v11a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M15 4m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v15a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Fakta Numerik</div>
+                <div class="h1 mb-0 text-yellow">{{ fact_count }}</div>
+            </div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Sumber Artikel</h3></div>
+            <div class="card-body">
+                <div class="medintel-article-body">{{ highlighted_content|safe }}</div>
+
+                <div class="mt-3 d-flex gap-3 flex-wrap small">
+                    <span><mark class="medintel-hl-disease">&nbsp;&nbsp;</mark> Penyakit</span>
+                    <span><mark class="medintel-hl-location">&nbsp;&nbsp;</mark> Lokasi</span>
+                    <span><mark class="medintel-hl-fact">&nbsp;&nbsp;</mark> Fakta</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Hasil Ekstraksi Entitas</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-sm card-table">
+                    <thead>
+                        <tr>
+                            <th>Entitas</th>
+                            <th>Nilai</th>
+                            <th>Tipe</th>
+                            <th class="text-end">Keyakinan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in evidence_rows %}
+                            <tr>
+                                <td><span class="badge {{ row.css_class }} bg-white border">{{ row.type }}</span></td>
+                                <td>{{ row.value }}</td>
+                                <td class="text-secondary small">{{ row.type }}</td>
+                                <td class="text-end">
+                                    {% if row.confidence %}{{ row.confidence|floatformat:0 }}%{% else %}-{% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4" class="text-center text-secondary py-4">Belum ada entitas terekstraksi.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Evidence</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-sm card-table">
+                    <thead>
+                        <tr>
+                            <th>Entitas</th>
+                            <th>Snippet (Bukti Pendukung)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in evidence_rows %}
+                            <tr>
+                                <td class="text-nowrap">{{ row.type }}</td>
+                                <td class="text-secondary small">
+                                    {% if row.snippet %}
+                                        &hellip; {{ row.snippet|truncatechars:80 }} &hellip;
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="2" class="text-center text-secondary py-4">Tidak ada bukti pendukung.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+            <div class="text-secondary">Skor Keyakinan Keseluruhan</div>
+            <div class="text-secondary small">Rata-rata dari seluruh entitas yang diekstraksi.</div>
+        </div>
+        <div class="h1 mb-0 text-primary">
+            {% if overall_confidence %}{{ overall_confidence }}%{% else %}-{% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -38,6 +38,11 @@
                     Susun tindakan terarah dari assessment terkonfirmasi, tetapkan melalui keputusan analis, dan pantau tindak lanjutnya.
                 </div>
             </div>
+            <div class="col-auto">
+                <a href="{% url 'dashboard:recommendation-regional-dashboard' %}" class="btn btn-outline-primary btn-sm">
+                    Rekomendasi per Wilayah
+                </a>
+            </div>
         </div>
     </div>
 
@@ -56,33 +61,45 @@
 
     <div class="row row-cards mb-3">
         <div class="col-sm-6 col-xl-3">
-            <div class="card"><div class="card-body recommendation-kpi">
-                <div class="text-secondary">Assessment Aktif</div>
-                <div class="h1 mb-0">{{ summary.assessments }}</div>
-                <div class="small text-secondary">Selesai dan menjadi versi terkini</div>
-            </div></div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card"><div class="card-body recommendation-kpi">
-                <div class="text-secondary">Siap Disusun</div>
-                <div class="h1 mb-0 text-primary">{{ summary.ready }}</div>
-                <div class="small text-secondary">Sudah dikonfirmasi analis</div>
-            </div></div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card"><div class="card-body recommendation-kpi">
-                <div class="text-secondary">Draf Menunggu Penetapan</div>
-                <div class="h1 mb-0 text-warning">{{ summary.drafts }}</div>
-                <div class="small text-secondary">Belum menjadi arahan operasional</div>
-            </div></div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card"><div class="card-body recommendation-kpi">
-                <div class="text-secondary">Aktif / Lewat Tenggat</div>
-                <div class="h1 mb-0 {% if summary.overdue %}text-danger{% else %}text-success{% endif %}">
-                    {{ summary.active }} <span class="fs-3 text-secondary">/ {{ summary.overdue }}</span>
+            <div class="card"><div class="card-body recommendation-kpi medintel-stat-card">
+                <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M9 12l2 2l4 -4"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Assessment Aktif</div>
+                    <div class="h1 mb-0">{{ summary.assessments }}</div>
+                    <div class="small text-secondary">Selesai dan menjadi versi terkini</div>
                 </div>
-                <div class="small text-secondary">Ditetapkan atau ditindaklanjuti</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body recommendation-kpi medintel-stat-card">
+                <div class="medintel-stat-icon bg-primary-lt text-primary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path><path d="M9 14l2 2l4 -4"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Siap Disusun</div>
+                    <div class="h1 mb-0 text-primary">{{ summary.ready }}</div>
+                    <div class="small text-secondary">Sudah dikonfirmasi analis</div>
+                </div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body recommendation-kpi medintel-stat-card">
+                <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path><path d="M9 9l1 0"></path><path d="M9 13l6 0"></path><path d="M9 17l6 0"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Draf Menunggu Penetapan</div>
+                    <div class="h1 mb-0 text-warning">{{ summary.drafts }}</div>
+                    <div class="small text-secondary">Belum menjadi arahan operasional</div>
+                </div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card"><div class="card-body recommendation-kpi medintel-stat-card">
+                <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 3"></path><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path></svg></div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Aktif / Lewat Tenggat</div>
+                    <div class="h1 mb-0 {% if summary.overdue %}text-danger{% else %}text-success{% endif %}">
+                        {{ summary.active }} <span class="fs-3 text-secondary">/ {{ summary.overdue }}</span>
+                    </div>
+                    <div class="small text-secondary">Ditetapkan atau ditindaklanjuti</div>
+                </div>
             </div></div>
         </div>
     </div>

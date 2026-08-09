@@ -51,27 +51,39 @@
 
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Sinyal Baru</div>
-            <div class="h1 mb-0">{{ summary.new_signals_count }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8l4 -16l3 8h4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Sinyal Baru</div>
+                <div class="h1 mb-0">{{ summary.new_signals_count }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Sinyal Dieskalasi</div>
-            <div class="h1 mb-0 text-warning">{{ summary.escalations_count }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6 -6l4 4l8 -8"></path><path d="M14 7l7 0l0 7"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Sinyal Dieskalasi</div>
+                <div class="h1 mb-0 text-warning">{{ summary.escalations_count }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Early Warning Terbit</div>
-            <div class="h1 mb-0 text-danger">{{ summary.warnings_count }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"></path><path d="M9 17v1a3 3 0 0 0 6 0v-1"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Early Warning Terbit</div>
+                <div class="h1 mb-0 text-danger">{{ summary.warnings_count }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Rekomendasi Dibuat</div>
-            <div class="h1 mb-0 text-azure">{{ summary.recommendations_count }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-azure-lt text-azure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path><path d="M9 14l2 2l4 -4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Rekomendasi Dibuat</div>
+                <div class="h1 mb-0 text-azure">{{ summary.recommendations_count }}</div>
+            </div>
         </div></div>
     </div>
 </div>

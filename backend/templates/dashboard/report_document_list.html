@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Laporan Dokumen | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Laporan Dokumen</h2>
+            <div class="text-secondary mt-1">
+                Laporan resmi format nota dinas, dibangkitkan dari data
+                artikel dan assessment yang sudah tervalidasi.
+            </div>
+        </div>
+        <div class="col-auto">
+            {% if request.user|has_role:"Admin,Analyst,Reviewer" %}
+                <a href="{% url 'dashboard:report-document-create' %}" class="btn btn-primary btn-sm">
+                    Buat Laporan Baru
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2">
+            <div class="col-md-3">
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="">Semua status</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Hal</th>
+                    <th>Tanggal</th>
+                    <th class="text-center">Poin</th>
+                    <th>Status</th>
+                    <th>Dibuat Oleh</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in page_obj %}
+                    <tr>
+                        <td>{{ report.hal|default:"(Belum ada judul)" }}</td>
+                        <td class="text-nowrap">{{ report.report_date|date:"d M Y" }}</td>
+                        <td class="text-center">{{ report.sections.count }}</td>
+                        <td>
+                            {% if report.status == "final" %}<span class="badge bg-success-lt">Final</span>
+                            {% elif report.status == "distributed" %}<span class="badge bg-azure-lt">Didistribusikan</span>
+                            {% elif report.status == "archived" %}<span class="badge bg-secondary-lt">Arsip</span>
+                            {% else %}<span class="badge bg-warning-lt">Draft</span>{% endif %}
+                        </td>
+                        <td class="text-secondary small">{{ report.created_by.get_username|default:"-" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'dashboard:report-document-edit' report.id %}" class="btn btn-sm btn-outline-primary">Buka</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="text-center text-secondary py-5">Belum ada laporan. Klik "Buat Laporan Baru" untuk mulai.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&status={{ selected_status }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&status={{ selected_status }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

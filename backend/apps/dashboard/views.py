@@ -80,6 +80,13 @@ logger = logging.getLogger(__name__)
 
 @require_role(*Roles.ALL)
 def dashboard_overview(request: HttpRequest) -> HttpResponse:
+    from datetime import timedelta
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from apps.signals.models import Signal
+    from apps.assessments.models import EarlyWarning
+
     total_articles = Article.objects.count()
 
     new_articles = Article.objects.filter(
@@ -105,6 +112,66 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
         .order_by("-crawled_at")[:10]
     )
 
+    ACTIVE_SIGNAL_STATUSES = [
+        Signal.Status.VALIDATED,
+        Signal.Status.CORRECTED,
+        Signal.Status.ESCALATED,
+    ]
+
+    active_signals = Signal.objects.filter(
+        status__in=ACTIVE_SIGNAL_STATUSES,
+    )
+
+    signal_count = Signal.objects.count()
+
+    priority_wilayah_count = (
+        active_signals.exclude(primary_location__isnull=True)
+        .values("primary_location")
+        .distinct()
+        .count()
+    )
+
+    escalated_count = Signal.objects.filter(
+        status=Signal.Status.ESCALATED,
+    ).count()
+
+    if escalated_count >= 5:
+        threat_level = "Tinggi"
+        threat_level_class = "text-danger"
+    elif escalated_count >= 1:
+        threat_level = "Sedang"
+        threat_level_class = "text-warning"
+    else:
+        threat_level = "Rendah"
+        threat_level_class = "text-success"
+
+    # Tren sinyal 7 hari terakhir -- jumlah sinyal baru per hari.
+    today = timezone.localdate()
+    trend_labels = []
+    trend_values = []
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        trend_labels.append(day.strftime("%d %b"))
+        trend_values.append(
+            Signal.objects.filter(
+                first_detected_at__date=day,
+            ).count()
+        )
+
+    priority_diseases = (
+        active_signals.exclude(primary_disease__isnull=True)
+        .values("primary_disease__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
+    priority_locations = (
+        active_signals.exclude(primary_location__isnull=True)
+        .values("primary_location__name")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+
     context = {
         "page_title": "Dashboard Ringkasan",
         "active_menu": "dashboard",
@@ -116,6 +183,19 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
             "rejected_articles": rejected_articles,
         },
         "latest_articles": latest_articles,
+        "signal_count": signal_count,
+        "priority_wilayah_count": priority_wilayah_count,
+        "threat_level": threat_level,
+        "threat_level_class": threat_level_class,
+        "trend_chart_data": {
+            "labels": trend_labels,
+            "values": trend_values,
+        },
+        "priority_diseases": priority_diseases,
+        "priority_locations": priority_locations,
+        "active_warning_count": EarlyWarning.objects.filter(
+            status=EarlyWarning.Status.ISSUED,
+        ).count(),
     }
 
     return render(
@@ -146,6 +226,40 @@ def _ready_html_sources() -> list[Source]:
 
 
 @require_role(*Roles.ALL)
+def _crawler_summary():
+    """Ringkasan angka Crawler Artikel/Web -- dipakai bersama oleh
+    halaman (render awal) dan endpoint polling `crawler_summary_status`
+    (supaya kartu ringkasan di atas ikut ter-update otomatis, bukan
+    cuma baris tabel di bawahnya).
+    """
+    all_jobs = CollectionJob.objects.filter(
+        job_type=CollectionJob.JobType.CRAWLER,
+    )
+    totals = all_jobs.aggregate(
+        total_created=Sum("total_created"),
+        total_rejected=Sum("total_rejected"),
+        total_failed=Sum("total_failed"),
+    )
+
+    return {
+        "total_jobs": all_jobs.count(),
+        "running_jobs": all_jobs.filter(
+            status=CollectionJob.Status.RUNNING,
+        ).count(),
+        "total_created": totals["total_created"] or 0,
+        "total_rejected": totals["total_rejected"] or 0,
+        "total_failed": totals["total_failed"] or 0,
+    }
+
+
+@require_role(*Roles.ALL)
+def crawler_summary_status(request: HttpRequest) -> HttpResponse:
+    """Endpoint JSON ringan untuk polling kartu ringkasan Crawler
+    Artikel/Web (dipanggil berkala dari JS, terpisah dari
+    `crawler_status` yang fokus ke progres per-job)."""
+    return JsonResponse(_crawler_summary())
+
+
 def crawler_list(request: HttpRequest) -> HttpResponse:
     source_code = request.GET.get(
         "source",
@@ -194,6 +308,27 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         total_failed=Sum("total_failed"),
     )
 
+    # Tren pengambilan artikel 7 hari terakhir -- total artikel baru
+    # per hari dari semua job crawler pada hari itu.
+    from datetime import timedelta
+    from django.utils import timezone
+
+    today = timezone.localdate()
+    trend_labels = []
+    trend_values = []
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        trend_labels.append(day.strftime("%d %b"))
+        day_total = all_jobs.filter(
+            created_at__date=day,
+        ).aggregate(total=Sum("total_created"))["total"]
+        trend_values.append(day_total or 0)
+
+    trend_chart_data = {
+        "labels": trend_labels,
+        "values": trend_values,
+    }
+
     paginator = Paginator(jobs, 25)
     page_obj = paginator.get_page(
         request.GET.get("page")
@@ -212,20 +347,13 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         "active_menu": "crawler-artikel",
         "ready_sources": ready_sources,
         "ready_indonesia_count": ready_indonesia_count,
+        "trend_chart_data": trend_chart_data,
         "filter_sources": Source.objects.order_by("name"),
         "job_statuses": CollectionJob.Status.choices,
         "selected_source": source_code,
         "selected_status": status,
         "page_obj": page_obj,
-        "summary": {
-            "total_jobs": all_jobs.count(),
-            "running_jobs": all_jobs.filter(
-                status=CollectionJob.Status.RUNNING,
-            ).count(),
-            "total_created": totals["total_created"] or 0,
-            "total_rejected": totals["total_rejected"] or 0,
-            "total_failed": totals["total_failed"] or 0,
-        },
+        "summary": _crawler_summary(),
     }
 
     return render(
@@ -3424,3 +3552,811 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
     )
 
     return redirect("dashboard:entity-extraction")
+
+
+def _highlight_article_content(article: Article) -> str:
+    """Bangun HTML konten artikel dengan span penyakit/lokasi/fakta
+    di-highlight warna berbeda, untuk halaman detail ekstraksi
+    per-artikel.
+
+    Catatan jujur soal keterbatasan: penyakit & lokasi punya
+    `mention_text` (span pendek presisi), jadi bisa di-highlight tepat
+    di kata/frasanya. Fakta numerik (jumlah kasus/meninggal/tanggal)
+    TIDAK punya span kata per-kata tersimpan di database -- yang ada
+    cuma `fact_text` (satu kalimat pendukung penuh). Jadi untuk fakta,
+    yang di-highlight adalah kalimat pendukungnya, bukan angkanya
+    secara spesifik.
+    """
+    from django.utils.html import escape
+
+    content = article.content_text or ""
+
+    # (start, end, css_class, label) -- dikumpulkan dari semua sumber,
+    # lalu diurutkan dan di-render tanpa overlap (yang duluan menang).
+    spans = []
+
+    for relation in article.article_diseases.all():
+        mention = relation.mention_text
+        if not mention:
+            continue
+        start = content.lower().find(mention.lower())
+        if start >= 0:
+            spans.append(
+                (start, start + len(mention), "medintel-hl-disease", "Penyakit")
+            )
+
+    for relation in article.article_locations.all():
+        mention = relation.mention_text
+        if not mention:
+            continue
+        start = content.lower().find(mention.lower())
+        if start >= 0:
+            spans.append(
+                (start, start + len(mention), "medintel-hl-location", "Lokasi")
+            )
+
+    for fact in article.facts.all():
+        snippet = (fact.fact_text or "").strip()
+        if not snippet:
+            continue
+        start = content.find(snippet)
+        if start >= 0:
+            spans.append(
+                (start, start + len(snippet), "medintel-hl-fact", "Fakta")
+            )
+
+    spans.sort(key=lambda item: item[0])
+
+    rendered = []
+    cursor = 0
+
+    for start, end, css_class, label in spans:
+        if start < cursor:
+            # Tumpang tindih dengan span sebelumnya -- lewati supaya
+            # tag <mark> tidak bersarang/rusak.
+            continue
+
+        rendered.append(escape(content[cursor:start]))
+        rendered.append(
+            f'<mark class="{css_class}" title="{label}">'
+            f"{escape(content[start:end])}</mark>"
+        )
+        cursor = end
+
+    rendered.append(escape(content[cursor:]))
+
+    return "".join(rendered)
+
+
+@require_role(*Roles.ALL)
+def article_extraction_detail(
+    request: HttpRequest,
+    article_id,
+) -> HttpResponse:
+    """Halaman "Ekstraksi Entitas" per-artikel: teks artikel dengan
+    penyakit/lokasi/fakta di-highlight langsung di konteksnya, plus
+    tabel evidence dan skor keyakinan -- pelengkap dashboard agregat
+    yang sudah ada di /ekstraksi-entitas/.
+    """
+    article = get_object_or_404(
+        Article.objects.select_related("source"),
+        id=article_id,
+    )
+
+    diseases = article.article_diseases.select_related("disease").all()
+    locations = article.article_locations.select_related("location").all()
+    facts = article.facts.select_related("disease", "location").all()
+
+    evidence_rows = []
+
+    for relation in diseases:
+        evidence_rows.append(
+            {
+                "type": "Penyakit",
+                "css_class": "medintel-hl-disease",
+                "value": relation.disease.name,
+                "confidence": relation.confidence_score,
+                "snippet": relation.mention_text,
+            }
+        )
+
+    for relation in locations:
+        evidence_rows.append(
+            {
+                "type": "Lokasi",
+                "css_class": "medintel-hl-location",
+                "value": relation.location.name,
+                "confidence": relation.confidence_score,
+                "snippet": relation.mention_text,
+            }
+        )
+
+    for fact in facts:
+        if fact.case_count is not None:
+            evidence_rows.append(
+                {
+                    "type": "Jumlah Kasus",
+                    "css_class": "medintel-hl-fact",
+                    "value": f"{fact.case_count} kasus",
+                    "confidence": fact.confidence_score,
+                    "snippet": fact.fact_text,
+                }
+            )
+        if fact.death_count is not None:
+            evidence_rows.append(
+                {
+                    "type": "Jumlah Meninggal",
+                    "css_class": "medintel-hl-fact",
+                    "value": f"{fact.death_count} kasus",
+                    "confidence": fact.confidence_score,
+                    "snippet": fact.fact_text,
+                }
+            )
+        if fact.event_date is not None:
+            evidence_rows.append(
+                {
+                    "type": "Tanggal Kejadian",
+                    "css_class": "medintel-hl-fact",
+                    "value": fact.event_date.strftime("%d %b %Y"),
+                    "confidence": fact.confidence_score,
+                    "snippet": fact.fact_text,
+                }
+            )
+
+    confidence_values = [
+        row["confidence"]
+        for row in evidence_rows
+        if row["confidence"] is not None
+    ]
+    overall_confidence = (
+        round(sum(confidence_values) / len(confidence_values) * 100)
+        if confidence_values
+        else None
+    )
+
+    context = {
+        "page_title": f"Ekstraksi Entitas — {article.title}",
+        "active_menu": "entity_extraction",
+        "article": article,
+        "highlighted_content": _highlight_article_content(article),
+        "evidence_rows": evidence_rows,
+        "overall_confidence": overall_confidence,
+        "disease_count": diseases.count(),
+        "location_count": locations.count(),
+        "fact_count": facts.count(),
+    }
+
+    return render(
+        request,
+        "dashboard/article_extraction_detail.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def national_risk_dashboard(request: HttpRequest) -> HttpResponse:
+    """Dashboard skor risiko nasional (agregat lintas wilayah), beda
+    dari Assessment Ancaman (workspace kerja per-sinyal satu-satu) --
+    ini pandangan "burung" dari seluruh assessment yang ada, dengan
+    komposisi faktor risiko berdasarkan BOBOT ASLI formula
+    calculate_priority_score (Impact 30%, Urgency 25%, Geographic
+    Scope 15%, Development Speed 15%, Vulnerability 15%), bukan
+    kategori karangan.
+    """
+    from datetime import timedelta
+    from django.db.models import Avg, Count
+    from django.utils import timezone
+
+    from apps.assessments.models import SignalAssessment
+
+    current_assessments = SignalAssessment.objects.filter(
+        is_current=True,
+    ).select_related(
+        "signal__primary_location",
+        "signal__primary_disease",
+    )
+
+    total_analyzed = SignalAssessment.objects.count()
+
+    national_score = current_assessments.aggregate(
+        avg=Avg("priority_score"),
+    )["avg"]
+    national_score_display = (
+        round(national_score * 100) if national_score is not None else 0
+    )
+
+    HIGH_RISK_THRESHOLD = 0.7
+
+    now = timezone.now()
+    week_ago = now - timedelta(days=7)
+    two_weeks_ago = now - timedelta(days=14)
+
+    this_week_avg = SignalAssessment.objects.filter(
+        assessed_at__gte=week_ago,
+    ).aggregate(avg=Avg("priority_score"))["avg"] or 0
+
+    last_week_avg = SignalAssessment.objects.filter(
+        assessed_at__gte=two_weeks_ago,
+        assessed_at__lt=week_ago,
+    ).aggregate(avg=Avg("priority_score"))["avg"] or 0
+
+    score_trend = round((this_week_avg - last_week_avg) * 100)
+
+    # Peringkat wilayah: rata-rata priority_score per primary_location,
+    # dari assessment yang masih current saja.
+    location_rankings = (
+        current_assessments.exclude(
+            signal__primary_location__isnull=True,
+        )
+        .values("signal__primary_location__name")
+        .annotate(
+            avg_score=Avg("priority_score"),
+            signal_count=Count("id"),
+        )
+        .order_by("-avg_score")[:10]
+    )
+
+    def _level_for_score(score):
+        if score >= HIGH_RISK_THRESHOLD:
+            return "Tinggi", "bg-danger-lt"
+        if score >= 0.4:
+            return "Sedang", "bg-warning-lt"
+        return "Rendah", "bg-success-lt"
+
+    location_rows = []
+    for row in location_rankings:
+        level, badge_class = _level_for_score(row["avg_score"])
+        location_rows.append(
+            {
+                "name": row["signal__primary_location__name"],
+                "score": round(row["avg_score"] * 100),
+                "level": level,
+                "badge_class": badge_class,
+                "signal_count": row["signal_count"],
+            }
+        )
+
+    high_risk_count = sum(
+        1
+        for row in location_rankings
+        if row["avg_score"] >= HIGH_RISK_THRESHOLD
+    )
+
+    # Komposisi faktor risiko -- rata-rata tiap komponen (dinormalisasi
+    # 0-1) DIKALI bobot resminya di calculate_priority_score, supaya
+    # totalnya proporsional terhadap kontribusi asli ke priority_score.
+    component_averages = current_assessments.aggregate(
+        urgency=Avg("urgency_score"),
+        impact=Avg("impact_score"),
+        geographic_scope=Avg("geographic_scope_score"),
+        development_speed=Avg("development_speed_score"),
+        vulnerability=Avg("vulnerability_score"),
+    )
+
+    WEIGHTS = {
+        "urgency": 0.25,
+        "impact": 0.30,
+        "geographic_scope": 0.15,
+        "development_speed": 0.15,
+        "vulnerability": 0.15,
+    }
+    LABELS = {
+        "urgency": "Urgensi",
+        "impact": "Dampak",
+        "geographic_scope": "Cakupan Geografis",
+        "development_speed": "Kecepatan Perkembangan",
+        "vulnerability": "Kerentanan",
+    }
+
+    weighted_contributions = {}
+    for key, avg_1_5 in component_averages.items():
+        normalized = (avg_1_5 or 0) / 5.0
+        weighted_contributions[key] = normalized * WEIGHTS[key]
+
+    total_weighted = sum(weighted_contributions.values()) or 1
+
+    risk_composition = [
+        {
+            "label": LABELS[key],
+            "percentage": round(
+                (value / total_weighted) * 100
+            ),
+        }
+        for key, value in weighted_contributions.items()
+    ]
+
+    # Interpretasi & saran -- narasi TEMPLATE dari data nyata (bukan
+    # teks yang dikarang), supaya tetap bisa dipertanggungjawabkan
+    # sebagai output sistem, bukan AI generatif.
+    top_location = location_rows[0] if location_rows else None
+    dominant_factor = (
+        max(risk_composition, key=lambda item: item["percentage"])
+        if risk_composition
+        else None
+    )
+
+    context = {
+        "page_title": "Skor Risiko Nasional",
+        "active_menu": "assessment",
+        "national_score": national_score_display,
+        "high_risk_count": high_risk_count,
+        "score_trend": score_trend,
+        "total_analyzed": total_analyzed,
+        "location_rows": location_rows,
+        "risk_composition": risk_composition,
+        "top_location": top_location,
+        "dominant_factor": dominant_factor,
+    }
+
+    return render(
+        request,
+        "dashboard/national_risk_dashboard.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def recommendation_regional_dashboard(request: HttpRequest) -> HttpResponse:
+    """Dashboard "Rekomendasi per Wilayah" -- pandangan agregat lintas
+    wilayah + tracking distribusi ke instansi tujuan (target_unit),
+    pelengkap workspace Rekomendasi Intelijen yang sifatnya kerja
+    satu-per-satu.
+    """
+    from django.db.models import Count, Max
+
+    from apps.assessments.models import IntelligenceRecommendation
+
+    current_recs = IntelligenceRecommendation.objects.filter(
+        is_current=True,
+    ).select_related(
+        "signal__primary_location",
+        "signal__primary_disease",
+    )
+
+    active_statuses = [
+        IntelligenceRecommendation.Status.APPROVED,
+        IntelligenceRecommendation.Status.IN_PROGRESS,
+    ]
+
+    summary = {
+        "active_count": current_recs.filter(
+            status__in=active_statuses,
+        ).count(),
+        "high_priority_count": current_recs.filter(
+            urgency__in=[
+                IntelligenceRecommendation.Urgency.URGENT,
+                IntelligenceRecommendation.Urgency.IMMEDIATE,
+            ],
+        ).count(),
+        "in_progress_count": current_recs.filter(
+            status=IntelligenceRecommendation.Status.IN_PROGRESS,
+        ).count(),
+        "target_unit_count": current_recs.exclude(
+            target_unit="",
+        ).values("target_unit").distinct().count(),
+    }
+
+    priority_list = current_recs.filter(
+        urgency__in=[
+            IntelligenceRecommendation.Urgency.URGENT,
+            IntelligenceRecommendation.Urgency.IMMEDIATE,
+        ],
+    ).order_by("-created_at")[:10]
+
+    # Kelompokkan per wilayah -- ambil beberapa rekomendasi teratas
+    # per wilayah untuk ditampilkan sebagai kartu ringkas.
+    regional_groups = {}
+    for rec in current_recs.exclude(
+        signal__primary_location__isnull=True,
+    ).order_by("-created_at"):
+        location_name = rec.signal.primary_location.name
+        if location_name not in regional_groups:
+            regional_groups[location_name] = {
+                "location": location_name,
+                "disease": (
+                    rec.signal.primary_disease.name
+                    if rec.signal.primary_disease
+                    else None
+                ),
+                "issue": rec.situation_summary,
+                "recommendation": rec.recommended_action,
+                "urgency": rec.get_urgency_display(),
+                "urgency_value": rec.urgency,
+            }
+
+    URGENCY_ORDER = {"immediate": 0, "urgent": 1, "priority": 2, "routine": 3}
+    regional_cards = sorted(
+        regional_groups.values(),
+        key=lambda item: URGENCY_ORDER.get(item["urgency_value"], 9),
+    )[:6]
+
+    # Tindak Lanjut & Distribusi -- agregasi per instansi tujuan
+    # (target_unit), status TERBARU dan kapan terakhir diperbarui.
+    distribution_rows = (
+        current_recs.exclude(target_unit="")
+        .values("target_unit")
+        .annotate(
+            count=Count("id"),
+            last_updated=Max("updated_at"),
+        )
+        .order_by("-last_updated")[:10]
+    )
+
+    context = {
+        "page_title": "Rekomendasi per Wilayah",
+        "active_menu": "recommendations",
+        "summary": summary,
+        "priority_list": priority_list,
+        "regional_cards": regional_cards,
+        "distribution_rows": distribution_rows,
+    }
+
+    return render(
+        request,
+        "dashboard/recommendation_regional_dashboard.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def report_document_list(request: HttpRequest) -> HttpResponse:
+    """Daftar laporan resmi format nota dinas (Kepada/Dari/Tembusan/
+    Hal/Nilai + Indikasi/Analisis/Dampak/Upaya/Saran Tindak).
+    """
+    from apps.assessments.models import IntelligenceReport
+
+    reports = IntelligenceReport.objects.select_related(
+        "created_by",
+    ).prefetch_related("sections")
+
+    status_filter = request.GET.get("status", "").strip()
+    valid_statuses = {
+        value for value, _label in IntelligenceReport.Status.choices
+    }
+    if status_filter in valid_statuses:
+        reports = reports.filter(status=status_filter)
+
+    paginator = Paginator(reports, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    context = {
+        "page_title": "Laporan Dokumen",
+        "active_menu": "reports",
+        "page_obj": page_obj,
+        "status_choices": IntelligenceReport.Status.choices,
+        "selected_status": status_filter,
+    }
+
+    return render(
+        request,
+        "dashboard/report_document_list.html",
+        context,
+    )
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST, Roles.REVIEWER)
+def report_document_create(request: HttpRequest) -> HttpResponse:
+    """Buat laporan baru: pilih penyakit yang mau dibahas, sistem
+    langsung bangkitkan draft tiap poin dari data yang ada (BUKAN
+    hasil AI generatif -- pengisian template dari data terstruktur,
+    lihat apps/assessments/services/report_generation.py).
+    """
+    from apps.assessments.models import (
+        IntelligenceReport,
+        IntelligenceReportSection,
+    )
+    from apps.assessments.services.report_generation import (
+        generate_section_draft,
+    )
+
+    if request.method == "POST":
+        disease_ids = request.POST.getlist("diseases")
+
+        if not disease_ids:
+            messages.error(
+                request,
+                "Pilih minimal satu penyakit untuk dibahas di laporan.",
+            )
+            return redirect("dashboard:report-document-create")
+
+        report_date = (
+            _parse_date_or_none(request.POST.get("report_date", ""))
+            or timezone.localdate()
+        )
+
+        report = IntelligenceReport.objects.create(
+            kepada=request.POST.get("kepada", "Yth. Pimpinan").strip(),
+            dari=request.POST.get("dari", "").strip(),
+            tembusan=request.POST.get("tembusan", "").strip(),
+            nilai=request.POST.get("nilai", "").strip(),
+            report_date=report_date,
+            created_by=(
+                request.user if request.user.is_authenticated else None
+            ),
+        )
+
+        diseases = Disease.objects.filter(id__in=disease_ids)
+
+        for index, disease in enumerate(diseases):
+            draft = generate_section_draft(disease=disease)
+
+            section = IntelligenceReportSection.objects.create(
+                report=report,
+                order=index,
+                disease=disease,
+                indikasi_text=draft.indikasi_text,
+                analisis_text=draft.analisis_text,
+                dampak_text=draft.dampak_text,
+                upaya_text=draft.upaya_text,
+                saran_tindak_text=draft.saran_tindak_text,
+            )
+            if draft.source_article_ids:
+                section.source_articles.set(draft.source_article_ids)
+
+        messages.success(
+            request,
+            (
+                "Draft laporan berhasil dibangkitkan. Tinjau dan "
+                "sunting tiap bagian sebelum difinalkan."
+            ),
+        )
+
+        return redirect(
+            "dashboard:report-document-edit",
+            report_id=report.id,
+        )
+
+    diseases = Disease.objects.filter(
+        is_active=True,
+    ).order_by("name")
+
+    context = {
+        "page_title": "Buat Laporan Baru",
+        "active_menu": "reports",
+        "diseases": diseases,
+        "default_date": timezone.localdate(),
+    }
+
+    return render(
+        request,
+        "dashboard/report_document_create.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def report_document_edit(
+    request: HttpRequest,
+    report_id,
+) -> HttpResponse:
+    """Tinjau & sunting draft laporan per bagian, ubah status
+    (Draft/Final/Didistribusikan/Arsip)."""
+    from apps.assessments.models import IntelligenceReport
+
+    report = get_object_or_404(
+        IntelligenceReport.objects.prefetch_related(
+            "sections__disease",
+            "sections__source_articles__source",
+        ),
+        id=report_id,
+    )
+
+    if request.method == "POST":
+        if not has_role(request.user, *Roles.CONTRIBUTORS):
+            raise PermissionDenied(
+                "Peran Viewer tidak dapat mengubah laporan."
+            )
+
+        report.kepada = request.POST.get("kepada", report.kepada).strip()
+        report.dari = request.POST.get("dari", "").strip()
+        report.tembusan = request.POST.get("tembusan", "").strip()
+        report.hal = request.POST.get("hal", "").strip()
+        report.nilai = request.POST.get("nilai", "").strip()
+        report.signature_block = request.POST.get(
+            "signature_block", ""
+        ).strip()
+
+        new_status = request.POST.get("status", "").strip()
+        valid_statuses = {
+            value for value, _label in IntelligenceReport.Status.choices
+        }
+        if new_status in valid_statuses:
+            report.status = new_status
+
+        report.save()
+
+        for section in report.sections.all():
+            prefix = f"section_{section.id}_"
+            section.indikasi_text = request.POST.get(
+                f"{prefix}indikasi", section.indikasi_text
+            )
+            section.analisis_text = request.POST.get(
+                f"{prefix}analisis", section.analisis_text
+            )
+            section.dampak_text = request.POST.get(
+                f"{prefix}dampak", section.dampak_text
+            )
+            section.upaya_text = request.POST.get(
+                f"{prefix}upaya", section.upaya_text
+            )
+            section.saran_tindak_text = request.POST.get(
+                f"{prefix}saran_tindak", section.saran_tindak_text
+            )
+            section.save()
+
+        messages.success(request, "Laporan berhasil disimpan.")
+
+        return redirect(
+            "dashboard:report-document-edit",
+            report_id=report.id,
+        )
+
+    context = {
+        "page_title": f"Edit Laporan — {report.report_date}",
+        "active_menu": "reports",
+        "report": report,
+        "status_choices": IntelligenceReport.Status.choices,
+    }
+
+    return render(
+        request,
+        "dashboard/report_document_edit.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def report_document_export_pdf(
+    request: HttpRequest,
+    report_id,
+) -> HttpResponse:
+    """Ekspor laporan ke PDF format nota dinas -- header Kepada/Dari/
+    Tembusan/Hal/Nilai, lalu bagian I. INDIKASI s.d. V. SARAN TINDAK
+    dengan sub-poin alfabet per topik, dan footer tanda tangan.
+    """
+    from io import BytesIO
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+    from reportlab.lib import colors
+
+    from apps.assessments.models import IntelligenceReport
+
+    report = get_object_or_404(
+        IntelligenceReport.objects.prefetch_related(
+            "sections__disease",
+        ),
+        id=report_id,
+    )
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+        leftMargin=2.5 * cm,
+        rightMargin=2.5 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    body_style = ParagraphStyle(
+        "MedintelBody",
+        parent=styles["Normal"],
+        fontName="Times-Roman",
+        fontSize=11,
+        leading=16,
+        spaceAfter=8,
+        alignment=4,  # justify
+    )
+    header_label_style = ParagraphStyle(
+        "MedintelHeaderLabel",
+        parent=styles["Normal"],
+        fontName="Times-Italic",
+        fontSize=11,
+        leading=15,
+    )
+    section_heading_style = ParagraphStyle(
+        "MedintelSectionHeading",
+        parent=styles["Normal"],
+        fontName="Times-Bold",
+        fontSize=11,
+        leading=15,
+        spaceBefore=10,
+        spaceAfter=6,
+    )
+    point_label_style = ParagraphStyle(
+        "MedintelPointLabel",
+        parent=body_style,
+        fontName="Times-Bold",
+    )
+
+    story = []
+
+    header_rows = [
+        ["Kepada", f": {report.kepada}"],
+        ["Dari", f": {report.dari}"],
+    ]
+    if report.tembusan:
+        header_rows.append(["Tembusan", f": {report.tembusan}"])
+    header_rows.append(
+        ["Hal", f": {report.hal or '-'}"]
+    )
+    header_rows.append(["Nilai", f": {report.nilai or '-'}"])
+
+    header_table = Table(
+        [
+            [
+                Paragraph(f"<i>{label}</i>", header_label_style),
+                Paragraph(f"<i>{value}</i>", header_label_style),
+            ]
+            for label, value in header_rows
+        ],
+        colWidths=[3 * cm, 13.5 * cm],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ]
+        )
+    )
+    story.append(header_table)
+    story.append(Spacer(1, 0.6 * cm))
+
+    sections = list(report.sections.all())
+
+    def add_section(roman: str, heading: str, field_name: str):
+        story.append(Paragraph(f"{roman}. {heading}", section_heading_style))
+        for section in sections:
+            label = section.disease.name if section.disease else "-"
+            text = getattr(section, field_name) or "-"
+            story.append(
+                Paragraph(
+                    f"<b>{section.letter}. {label}</b>"
+                    if field_name == "indikasi_text"
+                    else f"<b>{section.letter}.</b>",
+                    point_label_style,
+                )
+            )
+            story.append(Paragraph(text.replace("\n", "<br/>"), body_style))
+
+    add_section("I", "INDIKASI", "indikasi_text")
+    add_section("II", "ANALISIS", "analisis_text")
+    add_section("III", "DAMPAK", "dampak_text")
+    add_section("IV", "UPAYA", "upaya_text")
+    add_section("V", "SARAN TINDAK", "saran_tindak_text")
+
+    if report.signature_block:
+        story.append(Spacer(1, 1 * cm))
+        story.append(
+            Paragraph(
+                report.signature_block,
+                ParagraphStyle(
+                    "MedintelSignature",
+                    parent=body_style,
+                    alignment=2,  # right
+                ),
+            )
+        )
+
+    doc.build(story)
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response["Content-Disposition"] = (
+        f'attachment; filename="laporan_{report.report_date}.pdf"'
+    )
+    return response

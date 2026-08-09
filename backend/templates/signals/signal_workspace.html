@@ -25,27 +25,39 @@
 
 <div class="row row-cards mb-3">
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Kandidat Artikel</div>
-            <div class="h1 mb-0">{{ summary.candidates }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l11 0"></path><path d="M9 12l11 0"></path><path d="M9 18l11 0"></path><path d="M5 6l0 .01"></path><path d="M5 12l0 .01"></path><path d="M5 18l0 .01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Kandidat Artikel</div>
+                <div class="h1 mb-0">{{ summary.candidates }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Perlu Review</div>
-            <div class="h1 mb-0 text-warning">{{ summary.needs_review }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Perlu Review</div>
+                <div class="h1 mb-0 text-warning">{{ summary.needs_review }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Tervalidasi</div>
-            <div class="h1 mb-0 text-success">{{ summary.validated }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-success-lt text-success"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Tervalidasi</div>
+                <div class="h1 mb-0 text-success">{{ summary.validated }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Dieskalasi</div>
-            <div class="h1 mb-0 text-danger">{{ summary.escalated }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6 -6l4 4l8 -8"></path><path d="M14 7l7 0l0 7"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Dieskalasi</div>
+                <div class="h1 mb-0 text-danger">{{ summary.escalated }}</div>
+            </div>
         </div></div>
     </div>
 </div>

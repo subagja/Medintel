@@ -84,6 +84,11 @@ urlpatterns = [
         name="crawler-status",
     ),
     path(
+        "crawler-artikel/ringkasan-status/",
+        views.crawler_summary_status,
+        name="crawler-summary-status",
+    ),
+    path(
         "crawler-artikel/job/<uuid:job_id>/",
         views.crawler_job_detail,
         name="crawler-job-detail",
@@ -198,5 +203,40 @@ urlpatterns = [
         "ekstraksi-entitas/jalankan/",
         views.entity_extraction_run,
         name="entity-extraction-run",
+    ),
+    path(
+        "ekstraksi-entitas/<uuid:article_id>/",
+        views.article_extraction_detail,
+        name="article-extraction-detail",
+    ),
+    path(
+        "assessment-ancaman/skor-nasional/",
+        views.national_risk_dashboard,
+        name="national-risk-dashboard",
+    ),
+    path(
+        "rekomendasi/per-wilayah/",
+        views.recommendation_regional_dashboard,
+        name="recommendation-regional-dashboard",
+    ),
+    path(
+        "laporan-dokumen/",
+        views.report_document_list,
+        name="report-document-list",
+    ),
+    path(
+        "laporan-dokumen/buat/",
+        views.report_document_create,
+        name="report-document-create",
+    ),
+    path(
+        "laporan-dokumen/<uuid:report_id>/",
+        views.report_document_edit,
+        name="report-document-edit",
+    ),
+    path(
+        "laporan-dokumen/<uuid:report_id>/ekspor-pdf/",
+        views.report_document_export_pdf,
+        name="report-document-export-pdf",
     ),
 ]

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 
 {% block title %}
 {{ source.name }} | MEDINTEL OSINT
@@ -25,12 +26,14 @@
         </div>
 
         <div class="col-auto d-flex gap-2">
+		    {% if request.user|has_role:"Admin" %}
 		    <a
 		        href="{% url 'dashboard:source-update' source.id %}"
 		        class="btn btn-primary"
 		    >
 		        Edit Sumber
 		    </a>
+		    {% endif %}
 
 		    <a
 		        href="{% url 'dashboard:source-list' %}"
@@ -260,12 +263,14 @@
                 </h3>
 
                 <div class="card-actions">
+                    {% if request.user|has_role:"Admin" %}
                     <a
                         href="{% url 'dashboard:source-seed-create' source.id %}"
                         class="btn btn-sm btn-primary"
                     >
                         Tambah URL Awal
                     </a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -312,12 +317,14 @@
                                 </td>
 
                                 <td class="text-end">
+                                    {% if request.user|has_role:"Admin" %}
                                     <a
                                         href="{% url 'dashboard:source-seed-update' source.id seed.id %}"
                                         class="btn btn-sm btn-outline-primary"
                                     >
                                         Edit
                                     </a>
+                                    {% endif %}
                                 </td>
                             </tr>
 
@@ -348,12 +355,14 @@
                 </h3>
 
                 <div class="card-actions">
+                    {% if request.user|has_role:"Admin" %}
                     <a
                         href="{% url 'dashboard:source-pattern-create' source.id %}"
                         class="btn btn-sm btn-primary"
                     >
                         Tambah Pola URL
                     </a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -408,12 +417,14 @@
                                 </td>
 
                                 <td class="text-end">
+                                    {% if request.user|has_role:"Admin" %}
                                     <a
                                         href="{% url 'dashboard:source-pattern-update' source.id pattern.id %}"
                                         class="btn btn-sm btn-outline-primary"
                                     >
                                         Edit
                                     </a>
+                                    {% endif %}
                                 </td>
                             </tr>
 

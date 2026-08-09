@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Rekomendasi per Wilayah | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Analisis dan Produk Intelijen</div>
+            <h2 class="page-title">Rekomendasi per Wilayah</h2>
+            <div class="text-secondary mt-1">
+                Pandangan agregat rekomendasi intelijen lintas wilayah
+                dan status distribusinya ke instansi tujuan.
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:intelligence-recommendation' %}" class="btn btn-outline-secondary btn-sm">
+                Buka Workspace Rekomendasi
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path><path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path><path d="M9 14l2 2l4 -4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Rekomendasi Aktif</div>
+                <div class="h1 mb-0">{{ summary.active_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Prioritas Tinggi</div>
+                <div class="h1 mb-0 text-danger">{{ summary.high_priority_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Tindak Lanjut Berjalan</div>
+                <div class="h1 mb-0 text-warning">{{ summary.in_progress_count }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-azure-lt text-azure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l18 0"></path><path d="M9 8l1 0"></path><path d="M9 12l1 0"></path><path d="M9 16l1 0"></path><path d="M14 8l1 0"></path><path d="M14 12l1 0"></path><path d="M14 16l1 0"></path><path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Instansi Tujuan</div>
+                <div class="h1 mb-0 text-azure">{{ summary.target_unit_count }}</div>
+            </div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Daftar Rekomendasi Prioritas</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-sm card-table">
+                    <thead>
+                        <tr>
+                            <th>Kategori</th>
+                            <th>Wilayah</th>
+                            <th>Prioritas</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rec in priority_list %}
+                            <tr>
+                                <td>{{ rec.get_action_category_display }}</td>
+                                <td class="text-secondary small">{{ rec.signal.primary_location.name|default:"-" }}</td>
+                                <td><span class="badge bg-danger-lt">{{ rec.get_urgency_display }}</span></td>
+                                <td><span class="badge bg-secondary-lt">{{ rec.get_status_display }}</span></td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4" class="text-center text-secondary py-4">Tidak ada rekomendasi prioritas tinggi.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Tindak Lanjut &amp; Distribusi</h3></div>
+            <div class="table-responsive">
+                <table class="table table-vcenter table-sm card-table">
+                    <thead>
+                        <tr>
+                            <th>Instansi Tujuan</th>
+                            <th class="text-center">Jumlah</th>
+                            <th>Terakhir Diperbarui</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in distribution_rows %}
+                            <tr>
+                                <td>{{ row.target_unit }}</td>
+                                <td class="text-center">{{ row.count }}</td>
+                                <td class="text-secondary small">{{ row.last_updated|date:"d M Y H:i" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="3" class="text-center text-secondary py-4">Belum ada rekomendasi dengan instansi tujuan.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Rekomendasi per Wilayah</h3></div>
+    <div class="card-body">
+        <div class="row row-cards">
+            {% for card in regional_cards %}
+                <div class="col-md-6">
+                    <div class="card card-sm">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="fw-semibold">{{ card.location }}</div>
+                                <span class="badge bg-danger-lt">{{ card.urgency }}</span>
+                            </div>
+                            {% if card.disease %}
+                                <div class="text-secondary small mb-1">Isu utama: {{ card.disease }}</div>
+                            {% endif %}
+                            <div class="small">{{ card.recommendation|truncatewords:25 }}</div>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12 text-center text-secondary py-5">
+                    Belum ada rekomendasi dengan wilayah tercatat.
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

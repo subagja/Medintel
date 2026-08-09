@@ -108,6 +108,26 @@ def disease_priority_workspace(request: HttpRequest) -> HttpResponse:
         ),
     }
 
+    trend_chart_data = None
+    if selected_item:
+        from apps.signals.models import Signal
+
+        trend_labels = []
+        trend_values = []
+        for offset in range(6, -1, -1):
+            day = as_of.date() - timedelta(days=offset)
+            trend_labels.append(day.strftime("%d %b"))
+            trend_values.append(
+                Signal.objects.filter(
+                    primary_disease_id=selected_item["id"],
+                    first_detected_at__date=day,
+                ).count()
+            )
+        trend_chart_data = {
+            "labels": trend_labels,
+            "values": trend_values,
+        }
+
     return render(
         request,
         "assessments/disease_priority_workspace.html",
@@ -125,5 +145,6 @@ def disease_priority_workspace(request: HttpRequest) -> HttpResponse:
             "as_of": as_of,
             "current_window_start": as_of - timedelta(days=7),
             "previous_window_start": as_of - timedelta(days=14),
+            "trend_chart_data": trend_chart_data,
         },
     )

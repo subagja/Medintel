@@ -1207,3 +1207,159 @@ class InformationGap(models.Model):
             f"{self.assessment.signal.code} — "
             f"{self.get_gap_type_display()}"
         )
+
+
+class IntelligenceReport(models.Model):
+    """Laporan resmi format nota dinas (Kepada/Dari/Tembusan/Hal/Nilai
+    + bagian Indikasi/Analisis/Dampak/Upaya/Saran Tindak), dengan
+    beberapa poin (A, B, dst) yang masing-masing bisa dibangkitkan
+    draft awalnya dari artikel + assessment + rekomendasi yang sudah
+    ada, lalu diedit manual oleh analis sebelum difinalkan.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        FINAL = "final", "Final"
+        DISTRIBUTED = "distributed", "Didistribusikan"
+        ARCHIVED = "archived", "Arsip"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    kepada = models.CharField(
+        max_length=200,
+        default="Yth. Pimpinan",
+    )
+
+    dari = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    tembusan = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    hal = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text=(
+            "Kosongkan untuk dibuat otomatis dari tanggal laporan."
+        ),
+    )
+
+    nilai = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Kode klasifikasi/nilai informasi, mis. C3.",
+    )
+
+    report_date = models.DateField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+
+    signature_block = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="intelligence_reports",
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-report_date", "-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.hal or 'Laporan'} — {self.report_date}"
+
+
+class IntelligenceReportSection(models.Model):
+    """Satu poin (A, B, C, ...) di dalam IntelligenceReport, biasanya
+    mewakili satu topik/penyakit yang dibahas di laporan itu.
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    report = models.ForeignKey(
+        IntelligenceReport,
+        on_delete=models.CASCADE,
+        related_name="sections",
+    )
+
+    order = models.PositiveSmallIntegerField(
+        default=0,
+    )
+
+    disease = models.ForeignKey(
+        "entities.Disease",
+        on_delete=models.SET_NULL,
+        related_name="report_sections",
+        null=True,
+        blank=True,
+    )
+
+    signal = models.ForeignKey(
+        "signals.Signal",
+        on_delete=models.SET_NULL,
+        related_name="report_sections",
+        null=True,
+        blank=True,
+    )
+
+    source_articles = models.ManyToManyField(
+        "articles.Article",
+        related_name="report_sections",
+        blank=True,
+    )
+
+    indikasi_text = models.TextField(blank=True)
+    analisis_text = models.TextField(blank=True)
+    dampak_text = models.TextField(blank=True)
+    upaya_text = models.TextField(blank=True)
+    saran_tindak_text = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["report", "order"]
+
+    def __str__(self) -> str:
+        return f"{self.report} — poin {self.order}"
+
+    @property
+    def letter(self) -> str:
+        """A, B, C, ... berdasarkan `order` (0-indexed)."""
+        return chr(65 + self.order) if self.order < 26 else str(self.order)

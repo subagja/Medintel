@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Buat Laporan Baru | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                <a href="{% url 'dashboard:report-document-list' %}">Laporan Dokumen</a>
+            </div>
+            <h2 class="page-title">Buat Laporan Baru</h2>
+            <div class="text-secondary mt-1">
+                Pilih penyakit yang mau dibahas -- sistem akan
+                membangkitkan draft awal tiap bagian dari artikel dan
+                assessment yang sudah ada. Draft ini WAJIB ditinjau
+                dan disunting sebelum difinalkan.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    Draft yang dibangkitkan bersifat template dari data terstruktur
+    (bukan hasil AI generatif), jadi kualitas kalimatnya masih kasar.
+    Kamu akan bisa menyunting tiap bagian setelah draft terbentuk.
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Kop Laporan</h3></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Kepada</label>
+                    <input type="text" name="kepada" class="form-control" value="Yth. Pimpinan" placeholder="mis. Yth. Deputi - V">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Dari</label>
+                    <input type="text" name="dari" class="form-control" placeholder="mis. Direktur - 53">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Tembusan</label>
+                    <input type="text" name="tembusan" class="form-control" placeholder="mis. Yth. Direktur - 51">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Nilai</label>
+                    <input type="text" name="nilai" class="form-control" placeholder="mis. C3" maxlength="10">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tanggal Laporan</label>
+                    <input type="date" name="report_date" class="form-control" value="{{ default_date|date:'Y-m-d' }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <h3 class="card-title">Pilih Penyakit yang Dibahas</h3>
+            <div class="text-secondary small">Tiap penyakit jadi satu poin (A, B, C, ...) di laporan.</div>
+        </div>
+        <div class="card-body">
+            <div class="row g-2">
+                {% for disease in diseases %}
+                    <div class="col-md-4">
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" name="diseases" value="{{ disease.id }}">
+                            <span class="form-check-label">{{ disease.name }}</span>
+                        </label>
+                    </div>
+                {% empty %}
+                    <div class="text-secondary">Belum ada penyakit di master data.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Bangkitkan Draft Laporan</button>
+</form>
+{% endblock %}

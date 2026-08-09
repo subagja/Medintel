@@ -30,27 +30,13 @@ Dashboard | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl-3">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">
-                    Total Artikel
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-blue-lt text-blue">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path></svg>
                 </div>
-
-                <div class="h1 mb-0">
-                    {{ summary.total_articles|default:0 }}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-sm-6 col-xl-3">
-        <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">
-                    Perlu Tinjau
-                </div>
-
-                <div class="h1 text-warning mb-0">
-                    {{ summary.new_articles|default:0 }}
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Total Artikel</div>
+                    <div class="h1 mb-0">{{ summary.total_articles|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -58,13 +44,13 @@ Dashboard | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl-3">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">
-                    Tervalidasi
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-warning-lt text-warning">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg>
                 </div>
-
-                <div class="h1 text-success mb-0">
-                    {{ summary.validated_articles|default:0 }}
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Perlu Tinjau</div>
+                    <div class="h1 text-warning mb-0">{{ summary.new_articles|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -72,13 +58,27 @@ Dashboard | MEDINTEL OSINT
 
     <div class="col-sm-6 col-xl-3">
         <div class="card">
-            <div class="card-body">
-                <div class="text-secondary">
-                    Tidak Relevan
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-success-lt text-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"></path></svg>
                 </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Tervalidasi</div>
+                    <div class="h1 text-success mb-0">{{ summary.validated_articles|default:0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                <div class="h1 text-danger mb-0">
-                    {{ summary.rejected_articles|default:0 }}
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-danger-lt text-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"></path><path d="M6 6l12 12"></path></svg>
+                </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Tidak Relevan</div>
+                    <div class="h1 text-danger mb-0">{{ summary.rejected_articles|default:0 }}</div>
                 </div>
             </div>
         </div>
@@ -86,6 +86,113 @@ Dashboard | MEDINTEL OSINT
 
 </div>
 
+<div class="row row-deck row-cards mb-3">
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-purple-lt text-purple">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8l4 -16l3 8h4"></path></svg>
+                </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Sinyal Terdeteksi</div>
+                    <div class="h1 mb-0">{{ signal_count|default:0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-azure-lt text-azure">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg>
+                </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Wilayah Prioritas</div>
+                    <div class="h1 mb-0 text-azure">{{ priority_wilayah_count|default:0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-danger-lt text-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"></path><path d="M9 17v1a3 3 0 0 0 6 0v-1"></path></svg>
+                </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Early Warning Aktif</div>
+                    <div class="h1 mb-0 text-danger">{{ active_warning_count|default:0 }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="card">
+            <div class="card-body medintel-stat-card">
+                <div class="medintel-stat-icon bg-red-lt text-red">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path></svg>
+                </div>
+                <div class="medintel-stat-body">
+                    <div class="text-secondary">Level Ancaman</div>
+                    <div class="h1 mb-0 {{ threat_level_class }}">{{ threat_level }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Tren Sinyal (7 Hari Terakhir)</h3></div>
+            <div class="card-body">
+                <canvas id="signal-trend-chart" height="90"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="row row-cards">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Penyakit Prioritas (Top 5)</h3></div>
+                    <div class="list-group list-group-flush">
+                        {% for row in priority_diseases %}
+                            <div class="list-group-item d-flex justify-content-between py-1">
+                                <span class="small">{{ row.primary_disease__name }}</span>
+                                <span class="badge bg-teal-lt">{{ row.count }}</span>
+                            </div>
+                        {% empty %}
+                            <div class="list-group-item text-secondary small">Belum ada data.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header"><h3 class="card-title">Wilayah Prioritas (Top 5)</h3></div>
+                    <div class="list-group list-group-flush">
+                        {% for row in priority_locations %}
+                            <div class="list-group-item d-flex justify-content-between py-1">
+                                <span class="small">{{ row.primary_location__name }}</span>
+                                <span class="badge bg-blue-lt">{{ row.count }}</span>
+                            </div>
+                        {% empty %}
+                            <div class="list-group-item text-secondary small">Belum ada data.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ trend_chart_data|json_script:"dashboard-trend-data" }}
 
 <div class="card">
     <div class="card-header">
@@ -206,4 +313,45 @@ Dashboard | MEDINTEL OSINT
     </div>
 </div>
 
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    var canvas = document.getElementById("signal-trend-chart");
+    if (!canvas) {
+        return;
+    }
+
+    var dataEl = document.getElementById("dashboard-trend-data");
+    var trendData = dataEl ? JSON.parse(dataEl.textContent) : { labels: [], values: [] };
+
+    new Chart(canvas, {
+        type: "line",
+        data: {
+            labels: trendData.labels,
+            datasets: [
+                {
+                    label: "Sinyal Baru",
+                    data: trendData.values,
+                    borderColor: "#1a56db",
+                    backgroundColor: "rgba(26,86,219,0.1)",
+                    tension: 0.3,
+                    fill: true,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } },
+            },
+        },
+    });
+})();
+</script>
 {% endblock %}

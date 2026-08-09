@@ -27,37 +27,54 @@
 
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Total Proses</div>
-            <div class="h1 mb-0">{{ summary.total_jobs|default:0 }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l11 0"></path><path d="M9 12l11 0"></path><path d="M9 18l11 0"></path><path d="M5 6l0 .01"></path><path d="M5 12l0 .01"></path><path d="M5 18l0 .01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Total Proses</div>
+                <div class="h1 mb-0" id="summary-total-jobs">{{ summary.total_jobs|default:0 }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Sedang Berjalan</div>
-            <div class="h1 text-primary mb-0">{{ summary.running_jobs|default:0 }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-primary-lt text-primary"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Sedang Berjalan</div>
+                <div class="h1 text-primary mb-0" id="summary-running-jobs">{{ summary.running_jobs|default:0 }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Artikel Baru</div>
-            <div class="h1 text-success mb-0">{{ summary.total_created|default:0 }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-success-lt text-success"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path><path d="M12 11v4"></path><path d="M10 13h4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Artikel Baru</div>
+                <div class="h1 text-success mb-0" id="summary-total-created">{{ summary.total_created|default:0 }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Kandidat Ditolak</div>
-            <div class="h1 text-warning mb-0">{{ summary.total_rejected|default:0 }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M10 10l4 4m0 -4l-4 4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Kandidat Ditolak</div>
+                <div class="h1 text-warning mb-0" id="summary-total-rejected">{{ summary.total_rejected|default:0 }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-xl">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Gagal</div>
-            <div class="h1 text-danger mb-0">{{ summary.total_failed|default:0 }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Gagal</div>
+                <div class="h1 text-danger mb-0" id="summary-total-failed">{{ summary.total_failed|default:0 }}</div>
+            </div>
         </div></div>
     </div>
 </div>
 
+{% load role_tags %}
+{% if request.user|has_role:"Admin,Analyst" %}
 <div class="card mb-3">
     <div class="card-header">
         <div>
@@ -125,6 +142,16 @@
     </form>
     </div>
 </div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Tren Pengambilan Artikel (7 Hari)</h3></div>
+    <div class="card-body">
+        <canvas id="crawler-trend-chart" height="80"></canvas>
+    </div>
+</div>
+
+{{ trend_chart_data|json_script:"crawler-trend-data" }}
 
 <div class="card">
     <div class="card-header">
@@ -200,12 +227,12 @@
                         <td class="text-center text-warning js-total-rejected">{{ job.total_rejected }}</td>
                         <td class="text-center text-danger js-total-failed">{{ job.total_failed }}</td>
                         <td class="text-end js-detail-cell">
-                            {% if job.status == "running" or job.status == "pending" %}
+                            {% if job.status == "running" or job.status == "pending" %}{% if request.user|has_role:"Admin,Analyst" %}
                                 <form method="post" action="{% url 'dashboard:crawler-job-cancel' job.id %}" class="d-inline" onsubmit="return confirm('Batalkan job ini?');">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-sm btn-outline-danger">Batalkan</button>
                                 </form>
-                            {% endif %}
+                            {% endif %}{% endif %}
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
                         </td>
                     </tr>
@@ -240,6 +267,41 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    "use strict";
+
+    var canvas = document.getElementById("crawler-trend-chart");
+    if (!canvas) {
+        return;
+    }
+
+    var dataEl = document.getElementById("crawler-trend-data");
+    var trendData = dataEl ? JSON.parse(dataEl.textContent) : { labels: [], values: [] };
+
+    new Chart(canvas, {
+        type: "bar",
+        data: {
+            labels: trendData.labels,
+            datasets: [
+                {
+                    label: "Artikel Diambil",
+                    data: trendData.values,
+                    backgroundColor: "#1a56db",
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } },
+            },
+        },
+    });
+})();
+</script>
 <script>
 (function () {
     "use strict";
@@ -333,6 +395,36 @@
                     );
                     if (row) {
                         updateRow(row, job);
+                    }
+                });
+            })
+            .catch(function () {
+                // Diamkan saja; polling berikutnya akan mencoba lagi.
+            });
+    }
+
+    function pollSummary() {
+        // Update kartu ringkasan di atas (Total Proses, Sedang
+        // Berjalan, dst) -- terpisah dari pollRunningJobs supaya
+        // tetap jalan reguler walau sedang tidak ada job yang
+        // berjalan (mis. setelah job baru saja dibatalkan/selesai).
+        fetch(
+            "{% url 'dashboard:crawler-summary-status' %}",
+            { headers: { "X-Requested-With": "XMLHttpRequest" } }
+        )
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                var mapping = {
+                    "summary-total-jobs": data.total_jobs,
+                    "summary-running-jobs": data.running_jobs,
+                    "summary-total-created": data.total_created,
+                    "summary-total-rejected": data.total_rejected,
+                    "summary-total-failed": data.total_failed,
+                };
+                Object.keys(mapping).forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) {
+                        el.textContent = mapping[id];
                     }
                 });
             })
@@ -486,6 +578,7 @@
     // yang berstatus running (termasuk baris placeholder yang baru
     // dibuat via AJAX setelah halaman ini pertama kali dimuat).
     setInterval(pollRunningJobs, POLL_INTERVAL_MS);
+    setInterval(pollSummary, POLL_INTERVAL_MS);
 })();
 </script>
 {% endblock %}

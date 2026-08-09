@@ -30,27 +30,39 @@
 
 <div class="row row-cards mb-3">
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Assessment Aktif</div>
-            <div class="h1 mb-0">{{ summary.assessments }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M9 12l2 2l4 -4"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Assessment Aktif</div>
+                <div class="h1 mb-0">{{ summary.assessments }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Siap Diterbitkan</div>
-            <div class="h1 mb-0 text-warning">{{ summary.eligible }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14l11 -11"></path><path d="M21 3l-6.5 18a0.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a0.55 .55 0 0 1 0 -1l18 -6.5"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Siap Diterbitkan</div>
+                <div class="h1 mb-0 text-warning">{{ summary.eligible }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Peringatan Aktif</div>
-            <div class="h1 mb-0 text-success">{{ summary.active }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-success-lt text-success"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"></path><path d="M9 17v1a3 3 0 0 0 6 0v-1"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Peringatan Aktif</div>
+                <div class="h1 mb-0 text-success">{{ summary.active }}</div>
+            </div>
         </div></div>
     </div>
     <div class="col-sm-6 col-lg-3">
-        <div class="card"><div class="card-body">
-            <div class="text-secondary">Tinggi/Kritis</div>
-            <div class="h1 mb-0 text-danger">{{ summary.high }}</div>
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-icon bg-danger-lt text-danger"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"></path><path d="M12 16h.01"></path></svg></div>
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Tinggi/Kritis</div>
+                <div class="h1 mb-0 text-danger">{{ summary.high }}</div>
+            </div>
         </div></div>
     </div>
 </div>
