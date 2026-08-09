@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.permissions import Roles, require_role
+from apps.accounts.permissions import Roles, require_role_by_method
 
 from .forms import (
     IntelligenceRecommendationCancelForm,
@@ -68,7 +68,10 @@ def _recommendation_for(assessment):
         return None
 
 
-@require_role(*Roles.ALL)
+@require_role_by_method(
+    read_roles=Roles.ALL,
+    write_roles=Roles.CONTRIBUTORS,
+)
 def intelligence_recommendation_workspace(
     request: HttpRequest,
 ) -> HttpResponse:

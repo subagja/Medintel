@@ -5,7 +5,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from apps.accounts.permissions import Roles, require_role
+from apps.accounts.permissions import Roles, require_role_by_method
 
 from apps.articles.models import Article
 from apps.assessments.models import ArticleValidationAssessment
@@ -87,7 +87,10 @@ def _error_text(exc: Exception) -> str:
     return " ".join(getattr(exc, "messages", [str(exc)]))
 
 
-@require_role(*Roles.ALL)
+@require_role_by_method(
+    read_roles=Roles.ALL,
+    write_roles=Roles.CONTRIBUTORS,
+)
 def signal_workspace(request: HttpRequest) -> HttpResponse:
     mode = request.GET.get("mode", "candidates")
     if mode not in {"candidates", "signals"}:

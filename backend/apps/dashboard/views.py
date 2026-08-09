@@ -91,6 +91,7 @@ from apps.entities.services.review import (
 from apps.indicators.services.generation import (
     generate_indicators_from_fact,
 )
+from apps.dashboard.threat_level import resolve_dashboard_threat_level
 
 
 logger = logging.getLogger(__name__)
@@ -149,19 +150,7 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
         .count()
     )
 
-    escalated_count = Signal.objects.filter(
-        status=Signal.Status.ESCALATED,
-    ).count()
-
-    if escalated_count >= 5:
-        threat_level = "Tinggi"
-        threat_level_class = "text-danger"
-    elif escalated_count >= 1:
-        threat_level = "Sedang"
-        threat_level_class = "text-warning"
-    else:
-        threat_level = "Rendah"
-        threat_level_class = "text-success"
+    threat = resolve_dashboard_threat_level()
 
     # Tren sinyal 7 hari terakhir -- jumlah sinyal baru per hari.
     today = timezone.localdate()
@@ -203,8 +192,9 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
         "latest_articles": latest_articles,
         "signal_count": signal_count,
         "priority_wilayah_count": priority_wilayah_count,
-        "threat_level": threat_level,
-        "threat_level_class": threat_level_class,
+        "threat_level": threat.label,
+        "threat_level_class": threat.css_class,
+        "threat_level_basis": threat.basis,
         "trend_chart_data": {
             "labels": trend_labels,
             "values": trend_values,
@@ -212,6 +202,7 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
         "priority_diseases": priority_diseases,
         "priority_locations": priority_locations,
         "active_warning_count": EarlyWarning.objects.filter(
+            is_current=True,
             status=EarlyWarning.Status.ISSUED,
         ).count(),
     }

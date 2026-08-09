@@ -27,6 +27,9 @@ class Roles:
     APPROVERS = (ADMIN, REVIEWER)
 
 
+READ_ONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
 def user_roles(user) -> set[str]:
     """Kumpulan nama Group (role) milik user, kosong kalau anonim."""
     if not user or not user.is_authenticated:
@@ -62,6 +65,41 @@ def require_role(*roles: str) -> Callable:
             if not has_role(request.user, *roles):
                 raise PermissionDenied(
                     "Anda tidak memiliki peran yang diizinkan untuk mengakses halaman ini."
+                )
+            return view_func(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def require_role_by_method(
+    *,
+    read_roles: tuple[str, ...] = Roles.ALL,
+    write_roles: tuple[str, ...] = Roles.CONTRIBUTORS,
+) -> Callable:
+    """Enforce separate role sets for read and mutation requests.
+
+    Workspace views in MedIntel commonly serve both the read-only page and
+    its form submission. A single ``require_role(*Roles.ALL)`` decorator
+    therefore also admitted Viewer POST requests. This decorator keeps the
+    page readable for every role while rejecting POST/PUT/PATCH/DELETE unless
+    the user has an explicitly authorised write role.
+    """
+
+    def decorator(view_func: Callable[..., HttpResponse]) -> Callable[..., HttpResponse]:
+        @wraps(view_func)
+        @login_required
+        def wrapped(request: HttpRequest, *args, **kwargs) -> HttpResponse:
+            required_roles = (
+                read_roles
+                if request.method.upper() in READ_ONLY_METHODS
+                else write_roles
+            )
+            if not has_role(request.user, *required_roles):
+                raise PermissionDenied(
+                    "Anda tidak memiliki peran yang diizinkan untuk "
+                    "melakukan aksi ini."
                 )
             return view_func(request, *args, **kwargs)
 
