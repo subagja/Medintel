@@ -3,7 +3,11 @@ from django.contrib import admin
 from .models import (
     IntelligenceRequirement,
     RequirementDisease,
+    RequirementArticle,
+    RequirementCollectionSession,
+    RequirementHistory,
     RequirementIndicator,
+    RequirementInformationGap,
     RequirementKeyword,
     RequirementLocation,
 )
@@ -51,14 +55,17 @@ class IntelligenceRequirementAdmin(admin.ModelAdmin):
     list_display = (
         "code",
         "title",
+        "status",
         "requirement_type",
         "priority",
         "valid_from",
         "valid_until",
         "is_active",
+        "assigned_to",
     )
 
     list_filter = (
+        "status",
         "requirement_type",
         "priority",
         "is_active",
@@ -77,6 +84,9 @@ class IntelligenceRequirementAdmin(admin.ModelAdmin):
         "id",
         "created_at",
         "updated_at",
+        "activated_at",
+        "answered_at",
+        "closed_at",
     )
 
     inlines = [
@@ -85,6 +95,62 @@ class IntelligenceRequirementAdmin(admin.ModelAdmin):
         RequirementLocationInline,
         RequirementIndicatorInline,
     ]
+
+
+@admin.register(RequirementCollectionSession)
+class RequirementCollectionSessionAdmin(admin.ModelAdmin):
+    list_display = ("requirement", "session", "linked_by", "linked_at")
+    search_fields = ("requirement__code", "requirement__title")
+    list_select_related = ("requirement", "session", "linked_by")
+
+
+@admin.register(RequirementArticle)
+class RequirementArticleAdmin(admin.ModelAdmin):
+    list_display = (
+        "requirement",
+        "article",
+        "link_source",
+        "relevance_score",
+        "linked_at",
+    )
+    list_filter = ("link_source",)
+    search_fields = (
+        "requirement__code",
+        "requirement__title",
+        "article__title",
+    )
+    list_select_related = ("requirement", "article", "linked_by")
+
+
+@admin.register(RequirementInformationGap)
+class RequirementInformationGapAdmin(admin.ModelAdmin):
+    list_display = ("requirement", "priority", "status", "created_at")
+    list_filter = ("priority", "status")
+    search_fields = ("requirement__code", "description", "resolution_notes")
+    list_select_related = ("requirement", "created_by", "resolved_by")
+
+
+@admin.register(RequirementHistory)
+class RequirementHistoryAdmin(admin.ModelAdmin):
+    list_display = ("requirement", "action", "changed_by", "changed_at")
+    list_filter = ("action", "to_status")
+    search_fields = ("requirement__code", "notes")
+    readonly_fields = (
+        "requirement",
+        "action",
+        "from_status",
+        "to_status",
+        "notes",
+        "metadata",
+        "changed_by",
+        "changed_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(RequirementKeyword)

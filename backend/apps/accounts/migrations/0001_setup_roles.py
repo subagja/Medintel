@@ -61,6 +61,10 @@ ALL_MODELS = {
         "RequirementDisease",
         "RequirementLocation",
         "RequirementIndicator",
+        "RequirementCollectionSession",
+        "RequirementArticle",
+        "RequirementInformationGap",
+        "RequirementHistory",
     ],
     "assessments": [
         "ArticleValidationAssessment",
@@ -95,6 +99,16 @@ ANALYST_WRITE_MODELS = {
         "SignalLocation",
         "SignalHistory",
     ],
+    "requirements": [
+        "IntelligenceRequirement",
+        "RequirementKeyword",
+        "RequirementDisease",
+        "RequirementLocation",
+        "RequirementCollectionSession",
+        "RequirementArticle",
+        "RequirementInformationGap",
+        "RequirementHistory",
+    ],
 }
 
 # Model-model yang jadi fokus approval/eskalasi Reviewer: boleh tambah & ubah
@@ -114,6 +128,10 @@ REVIEWER_WRITE_MODELS = {
         "RequirementDisease",
         "RequirementLocation",
         "RequirementIndicator",
+        "RequirementCollectionSession",
+        "RequirementArticle",
+        "RequirementInformationGap",
+        "RequirementHistory",
     ],
     "assessments": [
         "SourceEvaluation",

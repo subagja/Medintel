@@ -6,6 +6,23 @@ from .matching import (
     match_indicator_to_requirements,
     requirement_is_active_on_date,
 )
+from .workspace import (
+    activate_requirement,
+    activation_blockers,
+    answer_eligibility,
+    answer_requirement,
+    build_requirement_coverage,
+    close_requirement,
+    create_requirement,
+    link_article,
+    link_collection_session,
+    open_information_gap,
+    requirement_evidence_articles,
+    resolve_information_gap,
+    sync_collection_articles,
+    unlink_article,
+    update_requirement,
+)
 
 __all__ = [
     "RequirementMatchCandidate",
@@ -14,4 +31,19 @@ __all__ = [
     "find_requirement_matches",
     "match_indicator_to_requirements",
     "requirement_is_active_on_date",
+    "activate_requirement",
+    "activation_blockers",
+    "answer_eligibility",
+    "answer_requirement",
+    "build_requirement_coverage",
+    "close_requirement",
+    "create_requirement",
+    "link_article",
+    "link_collection_session",
+    "open_information_gap",
+    "requirement_evidence_articles",
+    "resolve_information_gap",
+    "sync_collection_articles",
+    "unlink_article",
+    "update_requirement",
 ]

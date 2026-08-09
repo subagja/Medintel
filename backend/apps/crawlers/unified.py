@@ -330,6 +330,7 @@ def start_unified_collection(
     candidate_limit: int | None,
     triggered_by=None,
     trigger_type: str = "user",
+    requirement=None,
 ) -> CollectionSession:
     plan = build_unified_collection_plan(
         source_code=source_code,
@@ -356,8 +357,22 @@ def start_unified_collection(
                 plan.google_news_source_codes
             ),
             "skipped": list(plan.skipped),
+            "intelligence_requirement": (
+                requirement.code if requirement else ""
+            ),
         },
     )
+    if requirement:
+        from apps.requirements.services.workspace import (
+            link_collection_session,
+        )
+
+        link_collection_session(
+            requirement=requirement,
+            session=session,
+            actor=triggered_by,
+            notes="Sesi dibentuk dari Koleksi Terpadu untuk kebutuhan ini.",
+        )
     for spec in plan.specs:
         CollectionJob.objects.create(
             session=session,

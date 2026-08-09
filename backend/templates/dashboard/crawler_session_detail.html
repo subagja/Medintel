@@ -3,6 +3,14 @@
 {% block title %}{{ session.reference }} | MEDINTEL OSINT{% endblock %}
 
 {% block content %}
+{% if session_requirement_links %}
+<div class="alert alert-info mb-3">
+    <div class="fw-semibold">Sesi koleksi terarah</div>
+    {% for link in session_requirement_links %}
+        <a href="{% url 'dashboard:intelligence-requirement' %}?requirement={{ link.requirement.id }}">{{ link.requirement.code|upper }} — {{ link.requirement.title }}</a>{% if not forloop.last %}, {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
 <div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
         <div class="col">

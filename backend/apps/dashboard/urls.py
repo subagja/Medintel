@@ -9,11 +9,17 @@ from apps.assessments import intelligence_recommendation_views
 from apps.assessments import executive_dashboard_views
 from apps.assessments import report_views
 from apps.signals import views as signal_views
+from apps.requirements import views as requirement_views
 
 
 app_name = "dashboard"
 
 urlpatterns = [
+    path(
+        "kebutuhan-intelijen/",
+        requirement_views.intelligence_requirement_workspace,
+        name="intelligence-requirement",
+    ),
     path(
         "",
         views.dashboard_overview,

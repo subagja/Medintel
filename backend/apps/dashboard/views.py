@@ -92,6 +92,7 @@ from apps.indicators.services.generation import (
     generate_indicators_from_fact,
 )
 from apps.dashboard.threat_level import resolve_dashboard_threat_level
+from apps.requirements.models import IntelligenceRequirement
 
 
 logger = logging.getLogger(__name__)
@@ -427,6 +428,15 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
                 "selected_source", "triggered_by"
             )[:5]
         ),
+        "active_intelligence_requirements": (
+            IntelligenceRequirement.objects.filter(
+                status=IntelligenceRequirement.Status.ACTIVE,
+                is_active=True,
+            ).order_by("-priority", "code")
+        ),
+        "selected_intelligence_requirement": request.GET.get(
+            "requirement", ""
+        ),
         "google_news_scope": google_news_scope,
         "google_news_max_age_days": get_google_news_max_age_days(),
         "crawler_candidate_limit_default": max(
@@ -477,8 +487,16 @@ def crawler_unified_run(request: HttpRequest) -> HttpResponse:
         request.POST.get("include_google_news") == "1"
     )
     html_deep_scan = request.POST.get("html_deep_scan") == "1"
+    requirement = None
+    requirement_id = request.POST.get("requirement_id", "").strip()
 
     try:
+        if requirement_id:
+            requirement = IntelligenceRequirement.objects.get(
+                pk=requirement_id,
+                status=IntelligenceRequirement.Status.ACTIVE,
+                is_active=True,
+            )
         article_limit = _parse_optional_positive_int(
             request.POST.get("limit", ""),
             label="Maks. artikel diproses per proses kanal",
@@ -497,7 +515,14 @@ def crawler_unified_run(request: HttpRequest) -> HttpResponse:
                 request.user if request.user.is_authenticated else None
             ),
             trigger_type="user",
+            requirement=requirement,
         )
+    except IntelligenceRequirement.DoesNotExist:
+        error_text = "Kebutuhan intelijen tidak ditemukan atau tidak lagi Aktif."
+        if is_ajax:
+            return JsonResponse({"error": error_text}, status=400)
+        messages.error(request, error_text)
+        return redirect("dashboard:crawler-list")
     except ValidationError as exc:
         error_text = exc.messages[0]
         if is_ajax:
@@ -551,6 +576,9 @@ def crawler_session_detail(
         "page_title": f"Sesi {session.reference}",
         "active_menu": "crawler-artikel",
         "session": session,
+        "session_requirement_links": session.requirement_links.select_related(
+            "requirement"
+        ),
         "session_status": session_status,
         "session_totals": session.totals,
         "jobs": jobs,

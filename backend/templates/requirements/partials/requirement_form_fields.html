@@ -1,0 +1,14 @@
+{% if requirement_form.non_field_errors %}<div class="alert alert-danger">{{ requirement_form.non_field_errors }}</div>{% endif %}
+<div class="row g-3">
+    <div class="col-12"><label class="form-label">{{ requirement_form.title.label }}</label>{{ requirement_form.title }}{% for error in requirement_form.title.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-12"><label class="form-label">{{ requirement_form.question.label }}</label>{{ requirement_form.question }}<div class="form-hint">Tuliskan satu pertanyaan spesifik yang dapat dijawab oleh bukti dan judgement analis.</div>{% for error in requirement_form.question.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-12"><label class="form-label">{{ requirement_form.description.label }}</label>{{ requirement_form.description }}{% for error in requirement_form.description.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-md-6"><label class="form-label">{{ requirement_form.requirement_type.label }}</label>{{ requirement_form.requirement_type }}</div>
+    <div class="col-md-3"><label class="form-label">{{ requirement_form.priority.label }}</label>{{ requirement_form.priority }}</div>
+    <div class="col-md-3"><label class="form-label">{{ requirement_form.assigned_to.label }}</label>{{ requirement_form.assigned_to }}</div>
+    <div class="col-md-6"><label class="form-label">{{ requirement_form.diseases.label }}</label>{{ requirement_form.diseases }}<div class="form-hint">{{ requirement_form.diseases.help_text }}</div>{% for error in requirement_form.diseases.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-md-6"><label class="form-label">{{ requirement_form.locations.label }}</label>{{ requirement_form.locations }}<div class="form-hint">{{ requirement_form.locations.help_text }}</div>{% for error in requirement_form.locations.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-md-6"><label class="form-label">{{ requirement_form.valid_from.label }}</label>{{ requirement_form.valid_from }}</div>
+    <div class="col-md-6"><label class="form-label">{{ requirement_form.valid_until.label }}</label>{{ requirement_form.valid_until }}{% for error in requirement_form.valid_until.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+    <div class="col-12"><label class="form-label">{{ requirement_form.keywords_text.label }}</label>{{ requirement_form.keywords_text }}<div class="form-hint">{{ requirement_form.keywords_text.help_text }}</div></div>
+</div>

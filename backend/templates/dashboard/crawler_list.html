@@ -94,6 +94,16 @@
         {% csrf_token %}
         <div class="card-body">
             <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label" for="unified-requirement">Kebutuhan intelijen <span class="text-secondary">(opsional)</span></label>
+                    <select class="form-select" id="unified-requirement" name="requirement_id">
+                        <option value="">Koleksi rutin tanpa kebutuhan khusus</option>
+                        {% for requirement in active_intelligence_requirements %}
+                            <option value="{{ requirement.id }}" {% if selected_intelligence_requirement == requirement.id|stringformat:"s" %}selected{% endif %}>{{ requirement.code|upper }} — {{ requirement.title }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-hint">Jika dipilih, sesi dan artikel tervalidasi dapat ditelusuri sebagai bukti untuk kebutuhan tersebut.</div>
+                </div>
                 <div class="col-lg-5">
                     <label class="form-label" for="unified-source">Cakupan sumber</label>
                     <select class="form-select" id="unified-source" name="source" required>

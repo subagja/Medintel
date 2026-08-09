@@ -38,7 +38,11 @@ def requirement_is_active_on_date(
     requirement: IntelligenceRequirement,
     reference_date: date,
 ) -> bool:
-    if not requirement.is_active:
+    if (
+        not requirement.is_active
+        or requirement.status
+        != IntelligenceRequirement.Status.ACTIVE
+    ):
         return False
 
     if (

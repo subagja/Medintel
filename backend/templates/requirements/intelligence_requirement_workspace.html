@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Kebutuhan Intelijen | MEDINTEL{% endblock %}
+
+{% block extra_css %}
+<style>
+    #requirement-workspace .requirement-kpi { min-height: 92px; }
+    #requirement-workspace .coverage-step { min-height: 88px; border-left: 3px solid var(--tblr-primary); }
+    #requirement-workspace .requirement-list { max-height: 760px; overflow-y: auto; }
+    #requirement-workspace .lineage-card { border-left: 3px solid var(--tblr-azure); }
+    #requirement-workspace details > summary { cursor: pointer; list-style: none; }
+    #requirement-workspace details > summary::-webkit-details-marker { display: none; }
+    #requirement-workspace .question-box { border-left: 4px solid var(--tblr-primary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="requirement-workspace">
+    <div class="page-header mb-3">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="page-pretitle">Pengumpulan Terarah dan Dukungan Keputusan</div>
+                <h2 class="page-title">Kebutuhan Intelijen</h2>
+                <div class="text-secondary mt-1">
+                    Arahkan pengumpulan dan analisis pada pertanyaan yang perlu dijawab pengguna intelijen.
+                </div>
+            </div>
+            {% if request.user|has_role:"Admin,Analyst,Reviewer" %}
+            <div class="col-auto">
+                <a href="?new=1" class="btn btn-primary">Buat Kebutuhan</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-info" role="alert">
+        <div class="fw-semibold">Alur kerja kebutuhan intelijen</div>
+        Kebutuhan menetapkan pertanyaan, penyakit, wilayah, periode, dan prioritas. Sistem menghubungkan sesi koleksi, artikel tervalidasi, indikator, sinyal, assessment, peringatan, rekomendasi, dan laporan. Jawaban akhir tetap merupakan judgement analis—bukan penetapan KLB, angka kasus resmi, atau keputusan kebijakan otomatis.
+    </div>
+
+    <div class="row row-cards mb-3">
+        <div class="col-sm-6 col-xl-3"><div class="card"><div class="card-body requirement-kpi medintel-stat-card">
+            <div class="medintel-stat-body"><div class="text-secondary">Seluruh Kebutuhan</div><div class="h1 mb-0">{{ summary.total }}</div><div class="small text-secondary">Draf sampai ditutup</div></div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card"><div class="card-body requirement-kpi medintel-stat-card">
+            <div class="medintel-stat-body"><div class="text-secondary">Aktif</div><div class="h1 mb-0 text-primary">{{ summary.active }}</div><div class="small text-secondary">Sedang diarahkan untuk dijawab</div></div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card"><div class="card-body requirement-kpi medintel-stat-card">
+            <div class="medintel-stat-body"><div class="text-secondary">Terjawab</div><div class="h1 mb-0 text-success">{{ summary.answered }}</div><div class="small text-secondary">Memiliki simpulan analitis</div></div>
+        </div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card"><div class="card-body requirement-kpi medintel-stat-card">
+            <div class="medintel-stat-body"><div class="text-secondary">Kesenjangan Terbuka</div><div class="h1 mb-0 {% if summary.open_gaps %}text-warning{% else %}text-success{% endif %}">{{ summary.open_gaps }}</div><div class="small text-secondary">Masih memerlukan pengumpulan/verifikasi</div></div>
+        </div></div></div>
+    </div>
+
+    <div class="row row-cards">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header"><div><h3 class="card-title">Daftar Kebutuhan</h3><div class="text-secondary small">Pilih kebutuhan untuk melihat lineage dan kesenjangannya.</div></div></div>
+                <div class="card-body border-bottom">
+                    <form method="get" class="row g-2">
+                        <div class="col-12"><input class="form-control" name="q" value="{{ query }}" placeholder="Cari kode, judul, atau pertanyaan"></div>
+                        <div class="col-6"><select class="form-select" name="status"><option value="">Semua status</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+                        <div class="col-6"><select class="form-select" name="priority"><option value="">Semua prioritas</option>{% for value, label in priority_choices %}<option value="{{ value }}" {% if selected_priority == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+                        <div class="col-12"><button class="btn btn-outline-secondary w-100" type="submit">Terapkan Filter</button></div>
+                    </form>
+                </div>
+                <div class="list-group list-group-flush requirement-list">
+                    {% for requirement in requirements %}
+                    <a href="?requirement={{ requirement.id }}" class="list-group-item list-group-item-action {% if selected and requirement.id == selected.id %}active{% endif %}">
+                        <div class="d-flex justify-content-between gap-2 align-items-start">
+                            <span class="fw-semibold">{{ requirement.code|upper }}</span>
+                            <span class="badge {% if requirement.status == 'active' %}bg-primary text-white{% elif requirement.status == 'answered' %}bg-success text-white{% elif requirement.status == 'closed' %}bg-secondary text-white{% else %}bg-warning-lt{% endif %}">{{ requirement.get_status_display }}</span>
+                        </div>
+                        <div class="mt-1">{{ requirement.title }}</div>
+                        <div class="small opacity-75 mt-1">{{ requirement.get_priority_display }} · {{ requirement.assigned_to|default:"Belum ditugaskan" }}</div>
+                    </a>
+                    {% empty %}
+                    <div class="p-4 text-center text-secondary">Belum ada kebutuhan yang sesuai filter.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            {% if is_new %}
+                <div class="card">
+                    <div class="card-header"><div><h3 class="card-title">Buat Draf Kebutuhan Intelijen</h3><div class="text-secondary small">Draf belum ikut mencocokkan indikator sampai diaktifkan Reviewer/Admin.</div></div></div>
+                    <form method="post">
+                        {% csrf_token %}<input type="hidden" name="action" value="create">
+                        <div class="card-body">
+                            {% include "requirements/partials/requirement_form_fields.html" %}
+                        </div>
+                        <div class="card-footer d-flex justify-content-end gap-2"><a href="{% url 'dashboard:intelligence-requirement' %}" class="btn btn-outline-secondary">Batal</a><button type="submit" class="btn btn-primary">Simpan Draf</button></div>
+                    </form>
+                </div>
+            {% elif selected %}
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between gap-3 align-items-start flex-wrap">
+                            <div>
+                                <div class="text-secondary text-uppercase small fw-semibold">{{ selected.code|upper }} · {{ selected.get_requirement_type_display }}</div>
+                                <h3 class="mt-1 mb-1">{{ selected.title }}</h3>
+                                <div class="text-secondary">Prioritas {{ selected.get_priority_display }} · PIC {{ selected.assigned_to|default:"Belum ditetapkan" }}</div>
+                            </div>
+                            <span class="badge fs-4 {% if selected.status == 'active' %}bg-primary text-white{% elif selected.status == 'answered' %}bg-success text-white{% elif selected.status == 'closed' %}bg-secondary text-white{% else %}bg-warning-lt{% endif %}">{{ selected.get_status_display }}</span>
+                        </div>
+                        <div class="question-box bg-primary-lt rounded p-3 mt-3">
+                            <div class="text-primary text-uppercase small fw-semibold">Pertanyaan utama</div>
+                            <div class="fs-3 fw-semibold mt-1">{{ selected.question }}</div>
+                        </div>
+                        <div class="mt-3">{{ selected.description|linebreaks }}</div>
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            {% for link in selected.requirement_diseases.all %}<span class="badge bg-red-lt">{{ link.disease.name }}{% if link.is_primary %} · utama{% endif %}</span>{% endfor %}
+                            {% for link in selected.requirement_locations.all %}<span class="badge bg-azure-lt">{{ link.location.name }}{% if link.is_primary %} · utama{% endif %}</span>{% endfor %}
+                            {% for keyword in selected.keywords.all %}{% if keyword.is_active %}<span class="badge bg-secondary-lt">{{ keyword.keyword }}</span>{% endif %}{% endfor %}
+                        </div>
+                        <div class="small text-secondary mt-3">Periode: {{ selected.valid_from|date:"d M Y"|default:"Tidak dibatasi" }} – {{ selected.valid_until|date:"d M Y"|default:"Tidak dibatasi" }}</div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Cakupan Jawaban dan Lineage</h3><div class="text-secondary small">Jumlah objek aktif/tervalidasi yang dapat ditelusuri dari kebutuhan ini.</div></div></div>
+                    <div class="card-body"><div class="row g-2">
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Sesi Koleksi</div><div class="h2 mb-0">{{ coverage.collection_sessions }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Artikel</div><div class="h2 mb-0">{{ coverage.articles }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Indikator</div><div class="h2 mb-0">{{ coverage.indicators }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Sinyal</div><div class="h2 mb-0">{{ coverage.signals }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Assessment</div><div class="h2 mb-0">{{ coverage.assessments }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Peringatan</div><div class="h2 mb-0">{{ coverage.warnings }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Rekomendasi</div><div class="h2 mb-0">{{ coverage.recommendations }}</div></div></div>
+                        <div class="col-6 col-md-3"><div class="coverage-step border rounded p-2"><div class="text-secondary small">Laporan</div><div class="h2 mb-0">{{ coverage.reports }}</div></div></div>
+                    </div></div>
+                </div>
+
+                {% if selected.answer_summary %}
+                <div class="alert alert-success"><div class="fw-semibold">Simpulan jawaban</div>{{ selected.answer_summary|linebreaksbr }}</div>
+                {% endif %}
+
+                {% if request.user|has_role:"Admin,Analyst,Reviewer" and selected.is_editable %}
+                <details class="card mb-3">
+                    <summary class="card-header"><div><h3 class="card-title">Perbarui Substansi dan Sasaran</h3><div class="text-secondary small">Perubahan tersimpan dalam jejak audit.</div></div></summary>
+                    <form method="post">
+                        {% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="requirement_id" value="{{ selected.id }}">
+                        <div class="card-body">{% include "requirements/partials/requirement_form_fields.html" %}</div>
+                        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Simpan Perubahan</button></div>
+                    </form>
+                </details>
+                {% endif %}
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Keputusan Lifecycle</h3><div class="text-secondary small">Urutan dikunci: Draf → Aktif → Terjawab → Ditutup.</div></div></div>
+                    <div class="card-body">
+                        {% if selected.status == 'draft' %}
+                            {% if activation_blockers %}<div class="alert alert-warning"><div class="fw-semibold">Belum siap diaktifkan</div><ul class="mb-0">{% for blocker in activation_blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>{% endif %}
+                            {% if can_approve %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="activate"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><label class="form-label">{{ decision_form.decision_notes.label }}</label>{{ decision_form.decision_notes }}<div class="form-hint">Saat diaktifkan, indikator tervalidasi yang sudah ada langsung dicocokkan dengan sasaran kebutuhan.</div><button class="btn btn-primary mt-2" type="submit" {% if activation_blockers %}disabled{% endif %}>Aktifkan Kebutuhan</button></form>{% else %}<div class="text-secondary">Aktivasi menunggu Reviewer/Admin.</div>{% endif %}
+                        {% elif selected.status == 'active' %}
+                            {% if not eligibility.is_eligible %}<div class="alert alert-warning"><div class="fw-semibold">Belum dapat dinyatakan terjawab</div><ul class="mb-0">{% for blocker in eligibility.blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>{% endif %}
+                            {% if can_approve %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="answer"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><div class="mb-2"><label class="form-label">{{ answer_form.answer_summary.label }}</label>{{ answer_form.answer_summary }}</div><div class="mb-2"><label class="form-label">{{ answer_form.decision_notes.label }}</label>{{ answer_form.decision_notes }}</div><button class="btn btn-success" type="submit" {% if not eligibility.is_eligible %}disabled{% endif %}>Tetapkan sebagai Terjawab</button></form>{% else %}<div class="text-secondary">Penetapan jawaban menunggu Reviewer/Admin.</div>{% endif %}
+                        {% elif selected.status == 'answered' %}
+                            {% if can_approve %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="close"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><label class="form-label">{{ close_form.closure_notes.label }}</label>{{ close_form.closure_notes }}<button class="btn btn-secondary mt-2" type="submit">Tutup Kebutuhan</button></form>{% else %}<div class="text-secondary">Penutupan menunggu Reviewer/Admin.</div>{% endif %}
+                        {% else %}<div class="text-secondary">Kebutuhan telah ditutup. Substansi dan lineage tetap tersedia sebagai arsip audit.</div>{% endif %}
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Pengumpulan Terarah</h3><div class="text-secondary small">Tautkan sesi Koleksi Terpadu; artikel tervalidasi dari sesi dapat disinkronkan menjadi bukti.</div></div><div class="card-actions"><a href="{% url 'dashboard:crawler-list' %}?requirement={{ selected.id }}" class="btn btn-outline-primary btn-sm">Buka Pengumpulan Artikel</a></div></div>
+                    <div class="card-body">
+                        {% for link in collection_links %}<div class="border rounded p-2 mb-2 d-flex justify-content-between gap-2"><div><a href="{% url 'dashboard:crawler-session-detail' link.session.id %}" class="fw-semibold">{{ link.session.reference }}</a><div class="small text-secondary">{{ link.session.status_label }} · {{ link.session.created_at|date:"d M Y H:i" }} · {{ link.notes|default:"Tanpa catatan" }}</div></div><span class="badge bg-secondary-lt">{{ link.session.jobs.count }} kanal</span></div>{% empty %}<div class="text-secondary">Belum ada sesi koleksi yang ditautkan.</div>{% endfor %}
+                        {% if request.user|has_role:"Admin,Analyst,Reviewer" and selected.is_editable %}
+                        <details class="mt-3"><summary class="btn btn-outline-secondary btn-sm">Tautkan sesi yang sudah ada</summary><form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="link_collection"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><div class="mb-2"><label class="form-label">{{ collection_form.session.label }}</label>{{ collection_form.session }}</div><div class="mb-2"><label class="form-label">{{ collection_form.notes.label }}</label>{{ collection_form.notes }}</div><button class="btn btn-primary" type="submit">Tautkan Sesi</button></form></details>
+                        <form method="post" class="d-inline-block mt-3">{% csrf_token %}<input type="hidden" name="action" value="sync_articles"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><button class="btn btn-outline-primary btn-sm" type="submit">Sinkronkan Artikel Tervalidasi</button></form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Bukti Artikel Tervalidasi</h3><div class="text-secondary small">Gabungan tautan langsung, sesi koleksi, indikator, dan evidence sinyal.</div></div></div>
+                    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Artikel</th><th>Sumber</th><th>Publikasi</th><th></th></tr></thead><tbody>{% for article in evidence_articles %}<tr><td><a href="{{ article.original_url }}" target="_blank" rel="noopener">{{ article.title }}</a></td><td>{{ article.source.name }}</td><td>{{ article.published_at|date:"d M Y"|default:"—" }}</td><td>{% if request.user|has_role:"Admin,Analyst,Reviewer" %}{% for link in direct_article_links %}{% if link.article_id == article.id %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="unlink_article"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><input type="hidden" name="article_id" value="{{ article.id }}"><button class="btn btn-ghost-danger btn-sm" type="submit">Lepas</button></form>{% endif %}{% endfor %}{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-secondary py-4">Belum ada artikel tervalidasi.</td></tr>{% endfor %}</tbody></table></div>
+                    {% if request.user|has_role:"Admin,Analyst,Reviewer" and selected.is_editable %}<div class="card-body border-top"><details><summary class="btn btn-outline-secondary btn-sm">Tautkan artikel secara manual</summary><form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="link_article"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><div class="mb-2"><label class="form-label">{{ article_form.article.label }}</label>{{ article_form.article }}</div><div class="mb-2"><label class="form-label">{{ article_form.relevance_reason.label }}</label>{{ article_form.relevance_reason }}</div><button class="btn btn-primary" type="submit">Tautkan Artikel</button></form></details></div>{% endif %}
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Sinyal dan Produk yang Menjawab</h3><div class="text-secondary small">Lineage analitis ditampilkan per sinyal yang cocok dengan kebutuhan.</div></div></div>
+                    <div class="card-body">
+                        {% for row in signal_rows %}<div class="lineage-card border rounded p-3 mb-3"><div class="d-flex justify-content-between gap-2"><div><a class="fw-semibold" href="{% url 'dashboard:signal-workspace' %}?signal={{ row.signal.id }}">{{ row.signal.code }} — {{ row.signal.title }}</a><div class="small text-secondary">Relevansi {{ row.relation.relevance_score|floatformat:2 }} · {{ row.relation.relevance_reason }}</div></div><span class="badge bg-primary-lt">{{ row.signal.get_status_display }}</span></div><div class="d-flex flex-wrap gap-2 mt-3">{% if row.assessment %}<a class="badge bg-blue-lt" href="{% url 'dashboard:threat-assessment' %}?signal={{ row.signal.id }}">Assessment v{{ row.assessment.version }} · {{ row.assessment.get_recommended_priority_display }}</a>{% else %}<span class="badge bg-warning-lt">Assessment belum selesai</span>{% endif %}{% if row.warning %}<a class="badge bg-orange-lt" href="{% url 'dashboard:early-warning' %}?warning={{ row.warning.id }}">{{ row.warning.code }} · {{ row.warning.get_level_display }}</a>{% endif %}{% if row.recommendation %}<a class="badge bg-green-lt" href="{% url 'dashboard:intelligence-recommendation' %}?recommendation={{ row.recommendation.id }}">{{ row.recommendation.code }}</a>{% endif %}{% for section in row.reports %}<a class="badge bg-purple-lt" href="{% url 'dashboard:report-document-edit' section.report.id %}">{{ section.report.code|default:"Laporan" }}</a>{% endfor %}</div></div>{% empty %}<div class="text-secondary">Belum ada sinyal tervalidasi yang terhubung.</div>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><div><h3 class="card-title">Kesenjangan Informasi</h3><div class="text-secondary small">Kekurangan bukti yang harus ditutup sebelum kebutuhan dinyatakan terjawab.</div></div></div>
+                    <div class="card-body">
+                        {% for gap in coverage.system_gaps %}<div class="alert alert-warning py-2">{{ gap }}</div>{% endfor %}
+                        {% for gap in selected.information_gaps.all %}<div class="border rounded p-3 mb-2"><div class="d-flex justify-content-between gap-2"><div><span class="fw-semibold">{{ gap.description }}</span><div class="small text-secondary">Prioritas {{ gap.get_priority_display }} · {{ gap.get_status_display }}</div>{% if gap.resolution_notes %}<div class="small mt-2">Pemenuhan: {{ gap.resolution_notes }}</div>{% endif %}</div><span class="badge {% if gap.status == 'open' %}bg-warning-lt{% else %}bg-success-lt{% endif %}">{{ gap.get_status_display }}</span></div>{% if gap.status == 'open' and selected.status != 'closed' and request.user|has_role:"Admin,Analyst,Reviewer" %}<details class="mt-2"><summary class="btn btn-outline-success btn-sm">Tandai Terpenuhi</summary><form method="post" class="mt-2">{% csrf_token %}<input type="hidden" name="action" value="resolve_gap"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><input type="hidden" name="gap_id" value="{{ gap.id }}">{{ gap_resolution_form.resolution_notes }}<button class="btn btn-success btn-sm mt-2" type="submit">Simpan Pemenuhan</button></form></details>{% endif %}</div>{% empty %}<div class="text-secondary mb-3">Belum ada kesenjangan manual yang dicatat.</div>{% endfor %}
+                        {% if request.user|has_role:"Admin,Analyst,Reviewer" and selected.is_editable %}<details class="mt-3"><summary class="btn btn-outline-warning btn-sm">Catat Kesenjangan</summary><form method="post" class="mt-3">{% csrf_token %}<input type="hidden" name="action" value="open_gap"><input type="hidden" name="requirement_id" value="{{ selected.id }}"><div class="mb-2"><label class="form-label">{{ gap_form.description.label }}</label>{{ gap_form.description }}</div><div class="mb-2"><label class="form-label">{{ gap_form.priority.label }}</label>{{ gap_form.priority }}</div><button class="btn btn-warning" type="submit">Simpan Kesenjangan</button></form></details>{% endif %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header"><div><h3 class="card-title">Jejak Keputusan</h3><div class="text-secondary small">Riwayat perubahan substansi, lifecycle, bukti, dan kesenjangan.</div></div></div>
+                    <div class="list-group list-group-flush">{% for item in selected.history.all|slice:":20" %}<div class="list-group-item"><div class="d-flex justify-content-between gap-2"><span class="fw-semibold">{{ item.get_action_display }}</span><span class="small text-secondary">{{ item.changed_at|date:"d M Y H:i" }}</span></div><div class="small text-secondary">{{ item.changed_by|default:"Sistem" }} · {{ item.notes|default:"Tanpa catatan" }}</div></div>{% empty %}<div class="p-3 text-secondary">Belum ada riwayat.</div>{% endfor %}</div>
+                </div>
+            {% else %}
+                <div class="card"><div class="card-body text-center py-5"><h3>Belum ada kebutuhan intelijen</h3><p class="text-secondary">Buat kebutuhan pertama untuk mengarahkan pengumpulan dan analisis.</p>{% if request.user|has_role:"Admin,Analyst,Reviewer" %}<a href="?new=1" class="btn btn-primary">Buat Kebutuhan</a>{% endif %}</div></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
