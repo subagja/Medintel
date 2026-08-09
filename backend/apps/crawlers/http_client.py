@@ -132,6 +132,19 @@ class CrawlerHttpClient:
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache",
                 "Connection": "keep-alive",
+                # Header "Fetch Metadata" & lain-lain yang secara
+                # otomatis dikirim browser modern (Chrome/Firefox) tapi
+                # TIDAK dikirim library requests Python secara default.
+                # Beberapa WAF/anti-bot memakai absennya header ini
+                # sebagai sinyal traffic non-browser -- menambahkannya
+                # tidak menjamin lolos (WAF canggih dengan JS challenge/
+                # TLS fingerprinting tetap bisa memblokir), tapi cukup
+                # membantu untuk proteksi level menengah.
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
             }
         )
 

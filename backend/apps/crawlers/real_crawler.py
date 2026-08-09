@@ -8,6 +8,7 @@ from apps.entities.eligibility import (
     evaluate_surveillance_eligibility,
     extract_disease_mentions,
 )
+from apps.articles.models import Article
 from apps.ingestion.dto import ArticlePayload
 from apps.sources.models import (
     Source,
@@ -897,6 +898,31 @@ class GenericHtmlCrawler(BaseCrawler):
                     self._get_candidate_limit(),
                 )
                 break
+
+            # Artikel yang URL-nya SUDAH TERSIMPAN dari crawl
+            # sebelumnya tidak perlu di-fetch ulang -- listing halaman
+            # sumber biasanya didominasi artikel lama yang sudah pernah
+            # ditemukan, jadi cek ini dulu (murah, cuma query DB)
+            # sebelum buang waktu & bandwidth fetch penuh untuk sesuatu
+            # yang hasilnya sudah pasti "duplikat".
+            if Article.objects.filter(
+                normalized_url=validation.normalized_url,
+            ).exists():
+                self._record_item(
+                    original_url=candidate.url,
+                    normalized_url=validation.normalized_url,
+                    title=candidate.anchor_text,
+                    status=CrawlItemStatus.DUPLICATE,
+                    reason=(
+                        "Artikel dengan URL ini sudah tersimpan dari "
+                        "crawl sebelumnya (dilewati tanpa fetch ulang)."
+                    ),
+                    metadata={
+                        "stage": "known_article_skip",
+                        "seed_url": seed.url,
+                    },
+                )
+                continue
 
             # Counter bertambah hanya untuk URL valid yang
             # benar-benar akan diunduh.

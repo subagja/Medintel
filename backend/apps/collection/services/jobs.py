@@ -38,7 +38,22 @@ def complete_collection_job(
     total_rejected: int,
     total_failed: int,
 ) -> CollectionJob:
-    if total_failed > 0:
+    total_success = total_created + total_duplicate
+
+    if (
+        total_failed > 0
+        and total_failed == total_found
+        and total_success == 0
+        and total_rejected == 0
+    ):
+        # SEMUA yang ditemukan gagal, tidak ada satupun kandidat yang
+        # sempat diproses jadi kategori lain (created/duplicate/
+        # rejected) -- ini kegagalan total (mis. seed listing sendiri
+        # gagal di-fetch/diblokir), bukan "selesai dengan kesalahan
+        # kecil" seperti kasus sebagian kandidat ditolak karena tidak
+        # relevan (itu tetap dianggap berhasil diproses).
+        status = CollectionJob.Status.FAILED
+    elif total_failed > 0:
         status = CollectionJob.Status.COMPLETED_WITH_ERRORS
     else:
         status = CollectionJob.Status.COMPLETED

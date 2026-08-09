@@ -137,16 +137,22 @@ body {
 }
 .medintel-stat-icon {
     flex-shrink: 0;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    max-width: 2.75rem;
+    max-height: 2.75rem;
     border-radius: 0.6rem;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
 }
 .medintel-stat-icon svg {
-    width: 1.4rem;
-    height: 1.4rem;
+    width: 1.4rem !important;
+    height: 1.4rem !important;
+    flex-shrink: 0;
 }
 .medintel-stat-body .h1,
 .medintel-stat-body .h2 {

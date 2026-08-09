@@ -225,7 +225,6 @@ def _ready_html_sources() -> list[Source]:
     return ready_sources
 
 
-@require_role(*Roles.ALL)
 def _crawler_summary():
     """Ringkasan angka Crawler Artikel/Web -- dipakai bersama oleh
     halaman (render awal) dan endpoint polling `crawler_summary_status`
@@ -329,7 +328,7 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         "values": trend_values,
     }
 
-    paginator = Paginator(jobs, 25)
+    paginator = Paginator(jobs, 15)
     page_obj = paginator.get_page(
         request.GET.get("page")
     )
@@ -721,7 +720,7 @@ def crawler_job_detail(
             | Q(error_message__icontains=search_query)
         )
 
-    paginator = Paginator(items, 50)
+    paginator = Paginator(items, 20)
     page_obj = paginator.get_page(
         request.GET.get("page")
     )
@@ -915,7 +914,9 @@ def source_list(request: HttpRequest) -> HttpResponse:
     context = {
         "page_title": "Sumber OSINT",
         "active_menu": "sources",
-        "sources": source_rows,
+        "sources": Paginator(source_rows, 25).get_page(
+            request.GET.get("page")
+        ),
         "source_types": Source.SourceType.choices,
         "origin_choices": ORIGIN_CHOICES,
         "search_query": search_query,

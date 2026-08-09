@@ -265,7 +265,7 @@ Sumber OSINT | MEDINTEL OSINT
     </div>
 
 
-    <div class="table-responsive">
+    <div class="table-responsive medintel-article-list" style="max-height: 65vh;">
         <table class="table table-vcenter card-table">
 
             <thead>
@@ -462,6 +462,20 @@ Sumber OSINT | MEDINTEL OSINT
 
         </table>
     </div>
+
+    {% if sources.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ sources.number }} dari {{ sources.paginator.num_pages }} ({{ sources.paginator.count }} sumber)</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if sources.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ sources.previous_page_number }}&q={{ search_query }}&source_type={{ selected_source_type }}&origin={{ selected_origin }}&status={{ selected_status }}">Sebelumnya</a></li>
+                {% endif %}
+                {% if sources.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ sources.next_page_number }}&q={{ search_query }}&source_type={{ selected_source_type }}&origin={{ selected_origin }}&status={{ selected_status }}">Berikutnya</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
 
 </div>
 
