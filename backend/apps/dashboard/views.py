@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
@@ -41,6 +42,7 @@ from apps.sources.origin import (
 from apps.collection.models import (
     CollectionJob,
     CollectionJobItem,
+    CollectionSession,
 )
 from apps.crawlers.real_crawler import GenericHtmlCrawler
 from apps.crawlers.rss_crawler import OfficialRssCrawler
@@ -54,6 +56,10 @@ from apps.crawlers.google_news_queries import (
     build_google_news_disease_scope,
 )
 from apps.crawlers.services import run_crawler_in_background
+from apps.crawlers.unified import (
+    get_unified_source_readiness,
+    start_unified_collection,
+)
 from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
     PrimaryArticleDiseaseForm,
@@ -325,6 +331,7 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         )
         .select_related(
             "source",
+            "session",
             "triggered_by",
         )
         .annotate(
@@ -389,6 +396,7 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     ready_sources = _ready_html_sources()
     ready_rss_sources = _ready_rss_sources()
     ready_google_news_sources = _ready_google_news_sources()
+    unified_source_rows = get_unified_source_readiness()
     google_news_scope = build_google_news_disease_scope()
     ready_indonesia_count = sum(
         1
@@ -403,8 +411,41 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         "ready_sources": ready_sources,
         "ready_rss_sources": ready_rss_sources,
         "ready_google_news_sources": ready_google_news_sources,
+        "unified_source_rows": unified_source_rows,
+        "unified_indonesia_count": sum(
+            1
+            for row in unified_source_rows
+            if row.source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+        ),
+        "unified_rss_primary_count": sum(
+            1 for row in unified_source_rows if row.rss_ready
+        ),
+        "unified_html_fallback_count": sum(
+            1
+            for row in unified_source_rows
+            if row.html_ready and not row.rss_ready
+        ),
+        "unified_html_deep_scan_count": sum(
+            1
+            for row in unified_source_rows
+            if row.html_ready and row.rss_ready
+        ),
+        "recent_collection_sessions": (
+            CollectionSession.objects.select_related(
+                "selected_source", "triggered_by"
+            )[:5]
+        ),
         "google_news_scope": google_news_scope,
         "google_news_max_age_days": get_google_news_max_age_days(),
+        "crawler_candidate_limit_default": max(
+            int(getattr(settings, "CRAWLER_CANDIDATE_LIMIT", 30)),
+            1,
+        ),
+        "google_news_article_limit_default": min(
+            max(int(getattr(settings, "GOOGLE_NEWS_ARTICLE_LIMIT", 10)), 1),
+            1000,
+        ),
         "ready_indonesia_count": ready_indonesia_count,
         "ready_rss_indonesia_count": sum(
             1
@@ -430,6 +471,115 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "dashboard/crawler_list.html",
+        context,
+    )
+
+
+@require_POST
+@require_role(Roles.ADMIN, Roles.ANALYST)
+def crawler_unified_run(request: HttpRequest) -> HttpResponse:
+    is_ajax = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    source_code = request.POST.get("source", "all").strip()
+    include_google_news = (
+        request.POST.get("include_google_news") == "1"
+    )
+    html_deep_scan = request.POST.get("html_deep_scan") == "1"
+
+    try:
+        article_limit = _parse_optional_positive_int(
+            request.POST.get("limit", ""),
+            label="Maks. artikel diproses per proses kanal",
+        )
+        candidate_limit = _parse_optional_positive_int(
+            request.POST.get("candidate_limit", ""),
+            label="Maks. kandidat diperiksa per proses kanal",
+        )
+        session = start_unified_collection(
+            source_code=source_code,
+            include_google_news=include_google_news,
+            html_deep_scan=html_deep_scan,
+            article_limit=article_limit,
+            candidate_limit=candidate_limit,
+            triggered_by=(
+                request.user if request.user.is_authenticated else None
+            ),
+            trigger_type="user",
+        )
+    except ValidationError as exc:
+        error_text = exc.messages[0]
+        if is_ajax:
+            return JsonResponse({"error": error_text}, status=400)
+        messages.error(request, error_text)
+        return redirect("dashboard:crawler-list")
+
+    detail_url = reverse(
+        "dashboard:crawler-session-detail",
+        kwargs={"session_id": session.id},
+    )
+    if is_ajax:
+        return JsonResponse(
+            {
+                "session_id": str(session.id),
+                "reference": session.reference,
+                "planned_job_count": session.planned_job_count,
+                "skipped_job_count": session.skipped_job_count,
+                "detail_url": detail_url,
+            }
+        )
+
+    messages.success(
+        request,
+        (
+            f"{session.reference} dimulai dengan "
+            f"{session.planned_job_count} proses kanal."
+        ),
+    )
+    return redirect(detail_url)
+
+
+@require_role(*Roles.ALL)
+def crawler_session_detail(
+    request: HttpRequest,
+    session_id,
+) -> HttpResponse:
+    session = get_object_or_404(
+        CollectionSession.objects.select_related(
+            "selected_source", "triggered_by"
+        ),
+        pk=session_id,
+    )
+    jobs = list(
+        session.jobs.select_related("source").order_by(
+            "created_at", "source__name"
+        )
+    )
+    session_status = session.status
+    context = {
+        "page_title": f"Sesi {session.reference}",
+        "active_menu": "crawler-artikel",
+        "session": session,
+        "session_status": session_status,
+        "session_totals": session.totals,
+        "jobs": jobs,
+        "crawler_candidate_limit_default": max(
+            int(getattr(settings, "CRAWLER_CANDIDATE_LIMIT", 30)),
+            1,
+        ),
+        "google_news_article_limit_default": min(
+            max(int(getattr(settings, "GOOGLE_NEWS_ARTICLE_LIMIT", 10)), 1),
+            1000,
+        ),
+        "skipped_jobs": session.metadata.get("skipped", []),
+        "is_running": session_status in {
+            CollectionJob.Status.PENDING,
+            CollectionJob.Status.RUNNING,
+        },
+    }
+    return render(
+        request,
+        "dashboard/crawler_session_detail.html",
         context,
     )
 
@@ -545,11 +695,11 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
     try:
         limit = _parse_optional_positive_int(
             request.POST.get("limit", ""),
-            label="Batas artikel",
+            label="Maks. artikel diproses",
         )
         candidate_limit = _parse_optional_positive_int(
             request.POST.get("candidate_limit", ""),
-            label="Batas kandidat",
+            label="Maks. kandidat diperiksa",
         )
     except ValidationError as exc:
         if is_ajax:
@@ -927,6 +1077,7 @@ def crawler_job_detail(
     job = get_object_or_404(
         CollectionJob.objects.select_related(
             "source",
+            "session",
             "triggered_by",
         ),
         id=job_id,

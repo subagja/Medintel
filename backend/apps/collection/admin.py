@@ -1,6 +1,49 @@
 from django.contrib import admin
 
-from .models import CollectionJob, CollectionJobItem
+from .models import CollectionJob, CollectionJobItem, CollectionSession
+
+
+class CollectionJobInline(admin.TabularInline):
+    model = CollectionJob
+    extra = 0
+    fields = (
+        "source",
+        "job_type",
+        "status",
+        "total_created",
+        "total_rejected",
+        "total_failed",
+    )
+    readonly_fields = fields
+    show_change_link = True
+
+
+@admin.register(CollectionSession)
+class CollectionSessionAdmin(admin.ModelAdmin):
+    list_display = (
+        "reference",
+        "scope",
+        "selected_source",
+        "include_google_news",
+        "html_deep_scan",
+        "planned_job_count",
+        "triggered_by",
+        "created_at",
+    )
+    list_filter = (
+        "scope",
+        "include_google_news",
+        "html_deep_scan",
+        "created_at",
+    )
+    search_fields = (
+        "id",
+        "selected_source__name",
+        "selected_source__code",
+        "triggered_by__username",
+    )
+    readonly_fields = ("id", "created_at", "updated_at")
+    inlines = [CollectionJobInline]
 
 
 class CollectionJobItemInline(admin.TabularInline):
@@ -20,6 +63,7 @@ class CollectionJobItemInline(admin.TabularInline):
 @admin.register(CollectionJob)
 class CollectionJobAdmin(admin.ModelAdmin):
     list_display = (
+        "session",
         "source",
         "job_type",
         "crawler_name",
@@ -34,6 +78,7 @@ class CollectionJobAdmin(admin.ModelAdmin):
     )
 
     list_filter = (
+        "session",
         "job_type",
         "status",
         "source",
@@ -55,6 +100,7 @@ class CollectionJobAdmin(admin.ModelAdmin):
     )
 
     list_select_related = (
+        "session",
         "source",
         "triggered_by",
     )

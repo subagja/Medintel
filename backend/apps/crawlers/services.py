@@ -7,6 +7,7 @@ from django.utils import timezone
 from apps.collection.models import (
     CollectionJob,
     CollectionJobItem,
+    CollectionSession,
 )
 from apps.collection.services import (
     complete_collection_job,
@@ -32,6 +33,8 @@ def run_crawler(
     *,
     triggered_by=None,
     trigger_type: str = "system",
+    session: CollectionSession | None = None,
+    existing_job_id=None,
 ) -> CrawlExecutionResult:
     total_found = 0
     total_created = 0
@@ -79,12 +82,18 @@ def run_crawler(
         else CollectionJob.JobType.CRAWLER
     )
 
+    existing_job = None
+    if existing_job_id is not None:
+        existing_job = CollectionJob.objects.get(pk=existing_job_id)
+
     job = start_collection_job(
         source=source,
         job_type=job_type,
         crawler_name=crawler.__class__.__name__,
         triggered_by=triggered_by,
         trigger_type=trigger_type,
+        session=session,
+        existing_job=existing_job,
         metadata={
             "source_code": source_code,
             "discovery_scope": (
@@ -515,6 +524,8 @@ def run_crawler_in_background(
     *,
     triggered_by=None,
     trigger_type: str = "system",
+    session: CollectionSession | None = None,
+    existing_job_id=None,
 ) -> threading.Thread:
     """Jalankan `run_crawler` di background thread, tidak memblokir request.
 
@@ -536,6 +547,8 @@ def run_crawler_in_background(
                 crawler,
                 triggered_by=triggered_by,
                 trigger_type=trigger_type,
+                session=session,
+                existing_job_id=existing_job_id,
             )
         except Exception:
             # run_crawler sudah menandai job sebagai FAILED di database

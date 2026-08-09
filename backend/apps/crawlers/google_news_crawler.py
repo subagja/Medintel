@@ -153,6 +153,7 @@ class GoogleNewsRssCrawler(OfficialRssCrawler):
         limit: int | None = None,
         candidate_limit: int | None = None,
         max_age_days: int | None = None,
+        allowed_source_codes: tuple[str, ...] | list[str] | None = None,
     ) -> None:
         super().__init__(
             source_code="",
@@ -163,6 +164,11 @@ class GoogleNewsRssCrawler(OfficialRssCrawler):
             get_google_news_max_age_days()
             if max_age_days is None
             else min(max(int(max_age_days), 1), 30)
+        )
+        self.allowed_source_codes = (
+            tuple(dict.fromkeys(allowed_source_codes))
+            if allowed_source_codes is not None
+            else None
         )
         self._execution_metrics: dict[str, int | str] = {}
 
@@ -791,11 +797,19 @@ class GoogleNewsRssCrawler(OfficialRssCrawler):
         return {
             "query_policy": f"when:{self.max_age_days}d",
             "candidate_distribution": "round_robin_query_batches",
+            "allowed_source_codes": list(self.allowed_source_codes or ()),
             "funnel": dict(self._execution_metrics),
         }
 
     def crawl(self) -> Iterable[ArticlePayload]:
         allowed_sources = get_google_news_allowed_sources()
+        if self.allowed_source_codes is not None:
+            allowed_code_set = set(self.allowed_source_codes)
+            allowed_sources = [
+                source
+                for source in allowed_sources
+                if source.code in allowed_code_set
+            ]
         if not allowed_sources:
             raise ValueError(
                 "Belum ada Source aktif dan terverifikasi yang memiliki "

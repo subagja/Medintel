@@ -390,7 +390,7 @@ class GoogleNewsRssCrawlerTests(TestCase):
                 kwargs={"job_id": job.id},
             )
         )
-        self.assertContains(response, "Funnel Google News")
+        self.assertContains(response, "Alur Penyaringan Google News")
         self.assertContains(response, "URL penerbit terurai")
 
     @patch("apps.entities.services.exploit_article")
@@ -758,8 +758,8 @@ class GoogleNewsRssCrawlerTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("dashboard:crawler-list"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Jalankan Google News RSS")
-        self.assertContains(response, "Global · 1 Source diizinkan")
+        self.assertContains(response, "Jalankan Google News")
+        self.assertContains(response, "Global · 1 sumber diizinkan")
         self.assertNotContains(response, 'id="google-news-source"')
 
     @patch("apps.dashboard.views.run_crawler_in_background")
@@ -790,8 +790,11 @@ class GoogleNewsRssCrawlerTests(TestCase):
             reverse("dashboard:google-news-discovery-settings")
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Google News Discovery Global")
-        self.assertContains(response, "Whitelist Penerbit")
+        self.assertContains(response, "Penemuan Global Google News")
+        self.assertContains(
+            response,
+            "Daftar Sumber Penerbit yang Diizinkan",
+        )
         self.assertContains(response, "7 hari")
         self.assertContains(response, "when:7d")
         self.assertContains(response, "bergiliran antarbatch")

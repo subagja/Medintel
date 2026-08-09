@@ -7,10 +7,10 @@
     <div class="row align-items-center">
         <div class="col">
             <div class="page-pretitle">Pengumpulan Artikel · Kebijakan Kanal</div>
-            <h2 class="page-title">Google News Discovery Global</h2>
+            <h2 class="page-title">Penemuan Global Google News</h2>
             <div class="text-secondary mt-1">
-                Google News menemukan kandidat lintas penerbit. Setelah link di-resolve,
-                URL akhir wajib cocok dengan Source dan pola URL yang diizinkan.
+                Google News menemukan kandidat lintas penerbit. Setelah tautan diuraikan,
+                URL akhir wajib cocok dengan sumber dan pola URL yang diizinkan.
             </div>
         </div>
         <div class="col-auto ms-auto">
@@ -43,7 +43,7 @@
     </div>
     <div class="col-sm-6 col-xl-3">
         <div class="card"><div class="card-body">
-            <div class="text-secondary">Source diizinkan</div>
+            <div class="text-secondary">Sumber diizinkan</div>
             <div class="h2 text-success mb-0">{{ allowed_count }}</div>
         </div></div>
     </div>
@@ -59,7 +59,7 @@
     <div class="fw-semibold mb-1">Urutan pemeriksaan</div>
     Disease Master membentuk kueri global dengan <code>when:{{ max_age_days }}d</code> → kandidat
     dibagi bergiliran antarbatch penyakit → tanggal feed diverifikasi kembali → link Google News
-    di-resolve → domain dicocokkan ke Source → pola allow/deny dan robots.txt diperiksa → artikel
+    diuraikan → domain dicocokkan ke sumber → pola URL izinkan/tolak dan robots.txt diperiksa → artikel
     diambil dan diproses. Nama penerbit dari feed hanya petunjuk dan tidak digunakan sebagai dasar
     kepercayaan.
 </div>
@@ -67,10 +67,10 @@
 <div class="card">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Whitelist Penerbit</h3>
+            <h3 class="card-title">Daftar Sumber Penerbit yang Diizinkan</h3>
             <div class="text-secondary small">
-                Tidak ada aktivasi Google News per Source. Source otomatis diizinkan bila aktif,
-                terverifikasi, crawling aktif, dan memiliki pola URL allow.
+                Tidak ada aktivasi Google News per sumber. Sumber otomatis diizinkan bila aktif,
+                terverifikasi, crawling aktif, dan memiliki pola URL izinkan.
             </div>
         </div>
     </div>
@@ -78,7 +78,7 @@
         <table class="table table-vcenter card-table">
             <thead>
                 <tr>
-                    <th>Source penerbit</th>
+                    <th>Sumber penerbit</th>
                     <th>Domain</th>
                     <th>Status whitelist</th>
                     <th>Catatan</th>
@@ -108,13 +108,13 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" class="text-center text-secondary py-5">Belum ada Source pada database.</td></tr>
+                <tr><td colspan="4" class="text-center text-secondary py-5">Belum ada sumber pada database.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     <div class="card-footer text-secondary small">
-        {{ excluded_count }} Source belum memenuhi syarat dan tidak akan menerima hasil Google News.
+        {{ excluded_count }} sumber belum memenuhi syarat dan tidak akan menerima hasil Google News.
     </div>
 </div>
 {% endblock %}

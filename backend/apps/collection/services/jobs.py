@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from apps.sources.models import Source
 
-from ..models import CollectionJob
+from ..models import CollectionJob, CollectionSession
 
 
 @transaction.atomic
@@ -15,9 +15,50 @@ def start_collection_job(
     triggered_by=None,
     trigger_type: str = "system",
     metadata: dict | None = None,
+    session: CollectionSession | None = None,
+    existing_job: CollectionJob | None = None,
 ) -> CollectionJob:
+    if existing_job is not None:
+        locked_job = CollectionJob.objects.select_for_update().get(
+            pk=existing_job.pk,
+        )
+        if locked_job.status != CollectionJob.Status.PENDING:
+            raise ValueError(
+                "Job terencana hanya dapat dimulai dari status Menunggu."
+            )
+        locked_job.source = source
+        locked_job.session = session or locked_job.session
+        locked_job.job_type = job_type
+        locked_job.crawler_name = crawler_name
+        locked_job.status = CollectionJob.Status.RUNNING
+        locked_job.started_at = timezone.now()
+        locked_job.finished_at = None
+        locked_job.triggered_by = triggered_by
+        locked_job.trigger_type = trigger_type
+        locked_job.metadata = {
+            **locked_job.metadata,
+            **(metadata or {}),
+        }
+        locked_job.save(
+            update_fields=[
+                "source",
+                "session",
+                "job_type",
+                "crawler_name",
+                "status",
+                "started_at",
+                "finished_at",
+                "triggered_by",
+                "trigger_type",
+                "metadata",
+                "updated_at",
+            ]
+        )
+        return locked_job
+
     return CollectionJob.objects.create(
         source=source,
+        session=session,
         job_type=job_type,
         crawler_name=crawler_name,
         status=CollectionJob.Status.RUNNING,

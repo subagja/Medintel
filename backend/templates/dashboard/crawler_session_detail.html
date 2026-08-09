@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}{{ session.reference }} | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Koleksi Terpadu</div>
+            <h2 class="page-title">{{ session.reference }}</h2>
+            <div class="text-secondary mt-1">
+                Satu sesi operasional yang menggabungkan RSS resmi, HTML cadangan, dan penemuan tambahan.
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali</a>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md">
+                <div class="text-secondary">Status sesi</div>
+                <div class="mt-1">
+                    {% if session_status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
+                    {% elif session_status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan catatan</span>
+                    {% elif session_status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
+                    {% elif session_status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                    {% elif session_status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
+                    {% else %}<span class="badge bg-secondary-lt">{{ session.status_label }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="col-md">
+                <div class="text-secondary">Cakupan</div>
+                <div class="fw-semibold">
+                    {% if session.scope == "all" %}Semua sumber siap
+                    {% elif session.scope == "all_indonesia" %}Semua sumber Indonesia siap
+                    {% else %}Satu sumber{% endif %}
+                </div>
+                {% if session.selected_source %}<div class="small text-secondary">{{ session.selected_source.name }}</div>{% endif %}
+            </div>
+            <div class="col-md">
+                <div class="text-secondary">Kebijakan kanal</div>
+                <div class="fw-semibold">RSS utama · HTML cadangan</div>
+                <div class="small text-secondary">Pemindaian mendalam HTML: {% if session.html_deep_scan %}aktif{% else %}nonaktif{% endif %}</div>
+            </div>
+            <div class="col-md">
+                <div class="text-secondary">Penemuan tambahan</div>
+                <div class="fw-semibold">{% if session.include_google_news %}Google News aktif{% else %}Nonaktif{% endif %}</div>
+            </div>
+            <div class="col-md">
+                <div class="text-secondary">Batas per proses kanal</div>
+                <div class="fw-semibold">Artikel: {% if session.article_limit %}{{ session.article_limit }}{% else %}konfigurasi sumber{% endif %}</div>
+                <div class="small text-secondary">Kandidat: {{ session.candidate_limit|default:crawler_candidate_limit_default }}</div>
+                {% if session.include_google_news and not session.article_limit %}<div class="small text-secondary">Google News: {{ google_news_article_limit_default }} artikel</div>{% endif %}
+            </div>
+            <div class="col-md">
+                <div class="text-secondary">Dimulai</div>
+                <div class="fw-semibold">{{ session.created_at|date:"d M Y H:i:s" }}</div>
+                <div class="small text-secondary">{{ session.triggered_by|default:"Sistem" }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Proses Kanal</div><div class="h1 mb-0">{{ session.planned_job_count }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Kandidat</div><div class="h1 mb-0">{{ session_totals.total_found }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Artikel Baru</div><div class="h1 text-success mb-0">{{ session_totals.total_created }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Duplikat</div><div class="h1 mb-0">{{ session_totals.total_duplicate }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Ditolak</div><div class="h1 text-warning mb-0">{{ session_totals.total_rejected }}</div></div></div></div>
+    <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Gagal</div><div class="h1 text-danger mb-0">{{ session_totals.total_failed }}</div></div></div></div>
+</div>
+
+{% if is_running %}
+<div class="alert alert-info" role="alert">
+    Sesi masih berjalan. Halaman ini diperbarui otomatis setiap 5 detik.
+</div>
+{% endif %}
+
+{% if skipped_jobs %}
+<div class="alert alert-warning" role="alert">
+    <div class="fw-semibold mb-1">{{ session.skipped_job_count }} proses kanal dilewati</div>
+    {% for item in skipped_jobs %}
+        <div>{{ item.source_code }} · {{ item.job_type }} — {{ item.reason }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Proses Kanal dalam Sesi</h3>
+            <div class="text-secondary small">Setiap kanal tetap memiliki audit kandidat sendiri, tetapi seluruh hasil diringkas dalam sesi yang sama.</div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr><th>Sumber</th><th>Peran kanal</th><th>Status</th><th class="text-center">Kandidat</th><th class="text-center">Baru</th><th class="text-center">Ditolak</th><th class="text-center">Gagal</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        {% if job.source %}<div class="fw-semibold">{{ job.source.name }}</div><div class="small text-secondary">{{ job.source.code }}</div>
+                        {% else %}<div class="fw-semibold">Penemuan lintas sumber</div><div class="small text-secondary">Daftar sumber diizinkan sesuai cakupan sesi</div>{% endif %}
+                    </td>
+                    <td>
+                        {% if job.job_type == "rss" %}<span class="badge bg-azure-lt">RSS utama</span>
+                        {% elif job.job_type == "google_news" %}<span class="badge bg-purple-lt">Google News</span>
+                        {% else %}<span class="badge bg-blue-lt">{{ job.metadata.channel_role|default:"HTML" }}</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
+                        {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
+                        {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
+                        {% elif job.status == "pending" %}<span class="badge bg-secondary-lt">Menunggu giliran</span>
+                        {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                        {% else %}<span class="badge bg-secondary-lt">{{ job.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td class="text-center">{{ job.total_found }}</td>
+                    <td class="text-center text-success">{{ job.total_created }}</td>
+                    <td class="text-center text-warning">{{ job.total_rejected }}</td>
+                    <td class="text-center text-danger">{{ job.total_failed }}</td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Audit</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-secondary py-5">Belum ada proses kanal dalam sesi.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if is_running %}
+<script>
+window.setTimeout(function () { window.location.reload(); }, 5000);
+</script>
+{% endif %}
+{% endblock %}

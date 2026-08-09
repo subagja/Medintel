@@ -80,6 +80,16 @@ urlpatterns = [
         name="crawler-run",
     ),
     path(
+        "crawler-artikel/koleksi-terpadu/jalankan/",
+        views.crawler_unified_run,
+        name="crawler-unified-run",
+    ),
+    path(
+        "crawler-artikel/sesi/<uuid:session_id>/",
+        views.crawler_session_detail,
+        name="crawler-session-detail",
+    ),
+    path(
         "crawler-artikel/status/",
         views.crawler_status,
         name="crawler-status",

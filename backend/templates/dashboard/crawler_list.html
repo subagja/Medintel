@@ -9,8 +9,8 @@
             <div class="page-pretitle">Pengumpulan OSINT</div>
             <h2 class="page-title">Pengumpulan Artikel</h2>
             <div class="text-secondary mt-1">
-                Jalankan kanal HTML, RSS resmi, atau discovery Google News dan telusuri penerimaan,
-                penolakan, duplikasi, serta kegagalan setiap kandidat artikel.
+                Jalankan satu Koleksi Terpadu. Sistem memilih RSS resmi sebagai kanal utama,
+                HTML sebagai kanal cadangan, dan Google News sebagai penemuan tambahan.
             </div>
         </div>
         <div class="col-auto ms-auto">
@@ -80,10 +80,133 @@
 
 {% load role_tags %}
 {% if request.user|has_role:"Admin,Analyst" %}
+<div class="card mb-3 border-primary">
+    <div class="card-header">
+        <div>
+            <div class="text-primary text-uppercase small fw-semibold">Alur operasional utama</div>
+            <h3 class="card-title mt-1">Jalankan Koleksi Terpadu</h3>
+            <div class="text-secondary small">
+                Satu sesi, satu nomor audit, dan satu ringkasan untuk seluruh kanal yang dijalankan.
+            </div>
+        </div>
+    </div>
+    <form method="post" action="{% url 'dashboard:crawler-unified-run' %}" id="unified-collection-form">
+        {% csrf_token %}
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-lg-5">
+                    <label class="form-label" for="unified-source">Cakupan sumber</label>
+                    <select class="form-select" id="unified-source" name="source" required>
+                        {% if unified_source_rows %}
+                            <option value="all">Semua sumber siap ({{ unified_source_rows|length }})</option>
+                            <option value="all_indonesia">Semua sumber Indonesia siap ({{ unified_indonesia_count }})</option>
+                        {% else %}
+                            <option value="">Belum ada sumber siap</option>
+                        {% endif %}
+                        {% for row in unified_source_rows %}
+                            <option value="{{ row.source.code }}" data-max-articles="{{ row.source.max_articles_per_run }}">
+                                {{ row.source.name }} · {% if row.rss_ready %}RSS utama{% else %}HTML cadangan{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3">
+                    <label class="form-label" for="unified-limit">Maks. artikel diproses</label>
+                    <input class="form-control" id="unified-limit" name="limit" type="number" min="1" max="1000" placeholder="Kosong = ikuti konfigurasi sumber" aria-describedby="unified-limit-hint">
+                    <div class="form-hint" id="unified-limit-hint">Berlaku untuk setiap proses sumber–kanal.</div>
+                </div>
+                <div class="col-lg-2">
+                    <label class="form-label">Penemuan tambahan</label>
+                    <label class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" name="include_google_news" value="1" checked {% if not ready_google_news_sources %}disabled{% endif %}>
+                        <span class="form-check-label">Google News</span>
+                    </label>
+                </div>
+                <div class="col-lg-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" type="submit" id="unified-collection-submit" {% if not unified_source_rows %}disabled{% endif %}>
+                        Jalankan Koleksi
+                    </button>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-secondary small">Prioritas kanal</div>
+                        <div class="fw-semibold">{{ unified_rss_primary_count }} sumber melalui RSS resmi</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-secondary small">Kanal cadangan otomatis</div>
+                        <div class="fw-semibold">{{ unified_html_fallback_count }} sumber melalui HTML</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-secondary small">Sumber penemuan diizinkan</div>
+                        <div class="fw-semibold">{{ ready_google_news_sources|length }} sumber menerima hasil Google News</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <button class="btn btn-sm btn-ghost-secondary px-0" type="button" data-bs-toggle="collapse" data-bs-target="#unified-advanced-settings" aria-expanded="false">
+                    Pengaturan lanjutan
+                </button>
+                <div class="collapse" id="unified-advanced-settings">
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <label class="form-label" for="unified-candidate-limit">Maks. kandidat diperiksa</label>
+                            <input class="form-control" id="unified-candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Kosong = default {{ crawler_candidate_limit_default }}" aria-describedby="unified-candidate-limit-hint">
+                            <div class="form-hint" id="unified-candidate-limit-hint">Berlaku untuk setiap proses sumber–kanal; bukan target artikel baru.</div>
+                        </div>
+                        <div class="col-md-8 d-flex align-items-end">
+                            <label class="form-check">
+                                <input class="form-check-input" type="checkbox" name="html_deep_scan" value="1">
+                                <span class="form-check-label">Jalankan pemindaian mendalam HTML pada {{ unified_html_deep_scan_count }} sumber yang sudah memiliki RSS</span>
+                                <span class="form-check-description">Gunakan untuk audit kelengkapan berkala, bukan setiap koleksi rutin.</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-3 mb-0" role="alert">
+                <div class="fw-semibold mb-2">Cara kerja batas koleksi</div>
+                <ol class="mb-2 ps-3">
+                    <li><strong>Kandidat ditemukan</strong> melalui RSS resmi, HTML cadangan, dan—jika diaktifkan—Google News.</li>
+                    <li><strong>Maks. kandidat diperiksa</strong> membatasi URL/entri yang diperiksa lebih lanjut pada setiap proses sumber–kanal.</li>
+                    <li>Kandidat melewati domain sumber, pola URL izinkan/tolak, deduplikasi, filter awal, pengambilan konten, dan filter lengkap.</li>
+                    <li><strong>Maks. artikel diproses</strong> membatasi artikel yang lolos ke tahap penyimpanan. Angka ini bukan jaminan jumlah artikel baru.</li>
+                </ol>
+                <div class="small">
+                    Jika kolom artikel dikosongkan, HTML/RSS mengikuti <strong>Maksimal artikel per eksekusi</strong> pada masing-masing Sumber OSINT;
+                    Google News mengikuti default <strong>{{ google_news_article_limit_default }}</strong>. Jika diisi, HTML/RSS tetap memakai nilai yang lebih kecil antara input ini dan konfigurasi sumber.
+                    Hasil akhir dapat lebih sedikit karena duplikat, penolakan, atau kegagalan.
+                </div>
+            </div>
+            <div class="alert alert-danger mt-3 mb-0 d-none" role="alert" id="unified-collection-error"></div>
+        </div>
+    </form>
+</div>
+
 <div class="card mb-3">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Jalankan Crawler HTML</h3>
+            <h3 class="card-title">Alat Manual dan Diagnostik Kanal</h3>
+            <div class="text-secondary small">Gunakan hanya untuk menguji satu kanal atau menelusuri masalah konfigurasi sumber.</div>
+        </div>
+        <div class="card-actions">
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#manual-channel-tools" aria-expanded="false">Buka alat manual</button>
+        </div>
+    </div>
+    <div class="collapse" id="manual-channel-tools">
+        <div class="card-body bg-light-lt">
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Jalankan Crawler HTML · Diagnostik</h3>
             <div class="text-secondary small">
                 Kanal HTML memakai seed halaman daftar atau URL artikel langsung.
             </div>
@@ -115,17 +238,19 @@
                             <option value="all_indonesia">Semua sumber Indonesia siap ({{ ready_indonesia_count }})</option>
                         {% endif %}
                         {% for source in ready_sources %}
-                            <option value="{{ source.code }}">{{ source.name }} ({{ source.code }})</option>
+                            <option value="{{ source.code }}" data-max-articles="{{ source.max_articles_per_run }}">{{ source.name }} ({{ source.code }})</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label" for="crawler-limit">Maks. artikel</label>
-                    <input class="form-control" id="crawler-limit" name="limit" type="number" min="1" max="1000" placeholder="Ikuti konfigurasi sumber">
+                    <label class="form-label" for="crawler-limit">Maks. artikel diproses</label>
+                    <input class="form-control" id="crawler-limit" name="limit" type="number" min="1" max="1000" placeholder="Kosong = ikuti konfigurasi sumber" aria-describedby="crawler-limit-hint">
+                    <div class="form-hint" id="crawler-limit-hint">Pilih sumber untuk melihat batas efektif.</div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label" for="candidate-limit">Maks. kandidat diunduh</label>
-                    <input class="form-control" id="candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Default sistem">
+                    <label class="form-label" for="candidate-limit">Maks. kandidat diperiksa</label>
+                    <input class="form-control" id="candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Kosong = default {{ crawler_candidate_limit_default }}">
+                    <div class="form-hint">Kandidat dihitung sebelum penguraian konten penuh.</div>
                 </div>
                 <div class="col-md-1 d-flex align-items-end">
                     <button class="btn btn-primary w-100" type="submit" id="crawler-run-submit" {% if not ready_sources %}disabled{% endif %}>
@@ -152,10 +277,10 @@
 <div class="card mb-3">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Jalankan RSS Resmi</h3>
+            <h3 class="card-title">Jalankan RSS Resmi · Diagnostik</h3>
             <div class="text-secondary small">
                 RSS digunakan untuk menemukan artikel; domain sumber, pola URL,
-                deduplikasi, filter penyakit, dan ingestion tetap sama dengan HTML.
+                deduplikasi, filter penyakit, dan penyimpanan tetap sama dengan HTML.
             </div>
         </div>
         <div class="card-actions">
@@ -183,19 +308,21 @@
                             {% if ready_rss_sources %}
                                 <option value="all">Semua sumber RSS siap ({{ ready_rss_sources|length }})</option>
                                 <option value="all_indonesia">Semua RSS Indonesia siap ({{ ready_rss_indonesia_count }})</option>
-                            {% endif %}
-                            {% for source in ready_rss_sources %}
-                                <option value="{{ source.code }}">{{ source.name }} ({{ source.code }})</option>
-                            {% endfor %}
+                        {% endif %}
+                        {% for source in ready_rss_sources %}
+                            <option value="{{ source.code }}" data-max-articles="{{ source.max_articles_per_run }}">{{ source.name }} ({{ source.code }})</option>
+                        {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label" for="rss-limit">Maks. artikel</label>
-                        <input class="form-control" id="rss-limit" name="limit" type="number" min="1" max="1000" placeholder="Ikuti konfigurasi sumber">
+                        <label class="form-label" for="rss-limit">Maks. artikel diproses</label>
+                        <input class="form-control" id="rss-limit" name="limit" type="number" min="1" max="1000" placeholder="Kosong = ikuti konfigurasi sumber" aria-describedby="rss-limit-hint">
+                        <div class="form-hint" id="rss-limit-hint">Pilih sumber untuk melihat batas efektif.</div>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label" for="rss-candidate-limit">Maks. entri diunduh</label>
-                        <input class="form-control" id="rss-candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Default sistem">
+                        <label class="form-label" for="rss-candidate-limit">Maks. kandidat diperiksa</label>
+                        <input class="form-control" id="rss-candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Kosong = default {{ crawler_candidate_limit_default }}">
+                        <div class="form-hint">Entri RSS yang lolos pemeriksaan awal dihitung sebagai kandidat.</div>
                     </div>
                     <div class="col-md-1 d-flex align-items-end">
                         <button class="btn btn-primary w-100" type="submit" id="rss-crawler-run-submit" {% if not ready_rss_sources %}disabled{% endif %}>
@@ -205,7 +332,7 @@
                 </div>
                 <div class="form-hint mt-2">
                     Satu sumber boleh memiliki kanal HTML dan RSS sekaligus.
-                    RSS resmi tercatat sebagai collection job terpisah.
+                    RSS resmi tercatat sebagai proses kanal terpisah.
                 </div>
                 <div class="alert alert-danger mt-3 mb-0 d-none" role="alert" id="rss-crawler-run-error"></div>
                 {% if not ready_rss_sources %}
@@ -222,10 +349,10 @@
 <div class="card mb-3">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Jalankan Google News RSS</h3>
+            <h3 class="card-title">Jalankan Google News · Diagnostik</h3>
             <div class="text-secondary small">
-                Discovery fallback berbasis Disease Master. Hanya URL penerbit
-                yang cocok dengan Source database dan pola allow/deny yang dapat diproses.
+                Penemuan tambahan berbasis Disease Master. Hanya URL penerbit
+                yang cocok dengan sumber terdaftar dan pola URL izinkan/tolak yang dapat diproses.
             </div>
         </div>
         <div class="card-actions">
@@ -248,18 +375,20 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-4">
-                        <label class="form-label">Cakupan discovery</label>
+                        <label class="form-label">Cakupan penemuan</label>
                         <div class="form-control bg-light">
-                            Global · {{ ready_google_news_sources|length }} Source diizinkan
+                            Global · {{ ready_google_news_sources|length }} sumber diizinkan
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label" for="google-news-limit">Maks. artikel</label>
-                        <input class="form-control" id="google-news-limit" name="limit" type="number" min="1" max="1000" placeholder="Default 10">
+                        <label class="form-label" for="google-news-limit">Maks. artikel diproses</label>
+                        <input class="form-control" id="google-news-limit" name="limit" type="number" min="1" max="1000" placeholder="Kosong = default {{ google_news_article_limit_default }}">
+                        <div class="form-hint">Batas untuk satu proses Google News lintas sumber.</div>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label" for="google-news-candidate-limit">Maks. entri diperiksa</label>
-                        <input class="form-control" id="google-news-candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Default 30">
+                        <label class="form-label" for="google-news-candidate-limit">Maks. kandidat diperiksa</label>
+                        <input class="form-control" id="google-news-candidate-limit" name="candidate_limit" type="number" min="1" max="1000" placeholder="Kosong = default {{ crawler_candidate_limit_default }}">
+                        <div class="form-hint">Entri diperiksa bergiliran dari seluruh batch penyakit.</div>
                     </div>
                     <div class="col-md-2 d-flex align-items-end">
                         <button class="btn btn-primary w-100" type="submit" id="google-news-run-submit" {% if not ready_google_news_sources %}disabled{% endif %}>
@@ -270,25 +399,67 @@
                 <div class="form-hint mt-2">
                     Tautan yang belum dapat diurai disimpan sebagai Metadata Saja;
                     akses penerbit yang tertahan dicatat sebagai Pengambilan Terblokir.
-                    URL penerbit dibandingkan dengan seluruh Source yang diizinkan setelah
-                    link Google News di-resolve. Umur maksimum entri:
+                    URL penerbit dibandingkan dengan seluruh sumber yang diizinkan setelah
+                    tautan Google News diuraikan. Umur maksimum entri:
                     <strong>{{ google_news_max_age_days }} hari</strong> melalui kueri
                     <code>when:{{ google_news_max_age_days }}d</code> dan validasi lokal.
                     Kandidat dibagi bergiliran antarbatch. Cakupan saat ini:
                     {{ google_news_scope.disease_count }} penyakit dalam
                     {{ google_news_scope.batches|length }} batch otomatis.
-                    <a href="{% url 'dashboard:google-news-discovery-settings' %}">Lihat kebijakan dan whitelist</a>.
+                    <a href="{% url 'dashboard:google-news-discovery-settings' %}">Lihat kebijakan dan daftar sumber diizinkan</a>.
                 </div>
                 <div class="alert alert-danger mt-3 mb-0 d-none" role="alert" id="google-news-run-error"></div>
                 {% if not ready_google_news_sources %}
                     <div class="alert alert-warning mt-3 mb-0" role="alert">
-                        Belum ada Source yang dapat menerima hasil discovery.
+                        Belum ada sumber yang dapat menerima hasil penemuan.
                         <a class="alert-link" href="{% url 'dashboard:google-news-discovery-settings' %}">Buka Pengaturan Google News</a>
                         untuk memeriksa syarat whitelist.
                     </div>
                 {% endif %}
             </div>
         </form>
+    </div>
+</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if recent_collection_sessions %}
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Sesi Koleksi Terpadu Terbaru</h3>
+            <div class="text-secondary small">Ringkasan gabungan; audit kandidat tetap tersedia pada setiap proses kanal.</div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead><tr><th>Sesi</th><th>Cakupan</th><th>Kanal terencana</th><th>Status</th><th>Waktu</th><th></th></tr></thead>
+            <tbody>
+                {% for collection_session in recent_collection_sessions %}
+                <tr>
+                    <td class="fw-semibold">{{ collection_session.reference }}</td>
+                    <td>
+                        {% if collection_session.scope == "all" %}Semua sumber siap
+                        {% elif collection_session.scope == "all_indonesia" %}Semua sumber Indonesia siap
+                        {% else %}Satu sumber{% endif %}
+                        {% if collection_session.selected_source %}<div class="small text-secondary">{{ collection_session.selected_source.name }}</div>{% endif %}
+                    </td>
+                    <td>{{ collection_session.planned_job_count }} proses{% if collection_session.skipped_job_count %} · {{ collection_session.skipped_job_count }} dilewati{% endif %}</td>
+                    <td>
+                        {% if collection_session.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
+                        {% elif collection_session.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan catatan</span>
+                        {% elif collection_session.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
+                        {% elif collection_session.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                        {% else %}<span class="badge bg-secondary-lt">{{ collection_session.status_label }}</span>{% endif %}
+                    </td>
+                    <td class="text-nowrap">{{ collection_session.created_at|date:"d M Y H:i" }}</td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-session-detail' collection_session.id %}">Ringkasan</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 {% endif %}
@@ -314,8 +485,8 @@
 <div class="card">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Riwayat Collection Job</h3>
-            <div class="text-secondary small">HTML dan RSS resmi dijalankan per Source; Google News RSS dicatat sebagai satu discovery lintas sumber.</div>
+            <h3 class="card-title">Riwayat Proses Koleksi</h3>
+            <div class="text-secondary small">HTML dan RSS resmi dijalankan per sumber; Google News dicatat sebagai satu proses penemuan lintas sumber.</div>
         </div>
     </div>
     <div class="card-body border-bottom py-3">
@@ -373,8 +544,11 @@
                                 <span class="fw-semibold">{{ job.source.name }}</span>
                                 <span class="text-secondary small">({{ job.source.code }})</span>
                             {% else %}
-                                <span class="fw-semibold">Discovery Lintas Sumber</span>
+                                <span class="fw-semibold">Penemuan Lintas Sumber</span>
                                 <span class="text-secondary small">(global)</span>
+                            {% endif %}
+                            {% if job.session %}
+                                <div><a class="badge bg-indigo-lt mt-1" href="{% url 'dashboard:crawler-session-detail' job.session.id %}">{{ job.session.reference }}</a></div>
                             {% endif %}
                         </td>
                         <td class="js-job-type">
@@ -502,6 +676,9 @@
 
     var tbody = document.getElementById("crawler-jobs-tbody");
     var emptyRow = document.getElementById("crawler-jobs-empty-row");
+    var unifiedForm = document.getElementById("unified-collection-form");
+    var unifiedSubmitButton = document.getElementById("unified-collection-submit");
+    var unifiedErrorBox = document.getElementById("unified-collection-error");
     var htmlForm = document.getElementById("crawler-run-form");
     var htmlSubmitButton = document.getElementById("crawler-run-submit");
     var htmlErrorBox = document.getElementById("crawler-run-error");
@@ -516,6 +693,32 @@
 
     function jobDetailUrl(jobId) {
         return jobDetailUrlTemplate.replace(JOB_DETAIL_URL_PLACEHOLDER, jobId);
+    }
+
+    function bindSourceArticleHint(selectId, hintId) {
+        var sourceSelect = document.getElementById(selectId);
+        var hint = document.getElementById(hintId);
+        if (!sourceSelect || !hint) {
+            return;
+        }
+
+        function updateHint() {
+            var selected = sourceSelect.options[sourceSelect.selectedIndex];
+            var configuredLimit = selected
+                ? selected.getAttribute("data-max-articles")
+                : null;
+
+            if (configuredLimit) {
+                hint.textContent = "Konfigurasi sumber: maks. " + configuredLimit
+                    + " artikel per eksekusi. Jika kolom diisi, sistem memakai nilai yang lebih kecil.";
+                return;
+            }
+
+            hint.textContent = "Setiap sumber mengikuti batasnya masing-masing. Jika kolom diisi, nilai tersebut menjadi batas tambahan per proses sumber–kanal.";
+        }
+
+        sourceSelect.addEventListener("change", updateHint);
+        updateHint();
     }
 
     function runningRows() {
@@ -740,7 +943,7 @@
                     codeToName[option.value] = option.textContent.replace(/\s*\(.*\)$/, "");
                 });
             }
-            codeToName["google-news-global"] = "Discovery Lintas Sumber";
+            codeToName["google-news-global"] = "Penemuan Lintas Sumber";
 
             submitButton.disabled = true;
             submitButton.textContent = "Memulai...";
@@ -801,6 +1004,50 @@
                 });
         });
     }
+
+    if (unifiedForm && unifiedSubmitButton) {
+        unifiedForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+            hideError(unifiedErrorBox);
+            unifiedSubmitButton.disabled = true;
+            unifiedSubmitButton.textContent = "Menyiapkan sesi...";
+
+            fetch(unifiedForm.action, {
+                method: "POST",
+                body: new FormData(unifiedForm),
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+                .then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        showError(
+                            unifiedErrorBox,
+                            result.data.error || "Koleksi Terpadu gagal dimulai."
+                        );
+                        return;
+                    }
+                    window.location.href = result.data.detail_url;
+                })
+                .catch(function () {
+                    showError(
+                        unifiedErrorBox,
+                        "Tidak dapat menghubungi server. Coba lagi."
+                    );
+                })
+                .finally(function () {
+                    unifiedSubmitButton.disabled = false;
+                    unifiedSubmitButton.textContent = "Jalankan Koleksi";
+                });
+        });
+    }
+
+    bindSourceArticleHint("unified-source", "unified-limit-hint");
+    bindSourceArticleHint("crawler-source", "crawler-limit-hint");
+    bindSourceArticleHint("rss-source", "rss-limit-hint");
 
     bindRunForm(
         htmlForm,

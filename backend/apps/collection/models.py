@@ -2,9 +2,117 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Sum
+from django.utils import timezone
 
 from apps.articles.models import Article
 from apps.sources.models import Source
+
+
+class CollectionSession(models.Model):
+    """Satu eksekusi operasional yang dapat memuat beberapa kanal crawler."""
+
+    class Scope(models.TextChoices):
+        ALL_READY = "all", "Semua Source siap"
+        ALL_INDONESIA = "all_indonesia", "Semua Source Indonesia siap"
+        SINGLE_SOURCE = "single_source", "Satu Source"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    scope = models.CharField(
+        max_length=30,
+        choices=Scope.choices,
+        default=Scope.ALL_READY,
+        db_index=True,
+    )
+    selected_source = models.ForeignKey(
+        Source,
+        on_delete=models.PROTECT,
+        related_name="selected_collection_sessions",
+        null=True,
+        blank=True,
+    )
+    include_google_news = models.BooleanField(default=True)
+    html_deep_scan = models.BooleanField(default=False)
+    article_limit = models.PositiveIntegerField(null=True, blank=True)
+    candidate_limit = models.PositiveIntegerField(null=True, blank=True)
+    planned_job_count = models.PositiveIntegerField(default=0)
+    skipped_job_count = models.PositiveIntegerField(default=0)
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="triggered_collection_sessions",
+        null=True,
+        blank=True,
+    )
+    trigger_type = models.CharField(max_length=30, default="system")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["scope", "created_at"],
+                name="collsess_scope_created_idx",
+            ),
+        ]
+
+    @property
+    def reference(self) -> str:
+        created = self.created_at or timezone.now()
+        local_created = timezone.localtime(created)
+        return f"KOL-{local_created:%Y%m%d}-{str(self.id)[:8].upper()}"
+
+    @property
+    def status(self) -> str:
+        statuses = list(self.jobs.values_list("status", flat=True))
+        if not statuses:
+            return CollectionJob.Status.PENDING
+        if any(
+            status in {CollectionJob.Status.PENDING, CollectionJob.Status.RUNNING}
+            for status in statuses
+        ):
+            return CollectionJob.Status.RUNNING
+        if all(status == CollectionJob.Status.CANCELLED for status in statuses):
+            return CollectionJob.Status.CANCELLED
+        if all(
+            status in {CollectionJob.Status.FAILED, CollectionJob.Status.CANCELLED}
+            for status in statuses
+        ):
+            return CollectionJob.Status.FAILED
+        if any(
+            status in {
+                CollectionJob.Status.FAILED,
+                CollectionJob.Status.COMPLETED_WITH_ERRORS,
+                CollectionJob.Status.CANCELLED,
+            }
+            for status in statuses
+        ):
+            return CollectionJob.Status.COMPLETED_WITH_ERRORS
+        return CollectionJob.Status.COMPLETED
+
+    @property
+    def status_label(self) -> str:
+        return dict(CollectionJob.Status.choices).get(self.status, self.status)
+
+    @property
+    def totals(self) -> dict[str, int]:
+        values = self.jobs.aggregate(
+            total_found=Sum("total_found"),
+            total_created=Sum("total_created"),
+            total_duplicate=Sum("total_duplicate"),
+            total_rejected=Sum("total_rejected"),
+            total_failed=Sum("total_failed"),
+        )
+        return {key: value or 0 for key, value in values.items()}
+
+    def __str__(self) -> str:
+        return f"{self.reference} - {self.status_label}"
 
 
 class CollectionJob(models.Model):
@@ -30,6 +138,15 @@ class CollectionJob(models.Model):
         primary_key=True,
         default=uuid.uuid4,
         editable=False,
+    )
+
+    session = models.ForeignKey(
+        CollectionSession,
+        on_delete=models.SET_NULL,
+        related_name="jobs",
+        null=True,
+        blank=True,
+        help_text="Sesi Koleksi Terpadu yang menaungi job ini, bila ada.",
     )
 
     source = models.ForeignKey(

@@ -7,10 +7,10 @@
     <div class="row align-items-center">
         <div class="col">
             <div class="page-pretitle">Pengumpulan Artikel · {{ job.get_job_type_display }}</div>
-            <h2 class="page-title">{% if job.source %}{{ job.source.name }}{% else %}Discovery Lintas Sumber{% endif %}</h2>
-            <div class="text-secondary mt-1">Job {{ job.id }}</div>
+            <h2 class="page-title">{% if job.source %}{{ job.source.name }}{% else %}Penemuan Lintas Sumber{% endif %}</h2>
+            <div class="text-secondary mt-1">Proses {{ job.id }}</div>
             {% if job.job_type == "google_news" %}
-                <div class="text-secondary small mt-1">Disease Master global · URL penerbit dipetakan ke Source yang diizinkan · maksimum {{ job.metadata.max_age_days|default:7 }} hari</div>
+                <div class="text-secondary small mt-1">Disease Master global · URL penerbit dipetakan ke sumber yang diizinkan · maksimum {{ job.metadata.max_age_days|default:7 }} hari</div>
             {% endif %}
         </div>
         <div class="col-auto ms-auto">
@@ -18,6 +18,15 @@
         </div>
     </div>
 </div>
+
+{% if job.session %}
+<div class="alert alert-info d-flex align-items-center justify-content-between" role="alert">
+    <div>
+        Bagian dari sesi Koleksi Terpadu <strong>{{ job.session.reference }}</strong>.
+    </div>
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-session-detail' job.session.id %}">Lihat ringkasan sesi</a>
+</div>
+{% endif %}
 
 {% if job.error_message %}
     <div class="alert alert-danger" role="alert">
@@ -79,7 +88,7 @@
 <div class="card mb-3">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Funnel Google News</h3>
+            <h3 class="card-title">Alur Penyaringan Google News</h3>
             <div class="text-secondary small">
                 Kueri {{ job.metadata.query_policy|default:"when:7d" }} · kandidat dibagi bergiliran antarbatch penyakit.
             </div>
@@ -91,7 +100,7 @@
             <div class="col-6 col-md-3"><div class="text-secondary small">Dalam batas usia</div><div class="h2 mb-0">{{ job.metadata.funnel.feed_entries_within_age|default:0 }}</div></div>
             <div class="col-6 col-md-3"><div class="text-secondary small">Kandidat diperiksa</div><div class="h2 mb-0">{{ job.metadata.funnel.candidates_checked|default:0 }}</div></div>
             <div class="col-6 col-md-3"><div class="text-secondary small">URL penerbit terurai</div><div class="h2 mb-0">{{ job.metadata.funnel.publisher_urls_resolved|default:0 }}</div></div>
-            <div class="col-6 col-md-3"><div class="text-secondary small">Cocok dengan Source</div><div class="h2 mb-0">{{ job.metadata.funnel.sources_matched|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Cocok dengan sumber</div><div class="h2 mb-0">{{ job.metadata.funnel.sources_matched|default:0 }}</div></div>
             <div class="col-6 col-md-3"><div class="text-secondary small">Halaman berhasil diambil</div><div class="h2 mb-0">{{ job.metadata.funnel.publisher_pages_fetched|default:0 }}</div></div>
             <div class="col-6 col-md-3"><div class="text-secondary small">Lolos filter artikel</div><div class="h2 mb-0">{{ job.metadata.funnel.article_payloads_eligible|default:0 }}</div></div>
             <div class="col-6 col-md-3"><div class="text-secondary small">Artikel baru tersimpan</div><div class="h2 text-success mb-0">{{ job.total_created }}</div></div>
@@ -107,7 +116,7 @@
     <div class="card-header">
         <div>
             <h3 class="card-title">Detail Kandidat</h3>
-            <div class="text-secondary small">Alasan berasal dari tahap validasi URL, prefilter, filter lengkap, ingestion, atau koneksi HTTP.</div>
+            <div class="text-secondary small">Alasan berasal dari tahap validasi URL, filter awal, filter lengkap, penyimpanan, atau koneksi HTTP.</div>
         </div>
     </div>
     <div class="card-body border-bottom py-3">
@@ -176,7 +185,7 @@
                             {% if not item.error_message and not item.reason %}<span class="text-secondary">-</span>{% endif %}
                         </td>
                         <td>
-                            <div class="text-secondary small">{{ item.metadata.stage|default:"ingestion" }}</div>
+                            <div class="text-secondary small">{{ item.metadata.stage|default:"penyimpanan" }}</div>
                             <div class="text-nowrap small mt-1">{{ item.processed_at|date:"d M Y H:i:s"|default:"-" }}</div>
                         </td>
                     </tr>
