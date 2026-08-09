@@ -11,6 +11,7 @@ class CollectionJob(models.Model):
     class JobType(models.TextChoices):
         CRAWLER = "crawler", "Crawler"
         RSS = "rss", "RSS Feed"
+        GOOGLE_NEWS = "google_news", "Google News RSS"
         MANUAL_URL = "manual_url", "Input URL Manual"
         MANUAL_ARTICLE = "manual_article", "Input Artikel Manual"
 
@@ -35,6 +36,12 @@ class CollectionJob(models.Model):
         Source,
         on_delete=models.PROTECT,
         related_name="collection_jobs",
+        null=True,
+        blank=True,
+        help_text=(
+            "Kosong untuk job discovery lintas sumber. Source artikel "
+            "ditentukan setelah URL penerbit berhasil diselesaikan."
+        ),
     )
 
     job_type = models.CharField(
@@ -132,8 +139,13 @@ class CollectionJob(models.Model):
         ]
 
     def __str__(self) -> str:
+        source_label = (
+            self.source.code
+            if self.source_id
+            else "lintas-sumber"
+        )
         return (
-            f"{self.source.code} - "
+            f"{source_label} - "
             f"{self.get_job_type_display()} - "
             f"{self.get_status_display()}"
         )
@@ -146,6 +158,8 @@ class CollectionJobItem(models.Model):
         DUPLICATE = "duplicate", "Duplikat"
         REJECTED = "rejected", "Ditolak"
         FAILED = "failed", "Gagal"
+        METADATA_ONLY = "metadata_only", "Metadata Saja"
+        FETCH_BLOCKED = "fetch_blocked", "Pengambilan Terblokir"
 
     id = models.UUIDField(
         primary_key=True,

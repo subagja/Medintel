@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Detail Crawler | MEDINTEL OSINT{% endblock %}
+{% block title %}Detail Pengumpulan | MEDINTEL OSINT{% endblock %}
 
 {% block content %}
 <div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
         <div class="col">
-            <div class="page-pretitle">Crawler Artikel/Web</div>
-            <h2 class="page-title">{{ job.source.name }}</h2>
+            <div class="page-pretitle">Pengumpulan Artikel · {{ job.get_job_type_display }}</div>
+            <h2 class="page-title">{% if job.source %}{{ job.source.name }}{% else %}Discovery Lintas Sumber{% endif %}</h2>
             <div class="text-secondary mt-1">Job {{ job.id }}</div>
+            {% if job.job_type == "google_news" %}
+                <div class="text-secondary small mt-1">Disease Master global · URL penerbit dipetakan ke Source yang diizinkan · maksimum {{ job.metadata.max_age_days|default:7 }} hari</div>
+            {% endif %}
         </div>
         <div class="col-auto ms-auto">
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali ke Riwayat</a>
@@ -26,7 +29,19 @@
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md">
+                <div class="text-secondary">Kanal</div>
+                <div class="mt-1">
+                    {% if job.job_type == "google_news" %}
+                        <span class="badge bg-purple-lt">Google News RSS</span>
+                    {% elif job.job_type == "rss" %}
+                        <span class="badge bg-azure-lt">RSS resmi</span>
+                    {% else %}
+                        <span class="badge bg-blue-lt">HTML</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md">
                 <div class="text-secondary">Status</div>
                 <div class="mt-1">
                     {% if job.status == "completed" %}<span class="badge bg-success-lt">Selesai</span>
@@ -36,15 +51,15 @@
                     {% else %}<span class="badge bg-secondary-lt">{{ job.get_status_display }}</span>{% endif %}
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md">
                 <div class="text-secondary">Mulai</div>
                 <div class="fw-semibold">{{ job.started_at|date:"d M Y H:i:s"|default:"-" }}</div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md">
                 <div class="text-secondary">Selesai</div>
                 <div class="fw-semibold">{{ job.finished_at|date:"d M Y H:i:s"|default:"-" }}</div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md">
                 <div class="text-secondary">Durasi</div>
                 <div class="fw-semibold">{{ duration_label }}</div>
             </div>
@@ -59,6 +74,34 @@
     <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Ditolak</div><div class="h1 text-warning mb-0">{{ job.total_rejected }}</div></div></div></div>
     <div class="col-sm-6 col-xl"><div class="card"><div class="card-body"><div class="text-secondary">Gagal</div><div class="h1 text-danger mb-0">{{ job.total_failed }}</div></div></div></div>
 </div>
+
+{% if job.job_type == "google_news" %}
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Funnel Google News</h3>
+            <div class="text-secondary small">
+                Kueri {{ job.metadata.query_policy|default:"when:7d" }} · kandidat dibagi bergiliran antarbatch penyakit.
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-md-3"><div class="text-secondary small">Entri RSS ditemukan</div><div class="h2 mb-0">{{ job.metadata.funnel.feed_entries_found|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Dalam batas usia</div><div class="h2 mb-0">{{ job.metadata.funnel.feed_entries_within_age|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Kandidat diperiksa</div><div class="h2 mb-0">{{ job.metadata.funnel.candidates_checked|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">URL penerbit terurai</div><div class="h2 mb-0">{{ job.metadata.funnel.publisher_urls_resolved|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Cocok dengan Source</div><div class="h2 mb-0">{{ job.metadata.funnel.sources_matched|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Halaman berhasil diambil</div><div class="h2 mb-0">{{ job.metadata.funnel.publisher_pages_fetched|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Lolos filter artikel</div><div class="h2 mb-0">{{ job.metadata.funnel.article_payloads_eligible|default:0 }}</div></div>
+            <div class="col-6 col-md-3"><div class="text-secondary small">Artikel baru tersimpan</div><div class="h2 text-success mb-0">{{ job.total_created }}</div></div>
+        </div>
+        <div class="text-secondary small mt-3">
+            Jumlah entri RSS dapat lebih besar daripada kandidat diperiksa karena batas kandidat diterapkan setelah seluruh batch feed ditemukan.
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card">
     <div class="card-header">
@@ -87,36 +130,58 @@
         </form>
     </div>
     <div class="table-responsive">
-        <table class="table table-vcenter card-table">
-            <thead><tr><th>Kandidat</th><th>Status</th><th>Alasan / Error</th><th>Tahap</th><th>Diproses</th></tr></thead>
+        <table class="table table-vcenter card-table crawler-detail-table">
+            <thead><tr><th>Kandidat</th><th>Status</th><th>Hasil pemeriksaan</th><th>Tahap / waktu</th></tr></thead>
             <tbody>
                 {% for item in page_obj %}
                     <tr>
-                        <td style="min-width: 320px;">
-                            <div class="fw-semibold">{{ item.title|default:"Tanpa judul"|truncatechars:100 }}</div>
-                            {% if item.normalized_url %}
-                                <a class="text-secondary small text-break" href="{{ item.normalized_url }}" target="_blank" rel="noopener noreferrer">{{ item.normalized_url|truncatechars:110 }}</a>
+                        <td>
+                            <div class="fw-semibold">
+                                {% if item.title %}
+                                    {{ item.title|truncatechars:100 }}
+                                {% elif job.job_type == "google_news" and item.metadata.query_batch %}
+                                    Kueri penyakit batch {{ item.metadata.query_batch }}/{{ item.metadata.query_batch_total }}
+                                {% else %}
+                                    Kandidat tanpa judul
+                                {% endif %}
+                            </div>
+                            {% if item.metadata.stage == "google_news_feed_download" %}
+                                <details class="small mt-1">
+                                    <summary class="text-secondary">Lihat URL feed teknis</summary>
+                                    <div class="text-secondary crawler-break mt-1">{{ item.original_url }}</div>
+                                </details>
+                            {% elif item.normalized_url %}
+                                <a class="text-secondary small crawler-break" href="{{ item.normalized_url }}" target="_blank" rel="noopener noreferrer">{{ item.normalized_url|truncatechars:90 }}</a>
                             {% else %}
-                                <span class="text-secondary small text-break">{{ item.original_url|truncatechars:110 }}</span>
+                                <span class="text-secondary small crawler-break">{{ item.original_url|truncatechars:90 }}</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if item.status == "created" %}<span class="badge bg-success-lt">Dibuat</span>
                             {% elif item.status == "duplicate" %}<span class="badge bg-secondary-lt">Duplikat</span>
                             {% elif item.status == "rejected" %}<span class="badge bg-warning-lt">Ditolak</span>
+                            {% elif item.status == "metadata_only" %}<span class="badge bg-azure-lt">Metadata Saja</span>
+                            {% elif item.status == "fetch_blocked" %}<span class="badge bg-orange-lt">Pengambilan Terblokir</span>
                             {% elif item.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
                             {% else %}<span class="badge bg-blue-lt">Ditemukan</span>{% endif %}
                         </td>
-                        <td style="min-width: 300px;">
-                            {% if item.error_message %}<div class="text-danger">{{ item.error_message }}</div>{% endif %}
+                        <td>
                             {% if item.reason %}<div>{{ item.reason }}</div>{% endif %}
+                            {% if item.error_message %}
+                                <details class="mt-1">
+                                    <summary class="text-danger">{{ item.error_message|truncatechars:150 }}</summary>
+                                    <div class="text-danger small crawler-break mt-1">{{ item.error_message }}</div>
+                                </details>
+                            {% endif %}
                             {% if not item.error_message and not item.reason %}<span class="text-secondary">-</span>{% endif %}
                         </td>
-                        <td><span class="text-secondary">{{ item.metadata.stage|default:"ingestion" }}</span></td>
-                        <td class="text-nowrap">{{ item.processed_at|date:"d M Y H:i:s"|default:"-" }}</td>
+                        <td>
+                            <div class="text-secondary small">{{ item.metadata.stage|default:"ingestion" }}</div>
+                            <div class="text-nowrap small mt-1">{{ item.processed_at|date:"d M Y H:i:s"|default:"-" }}</div>
+                        </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="5" class="text-center text-secondary py-5">Tidak ada kandidat untuk filter ini.</td></tr>
+                    <tr><td colspan="4" class="text-center text-secondary py-5">Tidak ada kandidat untuk filter ini.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -131,4 +196,27 @@
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.crawler-detail-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.crawler-detail-table th:nth-child(1) { width: 30%; }
+.crawler-detail-table th:nth-child(2) { width: 11%; }
+.crawler-detail-table th:nth-child(3) { width: 43%; }
+.crawler-detail-table th:nth-child(4) { width: 16%; }
+.crawler-break {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.crawler-detail-table details summary {
+    cursor: pointer;
+}
+@media (max-width: 991.98px) {
+    .crawler-detail-table { table-layout: auto; }
+}
+</style>
 {% endblock %}

@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 
 from apps.sources.models import (
     Source,
+    SourceDiscoveryQuery,
     SourceSeedUrl,
     SourceUrlPattern,
 )
@@ -25,6 +26,7 @@ from apps.sources.forms import (
 )
 from apps.sources.services import (
     check_source_crawl_readiness,
+    check_source_seed_readiness,
 )
 from apps.articles.models import Article
 from apps.articles.filters import (
@@ -41,6 +43,16 @@ from apps.collection.models import (
     CollectionJobItem,
 )
 from apps.crawlers.real_crawler import GenericHtmlCrawler
+from apps.crawlers.rss_crawler import OfficialRssCrawler
+from apps.crawlers.google_news_crawler import (
+    GoogleNewsRssCrawler,
+    check_google_news_publisher_readiness,
+    get_google_news_allowed_sources,
+    get_google_news_max_age_days,
+)
+from apps.crawlers.google_news_queries import (
+    build_google_news_disease_scope,
+)
 from apps.crawlers.services import run_crawler_in_background
 from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
@@ -205,24 +217,53 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _ready_html_sources() -> list[Source]:
+def _ready_seed_sources(
+    *,
+    seed_types: tuple[str, ...],
+) -> list[Source]:
     sources = (
-        _source_readiness_queryset()
-        .filter(
-            crawl_strategy=Source.CrawlStrategy.HTML,
+        Source.objects.filter(
+            seed_urls__is_active=True,
+            seed_urls__seed_type__in=seed_types,
         )
+        .prefetch_related("seed_urls", "url_patterns")
+        .distinct()
         .order_by("name")
     )
 
     ready_sources = []
 
     for source in sources:
-        _attach_source_readiness(source)
+        source.crawl_readiness = check_source_seed_readiness(
+            source,
+            seed_types=seed_types,
+        )
 
         if source.crawl_readiness.is_ready:
             ready_sources.append(source)
 
     return ready_sources
+
+
+def _ready_html_sources() -> list[Source]:
+    return _ready_seed_sources(
+        seed_types=(
+            SourceSeedUrl.SeedType.LISTING,
+            SourceSeedUrl.SeedType.DIRECT,
+        ),
+    )
+
+
+def _ready_rss_sources() -> list[Source]:
+    return _ready_seed_sources(
+        seed_types=(SourceSeedUrl.SeedType.RSS,),
+    )
+
+
+def _ready_google_news_sources() -> list[Source]:
+    if not build_google_news_disease_scope().batches:
+        return []
+    return get_google_news_allowed_sources()
 
 
 def _crawler_summary():
@@ -232,7 +273,11 @@ def _crawler_summary():
     cuma baris tabel di bawahnya).
     """
     all_jobs = CollectionJob.objects.filter(
-        job_type=CollectionJob.JobType.CRAWLER,
+        job_type__in=(
+            CollectionJob.JobType.CRAWLER,
+            CollectionJob.JobType.RSS,
+            CollectionJob.JobType.GOOGLE_NEWS,
+        ),
     )
     totals = all_jobs.aggregate(
         total_created=Sum("total_created"),
@@ -272,7 +317,11 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     jobs = (
         CollectionJob.objects
         .filter(
-            job_type=CollectionJob.JobType.CRAWLER,
+            job_type__in=(
+                CollectionJob.JobType.CRAWLER,
+                CollectionJob.JobType.RSS,
+                CollectionJob.JobType.GOOGLE_NEWS,
+            ),
         )
         .select_related(
             "source",
@@ -299,7 +348,11 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         jobs = jobs.filter(status=status)
 
     all_jobs = CollectionJob.objects.filter(
-        job_type=CollectionJob.JobType.CRAWLER,
+        job_type__in=(
+            CollectionJob.JobType.CRAWLER,
+            CollectionJob.JobType.RSS,
+            CollectionJob.JobType.GOOGLE_NEWS,
+        ),
     )
     totals = all_jobs.aggregate(
         total_created=Sum("total_created"),
@@ -334,6 +387,9 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     )
 
     ready_sources = _ready_html_sources()
+    ready_rss_sources = _ready_rss_sources()
+    ready_google_news_sources = _ready_google_news_sources()
+    google_news_scope = build_google_news_disease_scope()
     ready_indonesia_count = sum(
         1
         for source in ready_sources
@@ -342,10 +398,26 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     )
 
     context = {
-        "page_title": "Crawler Artikel/Web",
+        "page_title": "Pengumpulan Artikel",
         "active_menu": "crawler-artikel",
         "ready_sources": ready_sources,
+        "ready_rss_sources": ready_rss_sources,
+        "ready_google_news_sources": ready_google_news_sources,
+        "google_news_scope": google_news_scope,
+        "google_news_max_age_days": get_google_news_max_age_days(),
         "ready_indonesia_count": ready_indonesia_count,
+        "ready_rss_indonesia_count": sum(
+            1
+            for source in ready_rss_sources
+            if source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+        ),
+        "ready_google_news_indonesia_count": sum(
+            1
+            for source in ready_google_news_sources
+            if source.source_type
+            != Source.SourceType.INTERNATIONAL_MEDIA
+        ),
         "trend_chart_data": trend_chart_data,
         "filter_sources": Source.objects.order_by("name"),
         "job_statuses": CollectionJob.Status.choices,
@@ -358,6 +430,45 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "dashboard/crawler_list.html",
+        context,
+    )
+
+
+@require_role(*Roles.ALL)
+def google_news_discovery_settings(
+    request: HttpRequest,
+) -> HttpResponse:
+    """Kebijakan kanal global dan whitelist Source penerbit."""
+    disease_scope = build_google_news_disease_scope()
+    rows = []
+    sources = (
+        Source.objects
+        .prefetch_related("url_patterns")
+        .order_by("name")
+    )
+
+    for source in sources:
+        readiness = check_google_news_publisher_readiness(source)
+        rows.append(
+            {
+                "source": source,
+                "is_ready": readiness.is_ready,
+                "errors": readiness.errors,
+            }
+        )
+
+    context = {
+        "page_title": "Pengaturan Google News Discovery",
+        "active_menu": "crawler-artikel",
+        "google_news_scope": disease_scope,
+        "google_news_configuration_rows": rows,
+        "allowed_count": sum(1 for row in rows if row["is_ready"]),
+        "excluded_count": sum(1 for row in rows if not row["is_ready"]),
+        "max_age_days": get_google_news_max_age_days(),
+    }
+    return render(
+        request,
+        "dashboard/google_news_discovery_settings.html",
         context,
     )
 
@@ -398,6 +509,38 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         "source",
         "",
     ).strip()
+    channel = request.POST.get(
+        "channel",
+        "html",
+    ).strip().casefold()
+
+    channel_config = {
+        "html": {
+            "ready_sources": _ready_html_sources,
+            "crawler_class": GenericHtmlCrawler,
+            "job_type": CollectionJob.JobType.CRAWLER,
+            "label": "HTML",
+        },
+        "rss": {
+            "ready_sources": _ready_rss_sources,
+            "crawler_class": OfficialRssCrawler,
+            "job_type": CollectionJob.JobType.RSS,
+            "label": "RSS resmi",
+        },
+        "google_news": {
+            "ready_sources": _ready_google_news_sources,
+            "crawler_class": GoogleNewsRssCrawler,
+            "job_type": CollectionJob.JobType.GOOGLE_NEWS,
+            "label": "Google News RSS",
+        },
+    }.get(channel)
+
+    if channel_config is None:
+        error_text = "Kanal pengumpulan tidak valid."
+        if is_ajax:
+            return JsonResponse({"error": error_text}, status=400)
+        messages.error(request, error_text)
+        return redirect("dashboard:crawler-list")
 
     try:
         limit = _parse_optional_positive_int(
@@ -420,7 +563,73 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         )
         return redirect("dashboard:crawler-list")
 
-    ready_sources = _ready_html_sources()
+    ready_sources = channel_config["ready_sources"]()
+
+    if channel == "google_news":
+        request_started_at = timezone.now()
+        disease_scope = build_google_news_disease_scope()
+        if not disease_scope.batches:
+            error_text = (
+                "Disease Master belum memiliki penyakit surveilans aktif "
+                "yang dapat digunakan untuk discovery."
+            )
+            if is_ajax:
+                return JsonResponse({"error": error_text}, status=400)
+            messages.error(request, error_text)
+            return redirect("dashboard:crawler-list")
+        if not ready_sources:
+            error_text = (
+                "Belum ada Source aktif dan terverifikasi yang memiliki "
+                "crawler serta pola URL allow."
+            )
+            if is_ajax:
+                return JsonResponse({"error": error_text}, status=400)
+            messages.error(request, error_text)
+            return redirect("dashboard:crawler-list")
+
+        already_running = CollectionJob.objects.filter(
+            source__isnull=True,
+            job_type=CollectionJob.JobType.GOOGLE_NEWS,
+            status=CollectionJob.Status.RUNNING,
+        ).exists()
+        started = []
+        skipped = []
+        if already_running:
+            skipped.append("google-news-global")
+        else:
+            crawler = GoogleNewsRssCrawler(
+                limit=limit,
+                candidate_limit=candidate_limit,
+            )
+            run_crawler_in_background(
+                crawler,
+                triggered_by=(
+                    request.user if request.user.is_authenticated else None
+                ),
+                trigger_type="user",
+            )
+            started.append("google-news-global")
+
+        if is_ajax:
+            return JsonResponse(
+                {
+                    "started": started,
+                    "skipped": skipped,
+            "since": request_started_at.isoformat(),
+                    "job_type": CollectionJob.JobType.GOOGLE_NEWS,
+                }
+            )
+        if started:
+            messages.success(
+                request,
+                "Google News RSS global mulai dijalankan.",
+            )
+        if skipped:
+            messages.warning(
+                request,
+                "Google News RSS global masih berjalan dan tidak diduplikasi.",
+            )
+        return redirect("dashboard:crawler-list")
 
     if source_code == "all":
         selected_sources = ready_sources
@@ -478,7 +687,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
     for source in selected_sources:
         already_running = CollectionJob.objects.filter(
             source=source,
-            job_type=CollectionJob.JobType.CRAWLER,
+            job_type=channel_config["job_type"],
             status=CollectionJob.Status.RUNNING,
         ).exists()
 
@@ -486,7 +695,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
             skipped_sources.append(source.code)
             continue
 
-        crawler = GenericHtmlCrawler(
+        crawler = channel_config["crawler_class"](
             source_code=source.code,
             limit=limit,
             candidate_limit=candidate_limit,
@@ -512,6 +721,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
                 # untuk polling "job apa saja yang baru muncul sejak
                 # request ini dikirim" lewat crawler-status.
                 "since": request_started_at.isoformat(),
+                "job_type": channel_config["job_type"],
             }
         )
 
@@ -519,7 +729,8 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         messages.success(
             request,
             (
-                f"Crawler dimulai untuk {len(started_sources)} sumber: "
+                f"Kanal {channel_config['label']} dimulai untuk "
+                f"{len(started_sources)} sumber: "
                 + ", ".join(started_sources)
                 + ". Status akan diperbarui otomatis pada tabel di bawah."
             ),
@@ -540,10 +751,21 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
 
 def _serialize_job_status(job: CollectionJob) -> dict:
     status_labels = dict(CollectionJob.Status.choices)
+    job_type_labels = dict(CollectionJob.JobType.choices)
 
     return {
         "id": str(job.id),
-        "source_code": job.source.code,
+        "source_code": (
+            job.source.code if job.source_id else "google-news-global"
+        ),
+        "source_name": (
+            job.source.name if job.source_id else "Discovery Lintas Sumber"
+        ),
+        "job_type": job.job_type,
+        "job_type_label": job_type_labels.get(
+            job.job_type,
+            job.job_type,
+        ),
         "status": job.status,
         "status_label": status_labels.get(
             job.status,
@@ -606,6 +828,18 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
 
     since_raw = request.GET.get("since", "")
     since = parse_datetime(since_raw) if since_raw else None
+    requested_job_type = request.GET.get(
+        "job_type",
+        CollectionJob.JobType.CRAWLER,
+    )
+    supported_job_types = {
+        CollectionJob.JobType.CRAWLER,
+        CollectionJob.JobType.RSS,
+        CollectionJob.JobType.GOOGLE_NEWS,
+    }
+
+    if requested_job_type not in supported_job_types:
+        return JsonResponse({"jobs": []})
 
     if since and timezone.is_naive(since):
         since = timezone.make_aware(since, timezone.utc)
@@ -616,12 +850,19 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
     found_jobs = []
 
     for code in source_codes:
+        lookup = CollectionJob.objects.filter(
+            job_type=requested_job_type,
+            created_at__gte=since,
+        )
+        if (
+            code == "google-news-global"
+            and requested_job_type == CollectionJob.JobType.GOOGLE_NEWS
+        ):
+            lookup = lookup.filter(source__isnull=True)
+        else:
+            lookup = lookup.filter(source__code=code)
         job = (
-            CollectionJob.objects.filter(
-                source__code=code,
-                job_type=CollectionJob.JobType.CRAWLER,
-                created_at__gte=since,
-            )
+            lookup
             .select_related("source")
             .order_by("-created_at")
             .first()
@@ -668,7 +909,11 @@ def crawler_job_cancel(
 
     messages.success(
         request,
-        f"Job untuk {job.source.name} dibatalkan.",
+        (
+            f"Job untuk {job.source.name} dibatalkan."
+            if job.source_id
+            else "Job Google News RSS global dibatalkan."
+        ),
     )
 
     return redirect("dashboard:crawler-list")
@@ -685,7 +930,11 @@ def crawler_job_detail(
             "triggered_by",
         ),
         id=job_id,
-        job_type=CollectionJob.JobType.CRAWLER,
+        job_type__in=(
+            CollectionJob.JobType.CRAWLER,
+            CollectionJob.JobType.RSS,
+            CollectionJob.JobType.GOOGLE_NEWS,
+        ),
     )
 
     status = request.GET.get(
@@ -2042,11 +2291,13 @@ def source_detail(
         _source_readiness_queryset().prefetch_related(
             "seed_urls",
             "url_patterns",
+            "discovery_queries",
         ),
         id=source_id,
     )
 
     _attach_source_readiness(source)
+    google_news_readiness = check_google_news_publisher_readiness(source)
 
     context = {
         "page_title": f"Detail Sumber — {source.name}",
@@ -2054,6 +2305,7 @@ def source_detail(
         "source": source,
         "seed_urls": source.seed_urls.all(),
         "url_patterns": source.url_patterns.all(),
+        "google_news_readiness": google_news_readiness,
     }
 
     return render(
@@ -2345,6 +2597,60 @@ def source_seed_update(
             "submit_label": "Simpan Perubahan",
         },
     )
+
+
+@require_role(Roles.ADMIN)
+def source_discovery_query_create(
+    request: HttpRequest,
+    source_id: int,
+) -> HttpResponse:
+    get_object_or_404(Source, id=source_id)
+    messages.info(
+        request,
+        (
+            "Pengaturan Google News telah dipindahkan ke menu Pengumpulan "
+            "Artikel dan istilah penyakit dibentuk otomatis dari Disease "
+            "Master."
+        ),
+    )
+    return redirect("dashboard:crawler-list")
+
+
+@require_role(Roles.ADMIN)
+def source_discovery_query_update(
+    request: HttpRequest,
+    source_id: int,
+    query_id,
+) -> HttpResponse:
+    get_object_or_404(
+        SourceDiscoveryQuery,
+        id=query_id,
+        source_id=source_id,
+    )
+    messages.info(
+        request,
+        (
+            "Kueri manual tidak lagi digunakan. Atur kanal Google News pada "
+            "menu Pengumpulan Artikel."
+        ),
+    )
+    return redirect("dashboard:crawler-list")
+
+
+@require_POST
+@require_role(Roles.ADMIN)
+def google_news_discovery_configure(
+    request: HttpRequest,
+) -> HttpResponse:
+    messages.info(
+        request,
+        (
+            "Google News sekarang berjalan sebagai discovery global. Source "
+            "otomatis masuk whitelist bila aktif, terverifikasi, crawling "
+            "aktif, dan memiliki pola URL allow."
+        ),
+    )
+    return redirect("dashboard:google-news-discovery-settings")
 
 
 @require_role(Roles.ADMIN)

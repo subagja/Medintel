@@ -39,32 +39,59 @@ def run_crawler(
     total_rejected = 0
     total_failed = 0
 
-    try:
-        source = Source.objects.get(
-            code=crawler.source_code,
-        )
-    except Source.DoesNotExist:
-        logger.error(
-            "Sumber crawler tidak terdaftar: %s",
-            crawler.source_code,
-        )
+    is_global_discovery = bool(
+        getattr(crawler, "global_discovery", False)
+    )
+    source = None
+    if not is_global_discovery:
+        try:
+            source = Source.objects.get(
+                code=crawler.source_code,
+            )
+        except Source.DoesNotExist:
+            logger.error(
+                "Sumber crawler tidak terdaftar: %s",
+                crawler.source_code,
+            )
 
-        return CrawlExecutionResult(
-            total_found=0,
-            total_created=0,
-            total_duplicate=0,
-            total_rejected=0,
-            total_failed=1,
-        )
+            return CrawlExecutionResult(
+                total_found=0,
+                total_created=0,
+                total_duplicate=0,
+                total_rejected=0,
+                total_failed=1,
+            )
+
+    source_code = source.code if source else "lintas-sumber"
+
+    requested_job_type = getattr(
+        crawler,
+        "job_type",
+        CollectionJob.JobType.CRAWLER,
+    )
+    valid_job_types = {
+        value
+        for value, _label in CollectionJob.JobType.choices
+    }
+    job_type = (
+        requested_job_type
+        if requested_job_type in valid_job_types
+        else CollectionJob.JobType.CRAWLER
+    )
 
     job = start_collection_job(
         source=source,
-        job_type=CollectionJob.JobType.CRAWLER,
+        job_type=job_type,
         crawler_name=crawler.__class__.__name__,
         triggered_by=triggered_by,
         trigger_type=trigger_type,
         metadata={
-            "source_code": crawler.source_code,
+            "source_code": source_code,
+            "discovery_scope": (
+                "global_allowed_sources"
+                if is_global_discovery
+                else "single_source"
+            ),
             "article_limit": getattr(
                 crawler,
                 "limit",
@@ -75,8 +102,42 @@ def run_crawler(
                 "candidate_limit",
                 None,
             ),
+            "max_age_days": getattr(
+                crawler,
+                "max_age_days",
+                None,
+            ),
+            "collection_channel": getattr(
+                crawler,
+                "discovery_channel",
+                "publisher_html",
+            ),
         },
     )
+
+    def persist_execution_metadata() -> None:
+        metadata_builder = getattr(
+            crawler,
+            "get_execution_metadata",
+            None,
+        )
+        if not callable(metadata_builder):
+            return
+        try:
+            execution_metadata = metadata_builder()
+        except Exception:
+            logger.exception(
+                "Metadata eksekusi crawler gagal disimpan job=%s",
+                job.id,
+            )
+            return
+        if not isinstance(execution_metadata, dict):
+            return
+        job.metadata = {
+            **job.metadata,
+            **execution_metadata,
+        }
+        job.save(update_fields=["metadata", "updated_at"])
 
     # Menyimpan URL yang sudah ditemukan dalam satu eksekusi crawler.
     # URL yang sama tidak akan dibuat sebagai CollectionJobItem.
@@ -102,7 +163,7 @@ def run_crawler(
                 "Event crawler tidak memiliki URL "
                 "job=%s source=%s status=%s",
                 job.id,
-                source.code,
+                source_code,
                 event.status,
             )
             return
@@ -113,6 +174,8 @@ def run_crawler(
             CrawlItemStatus.DUPLICATE,
             CrawlItemStatus.REJECTED,
             CrawlItemStatus.FAILED,
+            CrawlItemStatus.METADATA_ONLY,
+            CrawlItemStatus.FETCH_BLOCKED,
         }
 
         if status not in valid_statuses:
@@ -160,7 +223,10 @@ def run_crawler(
             if not item_created:
                 return
 
-        elif status == CrawlItemStatus.REJECTED:
+        elif status in {
+            CrawlItemStatus.REJECTED,
+            CrawlItemStatus.METADATA_ONLY,
+        }:
             total_rejected += 1
 
         else:
@@ -396,6 +462,8 @@ def run_crawler(
                     original_url,
                 )
 
+        persist_execution_metadata()
+
         complete_collection_job(
             job=job,
             total_found=total_found,
@@ -407,6 +475,8 @@ def run_crawler(
 
     except Exception as exc:
         total_failed += 1
+
+        persist_execution_metadata()
 
         fail_collection_job(
             job=job,
@@ -473,14 +543,17 @@ def run_crawler_in_background(
             # perlu memastikan thread tidak mati diam-diam tanpa log.
             logger.exception(
                 "Crawler background thread gagal: %s",
-                crawler.source_code,
+                getattr(crawler, "source_code", "") or "lintas-sumber",
             )
         finally:
             close_old_connections()
 
     thread = threading.Thread(
         target=_run,
-        name=f"crawler-{crawler.source_code}",
+        name=(
+            f"crawler-{getattr(crawler, 'job_type', 'crawler')}-"
+            f"{getattr(crawler, 'source_code', '') or 'lintas-sumber'}"
+        ),
         daemon=True,
     )
     thread.start()

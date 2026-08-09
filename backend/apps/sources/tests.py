@@ -1,19 +1,71 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
 from .models import (
     Source,
+    SourceDiscoveryQuery,
     SourceSeedUrl,
     SourceUrlPattern,
 )
 from .forms import (
+    SourceForm,
     SourceSeedUrlForm,
     SourceUrlPatternForm,
 )
 from .services import (
+    check_source_discovery_readiness,
     check_source_crawl_readiness,
     normalize_url,
+    set_source_auto_discovery,
     validate_source_url,
 )
+
+
+class SourceDiscoveryQueryTests(TestCase):
+    def setUp(self):
+        self.source = Source.objects.create(
+            name="Media Discovery Uji",
+            code="media-discovery-uji",
+            domain="example.com",
+            base_url="https://example.com",
+            source_type=Source.SourceType.NATIONAL_MEDIA,
+            is_verified=True,
+            is_active=True,
+            crawl_enabled=True,
+        )
+        SourceUrlPattern.objects.create(
+            source=self.source,
+            pattern="/read/",
+            pattern_type=SourceUrlPattern.PatternType.ALLOW,
+        )
+
+    def test_query_normalizes_locale_and_whitespace(self):
+        query = SourceDiscoveryQuery.objects.create(
+            source=self.source,
+            query="  DBD   OR   malaria  ",
+            language="ID",
+            country="id",
+        )
+        self.assertEqual(query.query, "DBD OR malaria")
+        self.assertEqual(query.language, "id")
+        self.assertEqual(query.country, "ID")
+
+    def test_discovery_readiness_requires_automatic_config(self):
+        readiness = check_source_discovery_readiness(self.source)
+        self.assertFalse(readiness.is_ready)
+
+        # Kueri manual lama tidak boleh menjadi sumber istilah baru.
+        SourceDiscoveryQuery.objects.create(
+            source=self.source,
+            query="DBD OR malaria",
+        )
+        readiness = check_source_discovery_readiness(self.source)
+        self.assertFalse(readiness.is_ready)
+
+        set_source_auto_discovery(self.source, enabled=True)
+        readiness = check_source_discovery_readiness(self.source)
+        self.assertTrue(readiness.is_ready)
 
 
 class NormalizeUrlTests(TestCase):
@@ -431,3 +483,130 @@ class SourceConfigurationFormTests(TestCase):
 
         self.assertFalse(form.is_valid())
         self.assertIn("pattern", form.errors)
+
+
+class SourceFormTests(TestCase):
+    def valid_data(self, **overrides):
+        data = {
+            "name": "Media Baru",
+            "code": "media-baru",
+            "domain": "media-baru.example",
+            "base_url": "https://media-baru.example",
+            "source_type": Source.SourceType.LOCAL_MEDIA,
+            "is_active": True,
+            "is_verified": False,
+            "verification_notes": "",
+            "crawl_enabled": False,
+            "crawl_strategy": Source.CrawlStrategy.HTML,
+            "allow_subdomains": False,
+            "max_articles_per_run": 50,
+            "request_delay_seconds": 1.0,
+            "request_timeout_seconds": 20,
+            "user_agent": "",
+            "crawler_notes": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_new_unverified_source_can_be_saved_without_crawler(self):
+        form = SourceForm(self.valid_data())
+
+        self.assertTrue(form.is_valid(), form.errors)
+        source = form.save()
+
+        self.assertEqual(source.code, "media-baru")
+        self.assertFalse(source.is_verified)
+        self.assertFalse(source.crawl_enabled)
+
+    def test_crawler_requires_verified_source_with_visible_field_error(self):
+        form = SourceForm(
+            self.valid_data(
+                crawl_enabled=True,
+                is_verified=False,
+            )
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("crawl_enabled", form.errors)
+        self.assertIn(
+            "Verifikasi sumber terlebih dahulu",
+            form.errors["crawl_enabled"][0],
+        )
+
+    def test_crawler_requires_active_source_with_visible_field_error(self):
+        form = SourceForm(
+            self.valid_data(
+                crawl_enabled=True,
+                is_verified=True,
+                is_active=False,
+            )
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("crawl_enabled", form.errors)
+        self.assertIn(
+            "Aktifkan sumber terlebih dahulu",
+            form.errors["crawl_enabled"][0],
+        )
+
+
+class SourceCreateViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="admin-source-test",
+            email="admin-source@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+        self.url = reverse("dashboard:source-create")
+
+    def valid_data(self, **overrides):
+        data = {
+            "name": "Media View Baru",
+            "code": "media-view-baru",
+            "domain": "media-view.example",
+            "base_url": "https://media-view.example",
+            "source_type": Source.SourceType.LOCAL_MEDIA,
+            "is_active": "on",
+            "verification_notes": "",
+            "crawl_strategy": Source.CrawlStrategy.HTML,
+            "max_articles_per_run": "50",
+            "request_delay_seconds": "1.0",
+            "request_timeout_seconds": "20",
+            "user_agent": "",
+            "crawler_notes": "",
+        }
+        data.update(overrides)
+        return data
+
+    def test_invalid_crawler_configuration_renders_visible_summary(self):
+        response = self.client.post(
+            self.url,
+            self.valid_data(crawl_enabled="on"),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "source-form-error-summary")
+        self.assertContains(
+            response,
+            "Verifikasi sumber terlebih dahulu",
+        )
+        self.assertFalse(
+            Source.objects.filter(code="media-view-baru").exists()
+        )
+
+    def test_valid_source_is_saved_and_redirected_to_detail(self):
+        response = self.client.post(
+            self.url,
+            self.valid_data(),
+        )
+
+        source = Source.objects.get(code="media-view-baru")
+        self.assertRedirects(
+            response,
+            reverse(
+                "dashboard:source-detail",
+                kwargs={"source_id": source.id},
+            ),
+            fetch_redirect_response=False,
+        )

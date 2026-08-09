@@ -6,6 +6,8 @@ class CrawlItemStatus:
     DUPLICATE = "duplicate"
     REJECTED = "rejected"
     FAILED = "failed"
+    METADATA_ONLY = "metadata_only"
+    FETCH_BLOCKED = "fetch_blocked"
 
 
 @dataclass(frozen=True)

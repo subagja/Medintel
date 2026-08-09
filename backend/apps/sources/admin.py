@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Source,
+    SourceDiscoveryQuery,
     SourceSeedUrl,
     SourceUrlPattern,
 )
@@ -249,3 +250,55 @@ class SourceUrlPatternAdmin(
         "pattern_type",
         "pattern",
     )
+
+
+@admin.register(SourceDiscoveryQuery)
+class SourceDiscoveryQueryAdmin(admin.ModelAdmin):
+    list_display = (
+        "source",
+        "provider",
+        "query",
+        "language",
+        "country",
+        "max_age_days",
+        "priority",
+        "is_active",
+    )
+    list_filter = (
+        "provider",
+        "is_active",
+        "language",
+        "country",
+        "source__source_type",
+    )
+    search_fields = (
+        "source__name",
+        "source__code",
+        "source__domain",
+        "query",
+        "notes",
+    )
+    list_select_related = ("source",)
+    ordering = ("source", "priority", "provider", "query")
+    readonly_fields = (
+        "source",
+        "provider",
+        "query",
+        "language",
+        "country",
+        "max_age_days",
+        "priority",
+        "is_active",
+        "notes",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

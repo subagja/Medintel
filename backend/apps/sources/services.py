@@ -9,6 +9,8 @@ from urllib.parse import (
 
 from .models import (
     Source,
+    SourceDiscoveryQuery,
+    SourceSeedUrl,
     SourceUrlPattern,
 )
 
@@ -498,3 +500,188 @@ def check_source_crawl_readiness(
         is_ready=not errors,
         errors=tuple(errors),
     )
+
+
+def check_source_seed_readiness(
+    source: Source,
+    *,
+    seed_types: tuple[str, ...],
+) -> SourceCrawlReadiness:
+    """Periksa kesiapan satu kanal pengumpulan berbasis seed.
+
+    Pemeriksaan ini sengaja tidak memakai ``Source.crawl_strategy`` sebagai
+    gerbang. Kolom tersebut tetap menjadi strategi utama/legacy, sedangkan
+    kanal aktif ditentukan oleh jenis ``SourceSeedUrl`` yang tersedia. Dengan
+    begitu satu sumber dapat mempunyai seed HTML dan RSS sekaligus tanpa
+    menambah pilihan strategi ``HYBRID`` pada model.
+    """
+    errors: list[str] = []
+    supported_seed_types = {
+        value
+        for value, _label in SourceSeedUrl.SeedType.choices
+    }
+    requested_seed_types = {
+        value
+        for value in seed_types
+        if value in supported_seed_types
+    }
+
+    if not requested_seed_types:
+        errors.append(
+            "Jenis URL awal untuk kanal pengumpulan tidak valid."
+        )
+
+    if not source.is_active:
+        errors.append("Sumber tidak aktif.")
+
+    if not source.is_verified:
+        errors.append("Sumber belum diverifikasi.")
+
+    if not source.crawl_enabled:
+        errors.append("Crawling belum diaktifkan.")
+
+    if requested_seed_types and not source.seed_urls.filter(
+        is_active=True,
+        seed_type__in=requested_seed_types,
+    ).exists():
+        labels = dict(SourceSeedUrl.SeedType.choices)
+        requested_labels = ", ".join(
+            labels[value]
+            for value in sorted(requested_seed_types)
+        )
+        errors.append(
+            "Sumber belum memiliki URL awal aktif untuk kanal: "
+            f"{requested_labels}."
+        )
+
+    if not source.url_patterns.filter(
+        is_active=True,
+        pattern_type=SourceUrlPattern.PatternType.ALLOW,
+    ).exists():
+        errors.append("Sumber belum memiliki aturan URL allow.")
+
+    if source.max_articles_per_run < 1:
+        errors.append(
+            "Jumlah artikel per proses harus lebih dari nol."
+        )
+
+    if source.request_delay_seconds < 0:
+        errors.append("Jeda permintaan tidak boleh negatif.")
+
+    if source.request_timeout_seconds < 1:
+        errors.append("Timeout permintaan minimal adalah 1 detik.")
+
+    return SourceCrawlReadiness(
+        is_ready=not errors,
+        errors=tuple(errors),
+    )
+
+
+def check_source_discovery_readiness(
+    source: Source,
+    *,
+    provider: str = SourceDiscoveryQuery.Provider.GOOGLE_NEWS,
+) -> SourceCrawlReadiness:
+    """Periksa kesiapan discovery provider tanpa menganggapnya Source."""
+    errors: list[str] = []
+    supported_providers = {
+        value for value, _label in SourceDiscoveryQuery.Provider.choices
+    }
+
+    if provider not in supported_providers:
+        errors.append("Penyedia discovery tidak valid.")
+
+    if not source.is_active:
+        errors.append("Sumber tidak aktif.")
+
+    if not source.is_verified:
+        errors.append("Sumber belum diverifikasi.")
+
+    if not source.crawl_enabled:
+        errors.append("Crawling belum diaktifkan.")
+
+    if provider in supported_providers and not source.discovery_queries.filter(
+        is_active=True,
+        provider=provider,
+        query=SourceDiscoveryQuery.AUTO_DISEASE_MASTER_QUERY,
+    ).exists():
+        labels = dict(SourceDiscoveryQuery.Provider.choices)
+        errors.append(
+            "Sumber belum memiliki konfigurasi discovery otomatis aktif untuk "
+            f"{labels[provider]}."
+        )
+
+    if not source.url_patterns.filter(
+        is_active=True,
+        pattern_type=SourceUrlPattern.PatternType.ALLOW,
+    ).exists():
+        errors.append("Sumber belum memiliki aturan URL allow.")
+
+    if source.max_articles_per_run < 1:
+        errors.append("Jumlah artikel per proses harus lebih dari nol.")
+
+    if source.request_delay_seconds < 0:
+        errors.append("Jeda permintaan tidak boleh negatif.")
+
+    if source.request_timeout_seconds < 1:
+        errors.append("Timeout permintaan minimal adalah 1 detik.")
+
+    return SourceCrawlReadiness(
+        is_ready=not errors,
+        errors=tuple(errors),
+    )
+
+
+def set_source_auto_discovery(
+    source: Source,
+    *,
+    enabled: bool,
+) -> SourceDiscoveryQuery:
+    """Aktif/nonaktifkan Google News berbasis Disease Master per Source.
+
+    Konfigurasi manual lama dinonaktifkan agar crawler tidak memiliki dua
+    sumber istilah yang dapat berbeda dengan Disease Master.
+    """
+
+    provider = SourceDiscoveryQuery.Provider.GOOGLE_NEWS
+    SourceDiscoveryQuery.objects.filter(
+        source=source,
+        provider=provider,
+    ).exclude(
+        query=SourceDiscoveryQuery.AUTO_DISEASE_MASTER_QUERY,
+    ).update(is_active=False)
+
+    config, _created = SourceDiscoveryQuery.objects.get_or_create(
+        source=source,
+        provider=provider,
+        query=SourceDiscoveryQuery.AUTO_DISEASE_MASTER_QUERY,
+        language="id",
+        country="ID",
+        defaults={
+            "max_age_days": 7,
+            "priority": 10,
+            "is_active": enabled,
+            "notes": (
+                "Konfigurasi otomatis; istilah dibentuk dari Disease Master "
+                "dan program surveilans aktif."
+            ),
+        },
+    )
+
+    update_fields = []
+    expected_values = {
+        "language": "id",
+        "country": "ID",
+        "max_age_days": 7,
+        "priority": 10,
+        "is_active": enabled,
+    }
+    for field_name, expected_value in expected_values.items():
+        if getattr(config, field_name) != expected_value:
+            setattr(config, field_name, expected_value)
+            update_fields.append(field_name)
+
+    if update_fields:
+        config.save(update_fields=[*update_fields, "updated_at"])
+
+    return config

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Laporan Intelijen & Arsip | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center g-2">
+        <div class="col">
+            <div class="page-pretitle">Analisis & Produk Intelijen</div>
+            <h2 class="page-title">Laporan Intelijen & Arsip</h2>
+            <div class="text-secondary mt-1">
+                Produk akhir berbasis sinyal tervalidasi, assessment, peringatan dini,
+                rekomendasi, dan bukti sumber terbuka yang dapat ditelusuri.
+            </div>
+        </div>
+        <div class="col-auto d-flex gap-2">
+            <a href="{% url 'dashboard:report-archive' %}" class="btn btn-outline-secondary btn-sm">
+                Arsip Data Sistem
+            </a>
+            {% if request.user|has_role:"Admin,Analyst,Reviewer" %}
+                <a href="{% url 'dashboard:report-document-create' %}" class="btn btn-primary btn-sm">
+                    Buat Laporan Intelijen
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row row-cards mb-3">
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Total</div><div class="h2 mb-0">{{ summary.total }}</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Draf</div><div class="h2 mb-0 text-warning">{{ summary.draft }}</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Final</div><div class="h2 mb-0 text-success">{{ summary.final }}</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Didistribusikan</div><div class="h2 mb-0 text-blue">{{ summary.distributed }}</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Arsip</div><div class="h2 mb-0">{{ summary.archived }}</div></div></div></div>
+    <div class="col-6 col-md-2"><div class="card"><div class="card-body"><div class="text-secondary small">Sinyal Siap</div><div class="h2 mb-0 text-primary">{{ summary.eligible_signals }}</div></div></div></div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Cari laporan</label>
+                <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Kode, hal, tujuan, penyakit, atau wilayah">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="">Semua status</option>
+                    {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-primary" type="submit">Terapkan Filter</button>
+                <a href="{% url 'dashboard:report-document-list' %}" class="btn btn-link">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Kode & Hal</th>
+                    <th>Tanggal</th>
+                    <th>Pembahasan</th>
+                    <th>Status</th>
+                    <th>Pembaruan</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in page_obj %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ report.code|default:"Kode lama" }}</div>
+                            <div class="text-secondary small">{{ report.hal|default:"(Hal belum diisi)"|truncatechars:90 }}</div>
+                        </td>
+                        <td class="text-nowrap">{{ report.report_date|date:"d M Y" }}</td>
+                        <td>
+                            <span class="badge bg-azure-lt">{{ report.section_count }} poin</span>
+                            <div class="small text-secondary mt-1">
+                                {% for section in report.sections.all|slice:":2" %}
+                                    {{ section.disease.name|default:"Topik" }}{% if not forloop.last %}, {% endif %}
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td>
+                            {% if report.status == "final" %}<span class="badge bg-success-lt">Final</span>
+                            {% elif report.status == "distributed" %}<span class="badge bg-blue-lt">Didistribusikan</span>
+                            {% elif report.status == "archived" %}<span class="badge bg-secondary-lt">Arsip</span>
+                            {% else %}<span class="badge bg-warning-lt">Draf</span>{% endif %}
+                        </td>
+                        <td class="small text-secondary">
+                            {{ report.updated_at|date:"d M Y H:i" }}<br>
+                            {{ report.updated_by.get_username|default:report.created_by.get_username|default:"-" }}
+                        </td>
+                        <td class="text-end">
+                            <a href="{% url 'dashboard:report-document-edit' report.id %}" class="btn btn-sm btn-outline-primary">Buka</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-secondary py-5">
+                            Belum ada laporan yang sesuai. Laporan baru hanya dapat dibentuk dari sinyal yang sudah tervalidasi dan memiliki assessment selesai.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <span class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</span>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&status={{ selected_status }}&q={{ query }}">Sebelumnya</a></li>{% endif %}
+                {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&status={{ selected_status }}&q={{ query }}">Berikutnya</a></li>{% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

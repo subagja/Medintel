@@ -15,7 +15,7 @@ from apps.sources.models import (
     SourceSeedUrl,
 )
 from apps.sources.services import (
-    check_source_crawl_readiness,
+    check_source_seed_readiness,
     normalize_url,
     validate_source_url,
 )
@@ -209,6 +209,47 @@ def _mention_terms(mention) -> list[str]:
     return [matched_text] if matched_text else []
 
 
+def build_surveillance_metadata(eligibility) -> dict:
+    """Bentuk metadata eligibility yang dipakai seluruh kanal crawler."""
+    return {
+        "is_relevant": True,
+        "reason": eligibility.reason,
+        "diseases": [
+            {
+                "disease_id": mention.disease_id,
+                "disease_name": mention.disease_name,
+                "matched_text": mention.matched_text,
+                "matched_terms": _mention_terms(mention),
+            }
+            for mention in eligibility.disease_mentions
+        ],
+        "counts": [
+            {
+                "value": mention.value,
+                "matched_text": mention.matched_text,
+                "metric_type": mention.metric_type,
+            }
+            for mention in eligibility.count_mentions
+        ],
+        "locations": [
+            {
+                "location_id": mention.location_id,
+                "location_name": mention.location_name,
+                "matched_text": mention.matched_text,
+                "administrative_level": mention.administrative_level,
+                "country_code": mention.country_code,
+                "confidence_score": mention.confidence_score,
+                "is_primary": mention.is_primary,
+                "latitude": mention.latitude,
+                "longitude": mention.longitude,
+            }
+            for mention in eligibility.location_mentions
+        ],
+        "geographic_scope": "domestic",
+        "evidence_text": eligibility.evidence_text,
+    }
+
+
 class GenericHtmlCrawler(BaseCrawler):
     """
     Crawler HTML generik.
@@ -273,8 +314,12 @@ class GenericHtmlCrawler(BaseCrawler):
                 )
             ) from exc
 
-        readiness = check_source_crawl_readiness(
-            source
+        readiness = check_source_seed_readiness(
+            source,
+            seed_types=(
+                SourceSeedUrl.SeedType.LISTING,
+                SourceSeedUrl.SeedType.DIRECT,
+            ),
         )
 
         if not readiness.is_ready:
@@ -587,47 +632,9 @@ class GenericHtmlCrawler(BaseCrawler):
                 redirected_url_validation.normalized_url
             )
 
-        surveillance_metadata = {
-            "is_relevant": True,
-            "reason": eligibility.reason,
-            "diseases": [
-                {
-                    "disease_id": mention.disease_id,
-                    "disease_name": mention.disease_name,
-                    "matched_text": mention.matched_text,
-                    "matched_terms": _mention_terms(mention),
-                }
-                for mention in eligibility.disease_mentions
-            ],
-            "counts": [
-                {
-                    "value": mention.value,
-                    "matched_text": mention.matched_text,
-                    "metric_type": mention.metric_type,
-                }
-                for mention in eligibility.count_mentions
-            ],
-            "locations": [
-                {
-                    "location_id": mention.location_id,
-                    "location_name": mention.location_name,
-                    "matched_text": mention.matched_text,
-                    "administrative_level": (
-                        mention.administrative_level
-                    ),
-                    "country_code": mention.country_code,
-                    "confidence_score": (
-                        mention.confidence_score
-                    ),
-                    "is_primary": mention.is_primary,
-                    "latitude": mention.latitude,
-                    "longitude": mention.longitude,
-                }
-                for mention in eligibility.location_mentions
-            ],
-            "geographic_scope": "domestic",
-            "evidence_text": eligibility.evidence_text,
-        }
+        surveillance_metadata = build_surveillance_metadata(
+            eligibility
+        )
 
         self._record_item(
             original_url=final_article_url,
@@ -999,6 +1006,10 @@ class GenericHtmlCrawler(BaseCrawler):
 
         seeds = source.seed_urls.filter(
             is_active=True,
+            seed_type__in=(
+                SourceSeedUrl.SeedType.LISTING,
+                SourceSeedUrl.SeedType.DIRECT,
+            ),
         ).order_by(
             "priority",
             "url",

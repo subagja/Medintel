@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Kebijakan Google News | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan Artikel · Kebijakan Kanal</div>
+            <h2 class="page-title">Google News Discovery Global</h2>
+            <div class="text-secondary mt-1">
+                Google News menemukan kandidat lintas penerbit. Setelah link di-resolve,
+                URL akhir wajib cocok dengan Source dan pola URL yang diizinkan.
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali ke Pengumpulan</a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible" role="alert">
+            <div>{{ message }}</div>
+            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="row row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Penyakit surveilans</div>
+            <div class="h2 mb-0">{{ google_news_scope.disease_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Istilah pencarian</div>
+            <div class="h2 mb-0">{{ google_news_scope.term_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Source diizinkan</div>
+            <div class="h2 text-success mb-0">{{ allowed_count }}</div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card"><div class="card-body">
+            <div class="text-secondary">Umur maksimum entri</div>
+            <div class="h2 mb-0">{{ max_age_days }} hari</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="alert alert-info" role="alert">
+    <div class="fw-semibold mb-1">Urutan pemeriksaan</div>
+    Disease Master membentuk kueri global dengan <code>when:{{ max_age_days }}d</code> → kandidat
+    dibagi bergiliran antarbatch penyakit → tanggal feed diverifikasi kembali → link Google News
+    di-resolve → domain dicocokkan ke Source → pola allow/deny dan robots.txt diperiksa → artikel
+    diambil dan diproses. Nama penerbit dari feed hanya petunjuk dan tidak digunakan sebagai dasar
+    kepercayaan.
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Whitelist Penerbit</h3>
+            <div class="text-secondary small">
+                Tidak ada aktivasi Google News per Source. Source otomatis diizinkan bila aktif,
+                terverifikasi, crawling aktif, dan memiliki pola URL allow.
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive" style="max-height: 70vh;">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Source penerbit</th>
+                    <th>Domain</th>
+                    <th>Status whitelist</th>
+                    <th>Catatan</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in google_news_configuration_rows %}
+                <tr>
+                    <td>
+                        <a href="{% url 'dashboard:source-detail' row.source.id %}" class="fw-semibold">{{ row.source.name }}</a>
+                        <div class="text-secondary small">{{ row.source.code }}</div>
+                    </td>
+                    <td><code>{{ row.source.domain }}</code></td>
+                    <td>
+                        {% if row.is_ready %}
+                            <span class="badge bg-success-lt">Diizinkan</span>
+                        {% else %}
+                            <span class="badge bg-secondary-lt">Tidak diizinkan</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.errors %}
+                            <span class="text-secondary small">{{ row.errors|join:" " }}</span>
+                        {% else %}
+                            <span class="text-success small">Domain dan pola URL siap digunakan untuk pemetaan.</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center text-secondary py-5">Belum ada Source pada database.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer text-secondary small">
+        {{ excluded_count }} Source belum memenuhi syarat dan tidak akan menerima hasil Google News.
+    </div>
+</div>
+{% endblock %}

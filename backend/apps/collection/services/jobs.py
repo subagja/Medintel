@@ -9,7 +9,7 @@ from ..models import CollectionJob
 @transaction.atomic
 def start_collection_job(
     *,
-    source: Source,
+    source: Source | None,
     job_type: str,
     crawler_name: str = "",
     triggered_by=None,
@@ -79,11 +79,12 @@ def complete_collection_job(
         ]
     )
 
-    Source.objects.filter(
-        pk=job.source_id,
-    ).update(
-        last_crawled_at=job.finished_at,
-    )
+    if job.source_id:
+        Source.objects.filter(
+            pk=job.source_id,
+        ).update(
+            last_crawled_at=job.finished_at,
+        )
 
     return job
 
@@ -136,10 +137,11 @@ def fail_collection_job(
         ]
     )
 
-    Source.objects.filter(
-        pk=job.source_id,
-    ).update(
-        last_crawled_at=job.finished_at,
-    )
+    if job.source_id:
+        Source.objects.filter(
+            pk=job.source_id,
+        ).update(
+            last_crawled_at=job.finished_at,
+        )
 
     return job

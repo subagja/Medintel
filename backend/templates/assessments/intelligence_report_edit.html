@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report.code|default:"Laporan Intelijen" }} | MEDINTEL OSINT{% endblock %}
+
+{% block extra_css %}
+<style>
+.report-editor { font-family: Georgia, "Times New Roman", serif; }
+.report-section-editor { min-height: 130px; line-height: 1.55; }
+.evidence-list { max-height: 260px; overflow-y: auto; }
+.timeline-compact { border-left: 2px solid var(--tblr-border-color); margin-left: .4rem; padding-left: 1rem; }
+.timeline-compact > div { position: relative; padding-bottom: 1rem; }
+.timeline-compact > div::before { background: var(--tblr-primary); border-radius: 50%; content: ""; height: .55rem; left: -1.34rem; position: absolute; top: .3rem; width: .55rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center g-2">
+        <div class="col">
+            <div class="page-pretitle"><a href="{% url 'dashboard:report-document-list' %}">Laporan Intelijen & Arsip</a></div>
+            <h2 class="page-title">{{ report.code|default:"Laporan lama" }}</h2>
+            <div class="text-secondary mt-1">{{ report.hal|default:"Hal belum ditetapkan" }}</div>
+        </div>
+        <div class="col-auto d-flex gap-2">
+            {% if report.status == "draft" %}<span class="badge bg-warning-lt fs-5">Draf</span>
+            {% elif report.status == "final" %}<span class="badge bg-success-lt fs-5">Final</span>
+            {% elif report.status == "distributed" %}<span class="badge bg-blue-lt fs-5">Didistribusikan</span>
+            {% else %}<span class="badge bg-secondary-lt fs-5">Arsip</span>{% endif %}
+            <a href="{% url 'dashboard:report-document-export-pdf' report.id %}" class="btn btn-outline-danger btn-sm">Ekspor PDF</a>
+        </div>
+    </div>
+</div>
+
+{% if header_form.non_field_errors %}<div class="alert alert-danger">{{ header_form.non_field_errors }}</div>{% endif %}
+{% if section_formset.non_form_errors %}<div class="alert alert-danger">{{ section_formset.non_form_errors }}</div>{% endif %}
+{% if decision_form.non_field_errors %}<div class="alert alert-danger">{{ decision_form.non_field_errors }}</div>{% endif %}
+
+<div class="row g-3">
+    <div class="col-xl-9">
+        <form method="post">
+            {% csrf_token %}
+            {{ section_formset.management_form }}
+
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h3 class="card-title">Identitas Produk Intelijen</h3>
+                    {% if not editable %}<span class="badge bg-green-lt ms-auto">Konten terkunci</span>{% endif %}
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label class="form-label">Kepada</label>{{ header_form.kepada }}{{ header_form.kepada.errors }}</div>
+                        <div class="col-md-6"><label class="form-label">Dari</label>{{ header_form.dari }}{{ header_form.dari.errors }}</div>
+                        <div class="col-md-6"><label class="form-label">Tembusan</label>{{ header_form.tembusan }}{{ header_form.tembusan.errors }}</div>
+                        <div class="col-md-3"><label class="form-label">Nilai informasi</label>{{ header_form.nilai }}{{ header_form.nilai.errors }}</div>
+                        <div class="col-md-3"><label class="form-label">Tanggal</label><input class="form-control" value="{{ report.report_date|date:'d M Y' }}" disabled></div>
+                        <div class="col-md-8"><label class="form-label">Hal</label>{{ header_form.hal }}{{ header_form.hal.errors }}</div>
+                        <div class="col-md-4"><label class="form-label">Blok tanda tangan</label>{{ header_form.signature_block }}{{ header_form.signature_block.errors }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-3 report-editor">
+                <div class="card-header"><h3 class="card-title">Naskah Laporan</h3></div>
+                <div class="card-body">
+                    {% for section_form in section_formset %}
+                        {% with section=section_form.instance %}
+                        {{ section_form.id }}
+                        <div class="mb-5">
+                            <div class="d-flex align-items-start justify-content-between mb-3">
+                                <div>
+                                    <div class="text-secondary small">POIN {{ section.letter }} · {{ section.signal.code }}</div>
+                                    <h3 class="mb-1">{{ section.disease.name }}</h3>
+                                    <div class="text-secondary small">{{ section.signal.primary_location.name }} · Assessment v{{ section.assessment_version|default:"-" }} · Peringatan v{{ section.warning_version|default:"-" }} · Rekomendasi v{{ section.recommendation_version|default:"-" }}</div>
+                                </div>
+                                <a href="{% url 'dashboard:signal-workspace' %}?signal={{ section.signal.id }}" class="btn btn-sm btn-outline-secondary">Buka Sinyal</a>
+                            </div>
+
+                            <div class="mb-3"><label class="form-label fw-bold">I. INDIKASI — {{ section.letter }}</label>{{ section_form.indikasi_text }}{{ section_form.indikasi_text.errors }}</div>
+                            <div class="mb-3"><label class="form-label fw-bold">II. ANALISIS — {{ section.letter }}</label>{{ section_form.analisis_text }}{{ section_form.analisis_text.errors }}</div>
+                            <div class="mb-3"><label class="form-label fw-bold">III. DAMPAK — {{ section.letter }}</label>{{ section_form.dampak_text }}{{ section_form.dampak_text.errors }}</div>
+                            <div class="mb-3"><label class="form-label fw-bold">IV. UPAYA — {{ section.letter }}</label>{{ section_form.upaya_text }}{{ section_form.upaya_text.errors }}</div>
+                            <div class="mb-3"><label class="form-label fw-bold">V. SARAN TINDAK — {{ section.letter }}</label>{{ section_form.saran_tindak_text }}{{ section_form.saran_tindak_text.errors }}</div>
+
+                            <div class="card bg-light-lt">
+                                <div class="card-body py-2">
+                                    <div class="text-secondary small mb-1">Evidence yang dibekukan dalam poin ini</div>
+                                    {% for article in section.source_articles.all %}
+                                        <div class="small"><span class="fw-semibold">{{ article.source.name }}</span> — <a href="{{ article.normalized_url }}" target="_blank" rel="noopener noreferrer">{{ article.title }}</a></div>
+                                    {% empty %}
+                                        <div class="small text-danger">Belum ada artikel sumber.</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endwith %}
+                    {% empty %}
+                        <div class="text-center text-secondary py-5">Laporan belum memiliki poin pembahasan.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if editable and can_contribute %}
+                <button type="submit" name="action" value="save" class="btn btn-primary">Simpan Draf</button>
+            {% endif %}
+
+            {% if can_approve and report.status != "archived" %}
+                <div class="card mt-3">
+                    <div class="card-header"><h3 class="card-title">Keputusan Reviewer</h3></div>
+                    <div class="card-body">
+                        <label class="form-label">{{ decision_form.decision_notes.label }}</label>
+                        {{ decision_form.decision_notes }}{{ decision_form.decision_notes.errors }}
+                        <div class="mt-3">
+                            {% if report.status == "draft" %}
+                                <button type="submit" name="action" value="finalize" class="btn btn-success" {% if not completeness.is_complete %}disabled{% endif %}>Finalkan & Kunci Laporan</button>
+                            {% elif report.status == "final" %}
+                                <button type="submit" name="action" value="distribute" class="btn btn-primary">Tandai Didistribusikan</button>
+                            {% elif report.status == "distributed" %}
+                                <button type="submit" name="action" value="archive" class="btn btn-secondary">Arsipkan Produk</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="col-xl-3">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Kesiapan Finalisasi</h3></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-1"><span class="text-secondary">Kelengkapan</span><strong>{{ completeness.percentage }}%</strong></div>
+                <div class="progress mb-3"><div class="progress-bar {% if completeness.is_complete %}bg-success{% else %}bg-warning{% endif %}" style="width: {{ completeness.percentage }}%"></div></div>
+                {% if completeness.is_complete %}
+                    <div class="text-success small">Semua gate substansi dan keterlacakan terpenuhi.</div>
+                {% else %}
+                    <div class="text-secondary small mb-2">Lengkapi sebelum finalisasi:</div>
+                    <ul class="small ps-3 mb-0">
+                        {% for issue in completeness.issues %}<li class="mb-1">{{ issue }}</li>{% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Jejak Keputusan</h3></div>
+            <div class="card-body">
+                <div class="timeline-compact">
+                    {% for item in report.history.all %}
+                        <div>
+                            <div class="fw-semibold small">{{ item.get_action_display }}</div>
+                            <div class="text-secondary small">{{ item.changed_at|date:"d M Y H:i" }} · {{ item.changed_by.get_username|default:"Sistem" }}</div>
+                            {% if item.notes %}<div class="small mt-1">{{ item.notes }}</div>{% endif %}
+                        </div>
+                    {% empty %}
+                        <div class="text-secondary small">Belum ada riwayat keputusan.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">Status Produk</h3></div>
+            <div class="card-body small">
+                <div class="mb-2"><span class="text-secondary">Dibuat</span><br>{{ report.created_at|date:"d M Y H:i" }} · {{ report.created_by.get_username|default:"-" }}</div>
+                {% if report.finalized_at %}<div class="mb-2"><span class="text-secondary">Difinalkan</span><br>{{ report.finalized_at|date:"d M Y H:i" }} · {{ report.finalized_by.get_username|default:"-" }}</div>{% endif %}
+                {% if report.distributed_at %}<div class="mb-2"><span class="text-secondary">Didistribusikan</span><br>{{ report.distributed_at|date:"d M Y H:i" }} · {{ report.distributed_by.get_username|default:"-" }}</div>{% endif %}
+                {% if report.archived_at %}<div><span class="text-secondary">Diarsipkan</span><br>{{ report.archived_at|date:"d M Y H:i" }} · {{ report.archived_by.get_username|default:"-" }}</div>{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

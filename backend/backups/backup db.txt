@@ -80,3 +80,39 @@ python manage.py audit_indonesia_geolocation
 
 //fixing location
 python manage.py reconcile_article_geolocation --all --apply
+
+pg_dump -U isur -h localhost -d medintel_db > export_file.sql
+
+//backup
+$dumpFile = Get-ChildItem "$env:USERPROFILE\Downloads\export_file*.sql" |
+Where-Object {
+    (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash -eq $expectedHash
+} |
+Select-Object -First 1 -ExpandProperty FullName
+
+if (-not $dumpFile) {
+    throw "Dump yang sudah diperbaiki belum ditemukan."
+}
+
+Write-Host "Dump yang digunakan: $dumpFile"
+Get-Item $dumpFile | Select-Object FullName, Length
+
+//import database
+& "$pgBin\psql.exe" `
+  -X `
+  --single-transaction `
+  -v ON_ERROR_STOP=1 `
+  -h localhost `
+  -p 5432 `
+  -U isur `
+  -d medintel_db `
+  -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION isur;" `
+  -f "$dumpFile"
+
+$restoreExitCode = $LASTEXITCODE
+
+if ($restoreExitCode -ne 0) {
+    throw "Restore gagal dan seluruh transaksi dibatalkan."
+} else {
+    Write-Host "Restore database berhasil."
+}

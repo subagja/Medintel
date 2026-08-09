@@ -9,6 +9,7 @@ from .results import CrawlItemEvent
 
 class BaseCrawler(ABC):
     source_code: str
+    job_type: str = "crawler"
 
     def set_item_observer(
         self,

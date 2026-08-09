@@ -3,7 +3,8 @@ from __future__ import annotations
 import ssl
 import time
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from types import SimpleNamespace
+from urllib.parse import urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -24,6 +25,14 @@ DEFAULT_ACCEPT = (
     "application/xhtml+xml,"
     "application/xml;q=0.9,"
     "*/*;q=0.8"
+)
+
+FEED_ACCEPT = (
+    "application/rss+xml,"
+    "application/atom+xml,"
+    "application/xml;q=0.9,"
+    "text/xml;q=0.9,"
+    "*/*;q=0.5"
 )
 
 
@@ -110,12 +119,16 @@ class CrawlerHttpClient:
 
     def __init__(
         self,
-        source: Source,
+        source: Source | None,
     ) -> None:
-        self.source = source
+        self.source = source or SimpleNamespace(
+            user_agent="",
+            request_delay_seconds=0.5,
+            request_timeout_seconds=20,
+        )
 
         self.user_agent = (
-            source.user_agent.strip()
+            self.source.user_agent.strip()
             or DEFAULT_USER_AGENT
         )
 
@@ -234,6 +247,7 @@ class CrawlerHttpClient:
         url: str,
         *,
         accept: str = DEFAULT_ACCEPT,
+        allow_redirects: bool = True,
     ) -> requests.Response:
         self._wait_for_delay()
 
@@ -246,7 +260,7 @@ class CrawlerHttpClient:
                 timeout=(
                     self.source.request_timeout_seconds
                 ),
-                allow_redirects=True,
+                allow_redirects=allow_redirects,
             )
 
             self._last_request_time = (
@@ -276,6 +290,42 @@ class CrawlerHttpClient:
                     f"Gagal mengambil URL "
                     f"{url}: {exc}"
                 )
+            ) from exc
+
+    def _post_form(
+        self,
+        url: str,
+        *,
+        data: dict[str, str],
+        headers: dict[str, str] | None = None,
+    ) -> requests.Response:
+        """Kirim form ke endpoint discovery tanpa mengikuti redirect POST."""
+        self._wait_for_delay()
+
+        try:
+            response = self.session.post(
+                url,
+                data=data,
+                headers=headers or {},
+                timeout=self.source.request_timeout_seconds,
+                allow_redirects=False,
+            )
+            self._last_request_time = time.monotonic()
+            return response
+        except requests.Timeout as exc:
+            raise CrawlerHttpError(
+                f"Permintaan POST timeout: {url}"
+            ) from exc
+        except requests.exceptions.SSLError as exc:
+            raise CrawlerHttpError(
+                (
+                    "Verifikasi SSL gagal untuk endpoint discovery "
+                    f"{url}: {exc}."
+                )
+            ) from exc
+        except requests.RequestException as exc:
+            raise CrawlerHttpError(
+                f"Gagal mengirim form discovery {url}: {exc}"
             ) from exc
 
     def _get_robots_parser(
@@ -418,6 +468,347 @@ class CrawlerHttpClient:
                 response.status_code
             ),
             content_type=content_type,
+            text=response.text,
+        )
+
+    def get_feed(
+        self,
+        url: str,
+    ) -> HttpPage:
+        """Ambil RSS/Atom resmi tanpa melonggarkan kebijakan HTTP.
+
+        Beberapa penerbit mengirim feed XML dengan ``Content-Type`` yang
+        kurang tepat. Respons tetap diterima bila awal isinya jelas berupa
+        RSS/Atom; halaman HTML biasa tidak diperlakukan sebagai feed.
+        """
+        if not self.is_allowed_by_robots(url):
+            raise RobotsDeniedError(
+                "robots.txt tidak mengizinkan URL feed: "
+                f"{url}"
+            )
+
+        response = self._request(
+            url,
+            accept=FEED_ACCEPT,
+        )
+
+        if response.status_code >= 400:
+            raise CrawlerHttpError(
+                f"HTTP {response.status_code} ketika mengambil feed {url}"
+            )
+
+        if not response.encoding:
+            response.encoding = (
+                response.apparent_encoding
+                or "utf-8"
+            )
+
+        content_type = response.headers.get(
+            "Content-Type",
+            "",
+        ).lower()
+        text = response.text
+        prefix = text.lstrip()[:500].casefold()
+        looks_like_feed = any(
+            marker in prefix
+            for marker in (
+                "<rss",
+                "<feed",
+                "<rdf:rdf",
+            )
+        )
+        feed_content_type = any(
+            marker in content_type
+            for marker in (
+                "application/rss+xml",
+                "application/atom+xml",
+                "application/xml",
+                "text/xml",
+            )
+        )
+
+        if not feed_content_type and not looks_like_feed:
+            raise CrawlerHttpError(
+                "Respons bukan RSS/Atom: "
+                f"{content_type or 'unknown'}"
+            )
+
+        return HttpPage(
+            requested_url=url,
+            final_url=response.url,
+            status_code=response.status_code,
+            content_type=content_type,
+            text=text,
+        )
+
+    @staticmethod
+    def _validate_discovery_endpoint(
+        url: str,
+        *,
+        allowed_hosts: set[str] | frozenset[str],
+        allowed_path_prefixes: tuple[str, ...],
+    ) -> None:
+        """Batasi bypass robots hanya ke endpoint discovery yang eksplisit.
+
+        Feed syndication yang dipilih pengguna bukan crawl rekursif halaman
+        penerbit. Karena itu feed discovery dapat diambil tanpa membaca
+        ``robots.txt`` agregator, tetapi hanya bila scheme, hostname, dan path
+        cocok dengan allowlist yang diberikan pemanggil.
+        """
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        normalized_hosts = {
+            item.lower().rstrip(".")
+            for item in allowed_hosts
+        }
+
+        if (
+            parsed.scheme != "https"
+            or hostname not in normalized_hosts
+            or not any(
+                parsed.path.startswith(prefix)
+                for prefix in allowed_path_prefixes
+            )
+        ):
+            raise CrawlerHttpError(
+                "Endpoint discovery berada di luar allowlist sistem: "
+                f"{url}"
+            )
+
+    def get_discovery_feed(
+        self,
+        url: str,
+        *,
+        allowed_hosts: set[str] | frozenset[str],
+        allowed_path_prefixes: tuple[str, ...],
+    ) -> HttpPage:
+        """Ambil feed syndication eksternal dari endpoint ter-allowlist.
+
+        Metode ini sengaja tidak memakai ``is_allowed_by_robots`` agregator.
+        Batasannya bukan domain Source, melainkan allowlist endpoint yang
+        tertanam di provider discovery. Validasi dan robots penerbit tetap
+        dilakukan terpisah sebelum halaman artikel diambil.
+        """
+        self._validate_discovery_endpoint(
+            url,
+            allowed_hosts=allowed_hosts,
+            allowed_path_prefixes=allowed_path_prefixes,
+        )
+        response = self._request(
+            url,
+            accept=FEED_ACCEPT,
+        )
+
+        if response.status_code >= 400:
+            raise CrawlerHttpError(
+                "HTTP "
+                f"{response.status_code} ketika mengambil feed discovery"
+            )
+
+        if not response.encoding:
+            response.encoding = response.apparent_encoding or "utf-8"
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        text = response.text
+        prefix = text.lstrip()[:500].casefold()
+        looks_like_feed = any(
+            marker in prefix
+            for marker in ("<rss", "<feed", "<rdf:rdf")
+        )
+        feed_content_type = any(
+            marker in content_type
+            for marker in (
+                "application/rss+xml",
+                "application/atom+xml",
+                "application/xml",
+                "text/xml",
+            )
+        )
+
+        if not feed_content_type and not looks_like_feed:
+            raise CrawlerHttpError(
+                "Respons endpoint discovery bukan RSS/Atom: "
+                f"{content_type or 'unknown'}"
+            )
+
+        final_url = response.url
+        self._validate_discovery_endpoint(
+            final_url,
+            allowed_hosts=allowed_hosts,
+            allowed_path_prefixes=allowed_path_prefixes,
+        )
+        return HttpPage(
+            requested_url=url,
+            final_url=final_url,
+            status_code=response.status_code,
+            content_type=content_type,
+            text=text,
+        )
+
+    def resolve_discovery_url(
+        self,
+        url: str,
+        *,
+        allowed_hosts: set[str] | frozenset[str],
+        allowed_path_prefixes: tuple[str, ...],
+        max_redirects: int = 5,
+    ) -> HttpPage:
+        """Selesaikan link agregator tanpa mengambil halaman penerbit.
+
+        Redirect di dalam origin discovery diikuti secara terbatas. Begitu
+        ``Location`` menunjuk ke origin lain, URL tersebut dikembalikan untuk
+        dipetakan ke Source dan diperiksa robots-nya sebelum ada request ke
+        halaman artikel.
+        """
+        self._validate_discovery_endpoint(
+            url,
+            allowed_hosts=allowed_hosts,
+            allowed_path_prefixes=allowed_path_prefixes,
+        )
+        requested_url = url
+        current_url = url
+
+        for _redirect_index in range(max_redirects + 1):
+            response = self._request(
+                current_url,
+                allow_redirects=False,
+            )
+            location = response.headers.get("Location", "").strip()
+
+            if response.is_redirect and location:
+                next_url = urljoin(current_url, location)
+                next_host = (
+                    urlsplit(next_url).hostname or ""
+                ).lower().rstrip(".")
+                normalized_hosts = {
+                    item.lower().rstrip(".")
+                    for item in allowed_hosts
+                }
+
+                if next_host not in normalized_hosts:
+                    return HttpPage(
+                        requested_url=requested_url,
+                        final_url=next_url,
+                        status_code=response.status_code,
+                        content_type="",
+                        text="",
+                    )
+
+                self._validate_discovery_endpoint(
+                    next_url,
+                    allowed_hosts=allowed_hosts,
+                    allowed_path_prefixes=allowed_path_prefixes,
+                )
+                current_url = next_url
+                continue
+
+            if not response.encoding:
+                response.encoding = response.apparent_encoding or "utf-8"
+
+            return HttpPage(
+                requested_url=requested_url,
+                final_url=response.url or current_url,
+                status_code=response.status_code,
+                content_type=(
+                    response.headers.get("Content-Type", "").lower()
+                ),
+                text=response.text,
+            )
+
+        raise CrawlerHttpError(
+            "Redirect endpoint discovery melebihi batas sistem."
+        )
+
+    def post_discovery_form(
+        self,
+        url: str,
+        *,
+        data: dict[str, str],
+        allowed_hosts: set[str] | frozenset[str],
+        allowed_path_prefixes: tuple[str, ...],
+        referer: str,
+    ) -> HttpPage:
+        """Kirim form hanya ke RPC provider discovery yang di-allowlist.
+
+        Respons tidak pernah diikuti ke origin lain. Pemanggil tetap wajib
+        memetakan URL penerbit dari isi respons sebelum melakukan fetch.
+        """
+        self._validate_discovery_endpoint(
+            url,
+            allowed_hosts=allowed_hosts,
+            allowed_path_prefixes=allowed_path_prefixes,
+        )
+        response = self._post_form(
+            url,
+            data=data,
+            headers={
+                "Accept": "application/json,text/plain,*/*",
+                "Content-Type": (
+                    "application/x-www-form-urlencoded;charset=UTF-8"
+                ),
+                "Origin": "https://news.google.com",
+                "Referer": referer,
+            },
+        )
+
+        if response.is_redirect:
+            raise CrawlerHttpError(
+                "RPC discovery mengembalikan redirect yang tidak diikuti."
+            )
+        if response.status_code >= 400:
+            raise CrawlerHttpError(
+                "HTTP "
+                f"{response.status_code} ketika memanggil RPC discovery"
+            )
+
+        final_url = response.url or url
+        self._validate_discovery_endpoint(
+            final_url,
+            allowed_hosts=allowed_hosts,
+            allowed_path_prefixes=allowed_path_prefixes,
+        )
+        if not response.encoding:
+            response.encoding = response.apparent_encoding or "utf-8"
+        return HttpPage(
+            requested_url=url,
+            final_url=final_url,
+            status_code=response.status_code,
+            content_type=(
+                response.headers.get("Content-Type", "").lower()
+            ),
+            text=response.text,
+        )
+
+    def resolve_url(
+        self,
+        url: str,
+    ) -> HttpPage:
+        """Ikuti redirect URL discovery tanpa menganggap hasilnya artikel.
+
+        Berbeda dari ``get_html``, metode ini tetap mengembalikan status HTTP
+        non-2xx dan content type apa adanya. Pemanggil wajib memvalidasi final
+        URL terhadap Source sebelum membaca isi respons. Hal ini diperlukan
+        untuk membedakan URL agregator yang belum terurai, halaman penerbit
+        yang berhasil ditemukan, dan halaman penerbit yang terblokir WAF.
+        """
+        if not self.is_allowed_by_robots(url):
+            raise RobotsDeniedError(
+                "robots.txt tidak mengizinkan URL discovery: "
+                f"{url}"
+            )
+
+        response = self._request(url)
+
+        if not response.encoding:
+            response.encoding = response.apparent_encoding or "utf-8"
+
+        return HttpPage(
+            requested_url=url,
+            final_url=response.url,
+            status_code=response.status_code,
+            content_type=(
+                response.headers.get("Content-Type", "").lower()
+            ),
             text=response.text,
         )
 

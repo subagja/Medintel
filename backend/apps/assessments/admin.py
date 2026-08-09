@@ -7,6 +7,9 @@ from .models import (
     InformationGap,
     IntelligenceRecommendation,
     IntelligenceRecommendationHistory,
+    IntelligenceReport,
+    IntelligenceReportHistory,
+    IntelligenceReportSection,
     SignalAssessment,
     SourceEvaluation,
 )
@@ -34,6 +37,35 @@ class IntelligenceRecommendationHistoryInline(admin.TabularInline):
         "from_status",
         "to_status",
         "notes",
+        "changed_by",
+        "changed_at",
+    )
+    can_delete = False
+
+
+class IntelligenceReportSectionInline(admin.StackedInline):
+    model = IntelligenceReportSection
+    extra = 0
+    readonly_fields = (
+        "signal",
+        "disease",
+        "assessment_version",
+        "warning_version",
+        "recommendation_version",
+        "created_at",
+        "updated_at",
+    )
+
+
+class IntelligenceReportHistoryInline(admin.TabularInline):
+    model = IntelligenceReportHistory
+    extra = 0
+    readonly_fields = (
+        "action",
+        "from_status",
+        "to_status",
+        "notes",
+        "metadata",
         "changed_by",
         "changed_at",
     )
@@ -325,3 +357,42 @@ class IntelligenceRecommendationAdmin(admin.ModelAdmin):
         "updated_at",
     )
     inlines = [IntelligenceRecommendationHistoryInline]
+
+
+@admin.register(IntelligenceReport)
+class IntelligenceReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "code",
+        "hal",
+        "report_date",
+        "status",
+        "created_by",
+        "finalized_by",
+        "distributed_at",
+        "archived_at",
+    )
+    list_filter = ("status", "report_date", "finalized_at", "distributed_at")
+    search_fields = ("code", "hal", "kepada", "dari", "tembusan")
+    list_select_related = (
+        "created_by",
+        "updated_by",
+        "finalized_by",
+        "distributed_by",
+        "archived_by",
+    )
+    readonly_fields = (
+        "id",
+        "code",
+        "status",
+        "created_by",
+        "updated_by",
+        "finalized_by",
+        "finalized_at",
+        "distributed_by",
+        "distributed_at",
+        "archived_by",
+        "archived_at",
+        "created_at",
+        "updated_at",
+    )
+    inlines = [IntelligenceReportSectionInline, IntelligenceReportHistoryInline]

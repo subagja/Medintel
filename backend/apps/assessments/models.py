@@ -1229,6 +1229,15 @@ class IntelligenceReport(models.Model):
         editable=False,
     )
 
+    code = models.CharField(
+        max_length=50,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Kode produk intelijen, misalnya LI-2026-0001.",
+    )
+
     kepada = models.CharField(
         max_length=200,
         default="Yth. Pimpinan",
@@ -1272,12 +1281,72 @@ class IntelligenceReport(models.Model):
         blank=True,
     )
 
+    review_notes = models.TextField(
+        blank=True,
+        help_text="Catatan review terakhir sebelum laporan difinalkan.",
+    )
+
+    distribution_notes = models.TextField(
+        blank=True,
+        help_text="Catatan distribusi produk intelijen.",
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="intelligence_reports",
         null=True,
         blank=True,
+    )
+
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="updated_intelligence_reports",
+        null=True,
+        blank=True,
+    )
+
+    finalized_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="finalized_intelligence_reports",
+        null=True,
+        blank=True,
+    )
+
+    finalized_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    distributed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="distributed_intelligence_reports",
+        null=True,
+        blank=True,
+    )
+
+    distributed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    archived_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="archived_intelligence_reports",
+        null=True,
+        blank=True,
+    )
+
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
     )
 
     created_at = models.DateTimeField(
@@ -1333,6 +1402,24 @@ class IntelligenceReportSection(models.Model):
         blank=True,
     )
 
+    assessment_version = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Versi assessment yang menjadi dasar draft.",
+    )
+
+    warning_version = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Versi peringatan dini yang menjadi dasar draft.",
+    )
+
+    recommendation_version = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Versi rekomendasi yang menjadi dasar draft.",
+    )
+
     source_articles = models.ManyToManyField(
         "articles.Article",
         related_name="report_sections",
@@ -1355,6 +1442,12 @@ class IntelligenceReportSection(models.Model):
 
     class Meta:
         ordering = ["report", "order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["report", "order"],
+                name="unique_report_section_order",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.report} — poin {self.order}"
@@ -1363,3 +1456,65 @@ class IntelligenceReportSection(models.Model):
     def letter(self) -> str:
         """A, B, C, ... berdasarkan `order` (0-indexed)."""
         return chr(65 + self.order) if self.order < 26 else str(self.order)
+
+
+class IntelligenceReportHistory(models.Model):
+    """Audit trail keputusan pada produk laporan intelijen."""
+
+    class Action(models.TextChoices):
+        CREATED = "created", "Draf Dibentuk"
+        UPDATED = "updated", "Draf Diperbarui"
+        FINALIZED = "finalized", "Difinalkan"
+        DISTRIBUTED = "distributed", "Didistribusikan"
+        ARCHIVED = "archived", "Diarsipkan"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    report = models.ForeignKey(
+        IntelligenceReport,
+        on_delete=models.CASCADE,
+        related_name="history",
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=Action.choices,
+        db_index=True,
+    )
+
+    from_status = models.CharField(
+        max_length=20,
+        choices=IntelligenceReport.Status.choices,
+        blank=True,
+    )
+
+    to_status = models.CharField(
+        max_length=20,
+        choices=IntelligenceReport.Status.choices,
+    )
+
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="intelligence_report_history",
+        null=True,
+        blank=True,
+    )
+
+    changed_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-changed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.report.code or self.report_id} — {self.get_action_display()}"

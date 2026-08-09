@@ -7,6 +7,7 @@ from apps.assessments import threat_map_views
 from apps.assessments import disease_priority_views
 from apps.assessments import intelligence_recommendation_views
 from apps.assessments import executive_dashboard_views
+from apps.assessments import report_views
 from apps.signals import views as signal_views
 
 
@@ -89,6 +90,11 @@ urlpatterns = [
         name="crawler-summary-status",
     ),
     path(
+        "crawler-artikel/google-news/",
+        views.google_news_discovery_settings,
+        name="google-news-discovery-settings",
+    ),
+    path(
         "crawler-artikel/job/<uuid:job_id>/",
         views.crawler_job_detail,
         name="crawler-job-detail",
@@ -140,6 +146,24 @@ urlpatterns = [
         ),
         views.source_seed_update,
         name="source-seed-update",
+    ),
+    path(
+        "sumber-osint/<int:source_id>/discovery/tambah/",
+        views.source_discovery_query_create,
+        name="source-discovery-query-create",
+    ),
+    path(
+        (
+            "sumber-osint/<int:source_id>/discovery/"
+            "<uuid:query_id>/edit/"
+        ),
+        views.source_discovery_query_update,
+        name="source-discovery-query-update",
+    ),
+    path(
+        "crawler-artikel/google-news/configurasi/",
+        views.google_news_discovery_configure,
+        name="google-news-discovery-configure",
     ),
     path(
         "sumber-osint/<int:source_id>/pola-url/tambah/",
@@ -221,22 +245,22 @@ urlpatterns = [
     ),
     path(
         "laporan-dokumen/",
-        views.report_document_list,
+        report_views.report_document_list,
         name="report-document-list",
     ),
     path(
         "laporan-dokumen/buat/",
-        views.report_document_create,
+        report_views.report_document_create,
         name="report-document-create",
     ),
     path(
         "laporan-dokumen/<uuid:report_id>/",
-        views.report_document_edit,
+        report_views.report_document_edit,
         name="report-document-edit",
     ),
     path(
         "laporan-dokumen/<uuid:report_id>/ekspor-pdf/",
-        views.report_document_export_pdf,
+        report_views.report_document_export_pdf,
         name="report-document-export-pdf",
     ),
 ]

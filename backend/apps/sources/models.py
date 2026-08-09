@@ -646,3 +646,168 @@ class SourceSeedUrl(models.Model):
             f"{self.source.code} — "
             f"{self.url}"
         )
+
+
+class SourceDiscoveryQuery(models.Model):
+    """Kueri discovery agregator yang tetap terikat pada satu Source.
+
+    Kueri hanya menyimpan topik pencarian. Pembatas ``site:domain`` dan URL
+    feed provider dibentuk oleh crawler agar pengguna tidak dapat menjadikan
+    agregator sebagai Source atau memperluas whitelist secara tidak sengaja.
+    """
+
+    class Provider(models.TextChoices):
+        GOOGLE_NEWS = (
+            "google_news",
+            "Google News RSS",
+        )
+
+    # Nilai internal untuk konfigurasi discovery otomatis. Teks pencarian
+    # aktual tidak disimpan di sini; crawler membentuknya dari Disease Master
+    # aktif pada setiap eksekusi.
+    AUTO_DISEASE_MASTER_QUERY = "__active_disease_master__"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    source = models.ForeignKey(
+        Source,
+        on_delete=models.CASCADE,
+        related_name="discovery_queries",
+    )
+
+    provider = models.CharField(
+        max_length=30,
+        choices=Provider.choices,
+        default=Provider.GOOGLE_NEWS,
+        db_index=True,
+    )
+
+    query = models.CharField(
+        max_length=500,
+        help_text=(
+            "Istilah penyakit/kejadian yang dicari. Pembatas site:domain "
+            "ditambahkan otomatis oleh sistem."
+        ),
+    )
+
+    language = models.CharField(
+        max_length=8,
+        default="id",
+        help_text="Kode bahasa, misalnya id atau en.",
+    )
+
+    country = models.CharField(
+        max_length=2,
+        default="ID",
+        help_text="Kode negara ISO dua huruf, misalnya ID.",
+    )
+
+    max_age_days = models.PositiveSmallIntegerField(
+        default=7,
+        help_text=(
+            "Entri yang lebih lama dari nilai ini tidak diproses. "
+            "Rentang yang disarankan 1–30 hari."
+        ),
+    )
+
+    priority = models.PositiveSmallIntegerField(
+        default=100,
+        help_text="Angka lebih kecil diproses lebih dahulu.",
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "priority",
+            "provider",
+            "query",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "source",
+                    "provider",
+                    "query",
+                    "language",
+                    "country",
+                ],
+                name="unique_source_discovery_query",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "source",
+                    "provider",
+                    "is_active",
+                ],
+                name="source_discovery_active_idx",
+            ),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+
+        errors = {}
+        self.query = " ".join((self.query or "").split())
+        self.language = (self.language or "").strip().lower()
+        self.country = (self.country or "").strip().upper()
+
+        if not self.query:
+            errors["query"] = "Kueri discovery tidak boleh kosong."
+        elif re.search(r"(?:^|\s)site\s*:", self.query, re.IGNORECASE):
+            errors["query"] = (
+                "Jangan menambahkan operator site:. Domain sumber "
+                "ditambahkan otomatis oleh sistem."
+            )
+        elif re.search(r"https?://", self.query, re.IGNORECASE):
+            errors["query"] = "Kueri tidak boleh berisi URL."
+
+        if not re.fullmatch(r"[a-z]{2,3}", self.language):
+            errors["language"] = "Gunakan kode bahasa 2–3 huruf."
+
+        if not re.fullmatch(r"[A-Z]{2}", self.country):
+            errors["country"] = "Gunakan kode negara ISO dua huruf."
+
+        if (
+            self.max_age_days is None
+            or self.max_age_days < 1
+            or self.max_age_days > 30
+        ):
+            errors["max_age_days"] = "Rentang usia entri harus 1–30 hari."
+
+        if self.priority is None or self.priority < 1:
+            errors["priority"] = "Prioritas minimal bernilai 1."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return (
+            f"{self.source.code} — "
+            f"{self.get_provider_display()}: {self.query}"
+        )

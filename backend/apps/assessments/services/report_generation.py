@@ -1,18 +1,20 @@
-"""Generasi draft konten laporan (Indikasi/Analisis/Dampak/Upaya/Saran
-Tindak) per topik penyakit -- TEMPLATE-BASED, mengisi kalimat berpola
-dari data terstruktur yang sudah ada (artikel, assessment, early
-warning, rekomendasi). Ini BUKAN generasi bahasa alami oleh AI/LLM --
-sistem ini tidak punya integrasi API LLM. Hasilnya dimaksudkan sebagai
-draft kasar yang wajib ditinjau dan disunting analis sebelum laporan
-difinalkan.
+"""Template draft laporan intelijen dari satu sinyal tervalidasi.
+
+Modul ini tidak memakai LLM. Semua kalimat awal diturunkan dari bukti yang
+sudah terhubung ke sinyal, assessment aktif, peringatan dini, dan rekomendasi
+yang sudah ditetapkan. Draft tetap wajib ditinjau analis.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from apps.articles.models import Article
-from apps.entities.models import ArticleDisease, ArticleFact
-from apps.signals.models import Signal
+from apps.assessments.models import (
+    EarlyWarning,
+    IntelligenceRecommendation,
+    SignalAssessment,
+)
+from apps.entities.models import ArticleFact, ValidationStatus
+from apps.signals.models import Signal, SignalArticle
 
 
 @dataclass
@@ -23,245 +25,219 @@ class GeneratedSectionDraft:
     upaya_text: str = ""
     saran_tindak_text: str = ""
     source_article_ids: list = field(default_factory=list)
+    assessment_version: int | None = None
+    warning_version: int | None = None
+    recommendation_version: int | None = None
 
 
-def _format_count_phrase(fact: ArticleFact) -> str:
-    parts = []
-    if fact.case_count:
-        parts.append(f"{fact.case_count} kasus")
-    if fact.death_count:
-        parts.append(f"{fact.death_count} kematian")
-    if not parts:
+def _format_count_phrase(fact: ArticleFact | None) -> str:
+    if fact is None:
         return ""
-    return " dan ".join(parts)
 
-
-def _indikasi_sentence_for_article(article: Article) -> str:
-    """Susun satu kalimat "siapa - mengatakan/melaporkan - apa" dari
-    satu artikel, mengikuti pola atribusi di contoh dokumen (nama/
-    jabatan sumber diikuti isi laporan).
-    """
-    who = (
-        f"{article.author} ({article.source.name})"
-        if article.author
-        else article.source.name
-    )
-
-    fact = article.facts.order_by("-confidence_score").first()
-    location = article.locations.first()
-    disease = article.diseases.first()
-
-    what_parts = []
-    if disease:
-        what_parts.append(f"terjadi peningkatan kasus {disease.name}")
-    if location:
-        what_parts.append(f"di {location.name}")
-    if fact:
-        count_phrase = _format_count_phrase(fact)
-        if count_phrase:
-            what_parts.append(f"dengan {count_phrase}")
-        if fact.event_date:
-            what_parts.append(
-                f"tercatat sejak {fact.event_date.strftime('%d %B %Y')}"
-            )
-
-    what = " ".join(what_parts) if what_parts else (article.title or "")
-
-    return f"{who} melaporkan bahwa {what}.".replace("  ", " ")
-
-
-def generate_indikasi_text(articles: list) -> tuple[str, list]:
-    """Gabungkan beberapa artikel jadi satu paragraf indikasi. Maks 4
-    artikel per paragraf supaya tidak berlebihan panjangnya -- kalau
-    lebih, analis disarankan pecah jadi beberapa poin terpisah.
-    """
-    connectors = ["", "Selain itu, ", "Sementara itu, ", "Di sisi lain, "]
-    sentences = []
-    used_ids = []
-
-    for index, article in enumerate(articles[:4]):
-        sentence = _indikasi_sentence_for_article(article)
-        connector = connectors[index] if index < len(connectors) else ""
-        if connector and sentence:
-            sentence = connector + sentence[0].lower() + sentence[1:]
-        sentences.append(sentence)
-        used_ids.append(article.id)
-
-    return " ".join(s for s in sentences if s), used_ids
-
-
-def generate_analisis_text(
-    *,
-    disease_name: str,
-    early_warning=None,
-    assessment=None,
-) -> str:
-    """Susun paragraf analisis dengan unsur Judgement, Early Warning,
-    Forecasting, dan Problem Solving secara tersirat (tidak dilabeli
-    eksplisit di teks, mengikuti gaya dokumen contoh).
-    """
-    if early_warning is not None:
-        judgement = early_warning.analytical_judgement.strip()
-        forecasting = early_warning.implications.strip()
-
-        parts = []
-        if judgement:
-            parts.append(judgement)
+    parts = []
+    if fact.case_count is not None:
+        parts.append(f"{fact.case_count:,} kasus".replace(",", "."))
+    if fact.death_count is not None:
+        parts.append(f"{fact.death_count:,} kematian".replace(",", "."))
+    if fact.hospitalized_count is not None:
         parts.append(
-            f"Kondisi tersebut menjadi early warning bagi pemangku "
-            f"kepentingan terkait untuk memperkuat kewaspadaan "
-            f"terhadap potensi perkembangan {disease_name} lebih lanjut."
+            f"{fact.hospitalized_count:,} orang dirawat".replace(",", ".")
         )
-        if forecasting:
-            parts.append(forecasting)
+    if fact.recovery_count is not None:
+        parts.append(f"{fact.recovery_count:,} sembuh".replace(",", "."))
+    return ", ".join(parts)
 
-        return " ".join(parts)
 
-    if assessment is not None:
-        return (
-            f"Berdasarkan penilaian awal, sinyal terkait {disease_name} "
-            f"tercatat dengan skor urgensi {assessment.urgency_score}/5 "
-            f"dan skor dampak {assessment.impact_score}/5. Kondisi ini "
-            f"masih memerlukan assessment analitis lebih lanjut untuk "
-            f"menghasilkan judgement dan proyeksi perkembangan yang "
-            f"lebih pasti."
-        )
-
+def _validated_fact(article, signal: Signal) -> ArticleFact | None:
     return (
-        f"[Perlu diisi manual -- belum ada assessment atau early "
-        f"warning tervalidasi untuk topik {disease_name}.]"
-    )
-
-
-def generate_dampak_text(
-    *,
-    disease_name: str,
-    early_warning=None,
-) -> str:
-    if early_warning is not None and early_warning.implications.strip():
-        return (
-            f"Apabila tidak dikendalikan, perkembangan {disease_name} "
-            f"berpotensi {early_warning.implications.strip()[0].lower()}"
-            f"{early_warning.implications.strip()[1:]}"
+        article.facts.filter(
+            validation_status__in=[
+                ValidationStatus.VALIDATED,
+                ValidationStatus.CORRECTED,
+            ],
+            disease=signal.primary_disease,
         )
-
-    return (
-        f"[Perlu diisi manual -- dampak potensial dari perkembangan "
-        f"{disease_name} belum terdokumentasi dalam sistem.]"
-    )
-
-
-def generate_upaya_text(
-    *,
-    disease_name: str,
-    early_warning=None,
-) -> str:
-    base = (
-        f"Tim analis terus memonitor perkembangan situasi "
-        f"{disease_name} baik di dalam maupun luar negeri."
-    )
-
-    if early_warning is not None and early_warning.recommended_actions.strip():
-        return f"{base} {early_warning.recommended_actions.strip()}"
-
-    return base
-
-
-def generate_saran_tindak_text(
-    *,
-    disease_name: str,
-    recommendations,
-) -> str:
-    recs = list(recommendations[:3])
-
-    if not recs:
-        return (
-            f"[Perlu diisi manual -- belum ada rekomendasi intelijen "
-            f"tervalidasi untuk topik {disease_name}.]"
-        )
-
-    sentences = []
-    for rec in recs:
-        target = rec.target_unit or "instansi terkait"
-        action = rec.recommended_action.strip()
-        if action:
-            sentences.append(
-                f"{target} perlu {action[0].lower()}{action[1:]}"
-            )
-
-    return " ".join(sentences)
-
-
-def generate_section_draft(
-    *,
-    disease,
-) -> GeneratedSectionDraft:
-    """Bangkitkan draft satu poin laporan (semua 5 bagian) untuk satu
-    Disease, menarik data dari artikel + Signal + assessment + early
-    warning + rekomendasi terkait yang sudah ada di sistem.
-    """
-    from apps.assessments.models import IntelligenceRecommendation
-
-    articles = list(
-        Article.objects.filter(
-            diseases=disease,
-        )
-        .select_related("source")
-        .prefetch_related("facts", "locations", "diseases")
-        .order_by("-published_at", "-crawled_at")[:6]
-    )
-
-    indikasi_text, used_ids = generate_indikasi_text(articles)
-
-    signal = (
-        Signal.objects.filter(
-            primary_disease=disease,
-        )
-        .order_by("-first_detected_at")
+        .order_by("-confidence_score", "-event_date", "-created_at")
         .first()
     )
 
-    early_warning = None
-    assessment = None
-    if signal is not None:
-        assessment = (
-            signal.assessments.filter(is_current=True).first()
-            if hasattr(signal, "assessments")
-            else None
+
+def _article_indication(article, signal: Signal) -> str:
+    fact = _validated_fact(article, signal)
+    source_name = article.source.name
+    location_name = signal.primary_location.name
+    disease_name = signal.primary_disease.name
+
+    lead = (
+        f'Dalam situs {source_name} terdapat artikel berjudul '
+        f'“{article.title}”.'
+    )
+
+    details = []
+    count_phrase = _format_count_phrase(fact)
+    if count_phrase:
+        details.append(count_phrase)
+    if fact and fact.event_date:
+        details.append(f"pada {fact.event_date.strftime('%d-%m-%Y')}")
+
+    evidence = (
+        fact.fact_text.strip()
+        if fact and fact.fact_text.strip()
+        else article.excerpt.strip()
+    )
+
+    attribution = article.author.strip() or source_name
+    statement = (
+        f"{attribution} melaporkan perkembangan {disease_name} "
+        f"di {location_name}"
+    )
+    if details:
+        statement += f" dengan informasi {', '.join(details)}"
+    statement += "."
+
+    if evidence:
+        statement += f" Informasi pendukung menyebutkan {evidence.rstrip('.')}."
+
+    return f"{lead} {statement}"
+
+
+def _signal_articles(signal: Signal) -> list:
+    links = (
+        signal.signal_articles.select_related("article__source")
+        .prefetch_related("article__facts")
+        .exclude(support_type=SignalArticle.SupportType.CONTRADICTING)
+        .filter(
+            article__validation_assessment__validation_status="validated",
         )
-        early_warning = (
-            signal.early_warnings.filter(is_current=True).first()
-            if hasattr(signal, "early_warnings")
-            else None
+        .order_by("-is_primary_source", "-relevance_score", "-added_at")
+    )
+    return [link.article for link in links[:6]]
+
+
+def _current_assessment(signal: Signal) -> SignalAssessment | None:
+    return (
+        signal.assessments.filter(
+            is_current=True,
+            status=SignalAssessment.Status.COMPLETED,
+        )
+        .order_by("-version")
+        .first()
+    )
+
+
+def _current_warning(signal: Signal) -> EarlyWarning | None:
+    return (
+        signal.early_warnings.filter(
+            is_current=True,
+            status=EarlyWarning.Status.ISSUED,
+        )
+        .order_by("-version")
+        .first()
+    )
+
+
+def _current_recommendation(signal: Signal) -> IntelligenceRecommendation | None:
+    return (
+        signal.intelligence_recommendations.filter(
+            is_current=True,
+            status__in=[
+                IntelligenceRecommendation.Status.APPROVED,
+                IntelligenceRecommendation.Status.IN_PROGRESS,
+                IntelligenceRecommendation.Status.COMPLETED,
+            ],
+        )
+        .order_by("-version")
+        .first()
+    )
+
+
+def generate_signal_section_draft(*, signal: Signal) -> GeneratedSectionDraft:
+    """Bangkitkan satu poin laporan hanya dari evidence milik sinyal."""
+    articles = _signal_articles(signal)
+    assessment = _current_assessment(signal)
+    warning = _current_warning(signal)
+    recommendation = _current_recommendation(signal)
+
+    indikasi = " ".join(_article_indication(article, signal) for article in articles)
+
+    judgement = ""
+    implications = ""
+    if warning is not None:
+        judgement = warning.analytical_judgement.strip()
+        implications = warning.implications.strip()
+    elif assessment is not None:
+        judgement = assessment.analytical_judgement.strip()
+        implications = assessment.implications.strip()
+
+    if not judgement:
+        judgement = (
+            f"Perkembangan {signal.primary_disease.name} di "
+            f"{signal.primary_location.name} masih memerlukan pendalaman "
+            "dan verifikasi lanjutan."
         )
 
-    recommendations = (
-        IntelligenceRecommendation.objects.filter(
-            signal__primary_disease=disease,
-            is_current=True,
-        ).order_by("-created_at")
-        if signal is not None
-        else IntelligenceRecommendation.objects.none()
+    analysis_parts = [judgement]
+    if implications:
+        analysis_parts.append(implications)
+    analysis_parts.append(
+        "Perubahan jumlah kasus, perluasan wilayah, atau munculnya bukti "
+        "penguat dari sumber independen perlu dijadikan pemicu pembaruan "
+        "assessment dan kewaspadaan dini."
     )
+
+    dampak = implications or (
+        f"Apabila perkembangan {signal.primary_disease.name} tidak terpantau, "
+        "situasi berpotensi mengurangi kecepatan verifikasi dan kesiapan "
+        "respons pada wilayah terdampak."
+    )
+
+    upaya = (
+        "Tim analis MedIntel terus melakukan monitoring terhadap perkembangan "
+        f"{signal.primary_disease.name} di {signal.primary_location.name}, "
+        "memutakhirkan bukti dari media online berbasis artikel/web dan situs "
+        "resmi, serta mencatat kesenjangan informasi yang masih memerlukan "
+        "konfirmasi."
+    )
+
+    if recommendation is not None:
+        target = recommendation.target_unit.strip() or "instansi terkait"
+        action = recommendation.recommended_action.strip()
+        saran = f"{target} perlu {action[0].lower()}{action[1:]}" if action else ""
+    else:
+        saran = (
+            "Instansi terkait perlu melakukan verifikasi data kasus dan "
+            "perkembangan wilayah terdampak sebelum menetapkan tindak lanjut "
+            "operasional."
+        )
 
     return GeneratedSectionDraft(
-        indikasi_text=indikasi_text,
-        analisis_text=generate_analisis_text(
-            disease_name=disease.name,
-            early_warning=early_warning,
-            assessment=assessment,
-        ),
-        dampak_text=generate_dampak_text(
-            disease_name=disease.name,
-            early_warning=early_warning,
-        ),
-        upaya_text=generate_upaya_text(
-            disease_name=disease.name,
-            early_warning=early_warning,
-        ),
-        saran_tindak_text=generate_saran_tindak_text(
-            disease_name=disease.name,
-            recommendations=recommendations,
-        ),
-        source_article_ids=used_ids,
+        indikasi_text=indikasi,
+        analisis_text=" ".join(analysis_parts),
+        dampak_text=dampak,
+        upaya_text=upaya,
+        saran_tindak_text=saran,
+        source_article_ids=[article.id for article in articles],
+        assessment_version=assessment.version if assessment else None,
+        warning_version=warning.version if warning else None,
+        recommendation_version=(recommendation.version if recommendation else None),
     )
+
+
+def generate_section_draft(*, disease=None, signal: Signal | None = None):
+    """Kompatibilitas pemanggil lama dengan pemilihan sinyal yang aman."""
+    if signal is None and disease is not None:
+        signal = (
+            Signal.objects.filter(
+                primary_disease=disease,
+                status__in=[
+                    Signal.Status.VALIDATED,
+                    Signal.Status.CORRECTED,
+                    Signal.Status.ESCALATED,
+                ],
+            )
+            .order_by("-last_updated_at")
+            .first()
+        )
+    if signal is None:
+        return GeneratedSectionDraft()
+    return generate_signal_section_draft(signal=signal)

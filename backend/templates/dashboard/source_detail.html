@@ -447,4 +447,52 @@
 
 </div>
 
+<div class="card mt-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Discovery Google News RSS</h3>
+            <div class="text-secondary small mt-1">
+                Kelayakan domain ini sebagai penerbit hasil discovery global.
+            </div>
+        </div>
+        <div class="card-actions">
+            <a
+                href="{% url 'dashboard:google-news-discovery-settings' %}"
+                class="btn btn-sm btn-outline-primary"
+            >
+                Buka Pengumpulan Artikel
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="text-secondary small">Status</div>
+                {% if google_news_readiness.is_ready %}
+                    <span class="badge bg-success-lt mt-1">Diizinkan</span>
+                {% else %}
+                    <span class="badge bg-secondary-lt mt-1">Tidak diizinkan</span>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <div class="text-secondary small">Domain pembatas</div>
+                <div class="fw-semibold mt-1">{{ source.domain }}</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-secondary small">Istilah pencarian</div>
+                <div class="fw-semibold mt-1">Otomatis dari Disease Master</div>
+            </div>
+        </div>
+        <div class="form-hint mt-3">
+            Google News hanya menemukan kandidat secara global. Jika URL akhir
+            cocok dengan domain dan pola allow/deny ini, identitas artikel
+            ditetapkan sebagai {{ source.name }}. Nama penerbit pada feed tidak
+            dijadikan dasar pemetaan.
+            {% if google_news_readiness.errors %}
+                <span class="text-warning">Belum memenuhi syarat: {{ google_news_readiness.errors|join:" " }}</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 {% endblock %}

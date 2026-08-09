@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ form_title }} | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Sumber OSINT · Discovery</div>
+            <h2 class="page-title">{{ form_title }}</h2>
+            <div class="text-secondary mt-1">
+                {{ source.name }} · {{ source.domain }}
+            </div>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'dashboard:source-detail' source.id %}" class="btn btn-outline-secondary">
+                Kembali
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="alert alert-info" role="alert">
+    Isi hanya istilah penyakit atau kejadian. Sistem menambahkan
+    <code>site:{{ source.domain }}</code> secara otomatis dan tetap memvalidasi
+    URL penerbit terhadap Source serta pola allow/deny.
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Konfigurasi Discovery</h3>
+        </div>
+        <div class="card-body">
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.provider.label }}</label>
+                    {{ form.provider }}
+                    {% for error in form.provider.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">{{ form.query.label }}</label>
+                    {{ form.query }}
+                    {% for error in form.query.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.language.label }}</label>
+                    {{ form.language }}
+                    {% for error in form.language.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.country.label }}</label>
+                    {{ form.country }}
+                    {% for error in form.country.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.max_age_days.label }}</label>
+                    {{ form.max_age_days }}
+                    {% for error in form.max_age_days.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.priority.label }}</label>
+                    {{ form.priority }}
+                    {% for error in form.priority.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="form-check my-3">
+                {{ form.is_active }}
+                <label class="form-check-label">{{ form.is_active.label }}</label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">{{ form.notes.label }}</label>
+                {{ form.notes }}
+                {% for error in form.notes.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end">
+            <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

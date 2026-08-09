@@ -8,6 +8,33 @@ from .models import (
 
 
 class SourceForm(forms.ModelForm):
+    def clean(self):
+        cleaned_data = super().clean()
+
+        crawl_enabled = cleaned_data.get("crawl_enabled")
+        is_active = cleaned_data.get("is_active")
+        is_verified = cleaned_data.get("is_verified")
+
+        if crawl_enabled and not is_active:
+            self.add_error(
+                "crawl_enabled",
+                (
+                    "Aktifkan sumber terlebih dahulu sebelum "
+                    "mengaktifkan crawler."
+                ),
+            )
+
+        if crawl_enabled and not is_verified:
+            self.add_error(
+                "crawl_enabled",
+                (
+                    "Verifikasi sumber terlebih dahulu sebelum "
+                    "mengaktifkan crawler."
+                ),
+            )
+
+        return cleaned_data
+
     class Meta:
         model = Source
         fields = [
@@ -240,8 +267,6 @@ class SourceSeedUrlForm(forms.ModelForm):
             "is_active": "URL aktif",
             "notes": "Catatan",
         }
-
-
 
 class SourceUrlPatternForm(forms.ModelForm):
     def __init__(

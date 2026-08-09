@@ -56,8 +56,13 @@ class Command(BaseCommand):
             return
 
         for job in stale_jobs:
+            source_code = (
+                job.source.code
+                if job.source_id
+                else "google-news-global"
+            )
             self.stdout.write(
-                f"  - {job.source.code} (mulai {job.started_at}, "
+                f"  - {source_code} (mulai {job.started_at}, "
                 f"job_id={job.id})"
             )
 

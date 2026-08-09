@@ -29,12 +29,35 @@
     </div>
 </div>
 
-<form method="post">
+<form method="post" novalidate>
     {% csrf_token %}
 
-    {% if form.non_field_errors %}
-        <div class="alert alert-danger">
-            {{ form.non_field_errors }}
+    {% if form.errors %}
+        <div
+            class="alert alert-danger"
+            id="source-form-error-summary"
+            role="alert"
+            tabindex="-1"
+        >
+            <div class="fw-bold mb-1">
+                Sumber belum dapat disimpan.
+            </div>
+            <div class="mb-2">
+                Periksa isian berikut, lalu tekan Simpan Sumber kembali.
+            </div>
+            <ul class="mb-0 ps-3">
+                {% for field in form %}
+                    {% for error in field.errors %}
+                        <li>
+                            <strong>{{ field.label }}:</strong>
+                            {{ error }}
+                        </li>
+                    {% endfor %}
+                {% endfor %}
+                {% for error in form.non_field_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
         </div>
     {% endif %}
 
@@ -94,6 +117,7 @@
                         <label class="form-check-label">
                             {{ form.is_active.label }}
                         </label>
+                        {{ form.is_active.errors }}
                     </div>
 
                     <div class="form-check mb-3">
@@ -101,6 +125,7 @@
                         <label class="form-check-label">
                             {{ form.is_verified.label }}
                         </label>
+                        {{ form.is_verified.errors }}
                     </div>
 
                     <div class="mb-3">
@@ -129,6 +154,11 @@
                         <label class="form-check-label">
                             {{ form.crawl_enabled.label }}
                         </label>
+                        <div class="form-hint">
+                            Crawler hanya dapat diaktifkan untuk sumber aktif
+                            yang telah diverifikasi.
+                        </div>
+                        {{ form.crawl_enabled.errors }}
                     </div>
 
                     <div class="form-check mb-3">
@@ -136,6 +166,7 @@
                         <label class="form-check-label">
                             {{ form.allow_subdomains.label }}
                         </label>
+                        {{ form.allow_subdomains.errors }}
                     </div>
 
                     <div class="mb-3">
@@ -200,5 +231,17 @@
         </button>
     </div>
 </form>
+
+{% if form.errors %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var summary = document.getElementById("source-form-error-summary");
+    if (summary) {
+        summary.focus();
+        summary.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+});
+</script>
+{% endif %}
 
 {% endblock %}
