@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "apps.indicators",
     "apps.requirements",
     "apps.assessments",
+    "apps.quality",
     "apps.dashboard.apps.DashboardConfig",
 ]
 

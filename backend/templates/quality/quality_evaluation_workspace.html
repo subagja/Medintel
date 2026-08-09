@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Pusat Mutu dan Evaluasi | MEDINTEL{% endblock %}
+
+{% block extra_css %}
+<style>
+    #quality-workspace .metric-card { min-height: 142px; }
+    #quality-workspace .metric-value { font-size: 1.55rem; line-height: 1.2; }
+    #quality-workspace .evaluation-list { max-height: 720px; overflow-y: auto; }
+    #quality-workspace .narrative { white-space: pre-line; line-height: 1.7; }
+    #quality-workspace .criterion-row { border-left: 3px solid var(--tblr-primary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="quality-workspace">
+    <div class="page-header mb-3">
+        <div class="row align-items-center g-3">
+            <div class="col">
+                <div class="page-pretitle">Validitas Operasional dan Bukti Evaluasi</div>
+                <h2 class="page-title">Pusat Mutu dan Evaluasi Tesis</h2>
+                <div class="text-secondary mt-1">
+                    Ukur mutu data, efektivitas alur intelijen, ketepatan waktu, Validasi Ahli, dan UAT dari bukti yang dapat ditelusuri.
+                </div>
+            </div>
+            <div class="col-auto d-flex gap-2 flex-wrap">
+                <a class="btn btn-outline-primary" href="{% url 'dashboard:quality-dataset-export' %}?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}">Ekspor Dataset Evaluasi</a>
+                <a class="btn btn-outline-secondary" href="{% url 'dashboard:quality-bab4-export' %}?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}">Ekspor Ringkasan Bab IV</a>
+            </div>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-info">
+        <div class="fw-semibold">Cara membaca hasil</div>
+        Metrik otomatis berasal dari audit trail MedIntel pada periode terpilih. Ketepatan ekstraksi dihitung hanya dari objek yang sudah ditinjau analis. Validasi Ahli dan UAT melengkapi bukti kuantitatif; keduanya tidak mengubah media online menjadi data epidemiologis resmi dan tidak menetapkan KLB secara otomatis.
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <input type="hidden" name="tab" value="{{ active_tab }}">
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label">Tanggal awal</label>
+                    <input class="form-control" type="date" name="date_from" value="{{ period_start|date:'Y-m-d' }}">
+                </div>
+                <div class="col-sm-4 col-lg-3">
+                    <label class="form-label">Tanggal akhir</label>
+                    <input class="form-control" type="date" name="date_to" value="{{ period_end|date:'Y-m-d' }}">
+                </div>
+                <div class="col-sm-4 col-lg-2"><button class="btn btn-primary w-100" type="submit">Terapkan Periode</button></div>
+                <div class="col-lg-4 text-lg-end text-secondary small">
+                    Periode aktif: <strong>{{ period_start|date:"d M Y" }}–{{ period_end|date:"d M Y" }}</strong>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><a class="nav-link {% if active_tab != 'human' and active_tab != 'snapshot' %}active{% endif %}" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=metrics">Metrik Mutu & Efektivitas</a></li>
+        <li class="nav-item"><a class="nav-link {% if active_tab == 'human' %}active{% endif %}" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=human">Validasi Ahli & UAT</a></li>
+        <li class="nav-item"><a class="nav-link {% if active_tab == 'snapshot' %}active{% endif %}" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=snapshot">Snapshot & Bab IV</a></li>
+    </ul>
+
+    {% if active_tab == 'human' %}
+    <div class="row row-cards">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <div><h3 class="card-title">Instrumen Evaluasi</h3><div class="text-secondary small">Draf dapat diperbarui; hasil selesai dikunci.</div></div>
+                </div>
+                {% if request.user|has_role:"Admin,Analyst,Reviewer" %}
+                <div class="card-body border-bottom d-flex gap-2 flex-wrap">
+                    <a class="btn btn-outline-primary btn-sm" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=human&new=expert">Tambah Validasi Ahli</a>
+                    <a class="btn btn-outline-primary btn-sm" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=human&new=uat">Tambah UAT</a>
+                </div>
+                {% endif %}
+                <div class="list-group list-group-flush evaluation-list">
+                    {% for evaluation in evaluations %}
+                    <a class="list-group-item list-group-item-action {% if selected and selected.id == evaluation.id %}active{% endif %}" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=human&evaluation={{ evaluation.id }}">
+                        <div class="d-flex justify-content-between gap-2"><span class="fw-semibold">{{ evaluation.code }}</span><span class="badge {% if evaluation.status == 'completed' %}bg-success text-white{% else %}bg-warning-lt{% endif %}">{{ evaluation.get_status_display }}</span></div>
+                        <div class="mt-1">{{ evaluation.get_evaluation_type_display }}</div>
+                        <div class="small opacity-75 mt-1">{{ evaluation.evaluator_name }} · {{ evaluation.evaluation_date|date:"d M Y" }}</div>
+                        <div class="small opacity-75">Rerata: {{ evaluation.average_score|default:"Belum lengkap" }}</div>
+                    </a>
+                    {% empty %}<div class="p-4 text-center text-secondary">Belum ada Validasi Ahli atau UAT.</div>{% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            {% if evaluation_form and new_type %}
+            <div class="card">
+                <div class="card-header"><div><h3 class="card-title">Buat {% if new_type == 'expert' %}Validasi Ahli{% else %}User Acceptance Test{% endif %}</h3><div class="text-secondary small">Skala penilaian: 1 sangat tidak sesuai sampai 5 sangat sesuai.</div></div></div>
+                <form method="post">
+                    {% csrf_token %}<input type="hidden" name="action" value="create_evaluation"><input type="hidden" name="evaluation_type" value="{{ new_type }}"><input type="hidden" name="date_from" value="{{ period_start|date:'Y-m-d' }}"><input type="hidden" name="date_to" value="{{ period_end|date:'Y-m-d' }}">
+                    <div class="card-body">
+                        {% if evaluation_form.non_field_errors %}<div class="alert alert-danger">{{ evaluation_form.non_field_errors }}</div>{% endif %}
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluator_name.label }}</label>{{ evaluation_form.evaluator_name }}{{ evaluation_form.evaluator_name.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluator_role.label }}</label>{{ evaluation_form.evaluator_role }}{{ evaluation_form.evaluator_role.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.institution.label }}</label>{{ evaluation_form.institution }}{{ evaluation_form.institution.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluation_date.label }}</label>{{ evaluation_form.evaluation_date }}{{ evaluation_form.evaluation_date.errors }}</div>
+                        </div>
+                        <h3 class="mb-3">Kriteria Penilaian</h3>
+                        {% for row in evaluation_form.criterion_rows %}
+                        <div class="criterion-row border rounded p-3 mb-3">
+                            <div class="row g-2 align-items-start">
+                                <div class="col-md-8"><div class="text-primary small fw-semibold">{{ row.dimension }}</div><div class="fw-semibold">{{ row.label }}</div></div>
+                                <div class="col-md-4"><label class="form-label">Skor 1–5</label>{{ row.score_field }}{{ row.score_field.errors }}</div>
+                                <div class="col-12">{{ row.note_field }}{{ row.note_field.errors }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if evaluation_form.task_rows %}
+                        <h3 class="mt-4 mb-3">Skenario Tugas UAT</h3>
+                        <div class="row g-3 mb-4">{% for task in evaluation_form.task_rows %}<div class="col-md-6"><label class="form-label">{{ task.label }}</label>{{ task.field }}</div>{% endfor %}</div>
+                        {% endif %}
+                        <div class="mb-3"><label class="form-label">{{ evaluation_form.general_findings.label }}</label>{{ evaluation_form.general_findings }}{{ evaluation_form.general_findings.errors }}</div>
+                        <div><label class="form-label">{{ evaluation_form.recommendations.label }}</label>{{ evaluation_form.recommendations }}{{ evaluation_form.recommendations.errors }}</div>
+                    </div>
+                    <div class="card-footer d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="?date_from={{ period_start|date:'Y-m-d' }}&date_to={{ period_end|date:'Y-m-d' }}&tab=human">Batal</a><button class="btn btn-primary" type="submit">Simpan Draf</button></div>
+                </form>
+            </div>
+            {% elif selected %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><div class="text-primary fw-semibold">{{ selected.code }} · {{ selected.get_evaluation_type_display }}</div><h3 class="mt-1 mb-1">{{ selected.evaluator_name }}</h3><div class="text-secondary">{{ selected.evaluator_role }}{% if selected.institution %} · {{ selected.institution }}{% endif %} · {{ selected.evaluation_date|date:"d M Y" }}</div></div><div class="text-end"><span class="badge {% if selected.status == 'completed' %}bg-success text-white{% else %}bg-warning-lt{% endif %}">{{ selected.get_status_display }}</span><div class="h2 mt-2 mb-0">{{ selected.average_score|default:"—" }}<span class="fs-5 text-secondary">/5</span></div></div></div>
+                </div>
+            </div>
+
+            {% if selected.is_editable and request.user|has_role:"Admin,Analyst,Reviewer" %}
+            <details class="card mb-3" open>
+                <summary class="card-header"><div><h3 class="card-title">Isi atau Perbarui Instrumen</h3><div class="text-secondary small">Simpan sebagai draf sampai seluruh bukti lengkap.</div></div></summary>
+                <form method="post">
+                    {% csrf_token %}<input type="hidden" name="action" value="update_evaluation"><input type="hidden" name="evaluation_id" value="{{ selected.id }}"><input type="hidden" name="evaluation_type" value="{{ selected.evaluation_type }}">
+                    <div class="card-body">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluator_name.label }}</label>{{ evaluation_form.evaluator_name }}{{ evaluation_form.evaluator_name.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluator_role.label }}</label>{{ evaluation_form.evaluator_role }}{{ evaluation_form.evaluator_role.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.institution.label }}</label>{{ evaluation_form.institution }}{{ evaluation_form.institution.errors }}</div>
+                            <div class="col-md-6"><label class="form-label">{{ evaluation_form.evaluation_date.label }}</label>{{ evaluation_form.evaluation_date }}{{ evaluation_form.evaluation_date.errors }}</div>
+                        </div>
+                        {% for row in evaluation_form.criterion_rows %}<div class="criterion-row border rounded p-3 mb-3"><div class="row g-2"><div class="col-md-8"><div class="text-primary small fw-semibold">{{ row.dimension }}</div><div class="fw-semibold">{{ row.label }}</div></div><div class="col-md-4"><label class="form-label">Skor 1–5</label>{{ row.score_field }}{{ row.score_field.errors }}</div><div class="col-12">{{ row.note_field }}{{ row.note_field.errors }}</div></div></div>{% endfor %}
+                        {% if evaluation_form.task_rows %}<h3 class="mt-4 mb-3">Skenario Tugas UAT</h3><div class="row g-3 mb-4">{% for task in evaluation_form.task_rows %}<div class="col-md-6"><label class="form-label">{{ task.label }}</label>{{ task.field }}</div>{% endfor %}</div>{% endif %}
+                        <div class="mb-3"><label class="form-label">{{ evaluation_form.general_findings.label }}</label>{{ evaluation_form.general_findings }}</div><div><label class="form-label">{{ evaluation_form.recommendations.label }}</label>{{ evaluation_form.recommendations }}</div>
+                    </div>
+                    <div class="card-footer text-end"><button class="btn btn-primary" type="submit">Simpan Perubahan</button></div>
+                </form>
+            </details>
+            {% else %}
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title">Hasil Penilaian</h3></div>
+                <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Dimensi dan kriteria</th><th>Skor</th><th>Catatan</th></tr></thead><tbody>{% for row in selected_rows %}<tr><td><div class="text-primary small">{{ row.dimension }}</div>{{ row.label }}</td><td class="fw-bold">{{ row.score|default:"—" }}</td><td>{{ row.notes|default:"—" }}</td></tr>{% endfor %}</tbody></table></div>
+                {% if selected_task_rows %}<div class="card-body border-top"><div class="fw-semibold mb-2">Hasil skenario UAT</div><div class="row g-2">{% for task in selected_task_rows %}<div class="col-md-6"><div class="border rounded p-2 d-flex justify-content-between gap-2"><span>{{ task.label }}</span><span class="badge {% if task.result == 'passed' %}bg-success text-white{% elif task.result == 'failed' %}bg-danger text-white{% else %}bg-secondary-lt{% endif %}">{% if task.result == 'passed' %}Berhasil{% elif task.result == 'failed' %}Tidak berhasil{% else %}Belum diuji{% endif %}</span></div></div>{% endfor %}</div></div>{% endif %}
+                <div class="card-body border-top"><div class="fw-semibold">Temuan umum</div><div class="mt-1">{{ selected.general_findings|linebreaksbr|default:"—" }}</div><div class="fw-semibold mt-3">Rekomendasi</div><div class="mt-1">{{ selected.recommendations|linebreaksbr|default:"—" }}</div></div>
+            </div>
+            {% endif %}
+
+            {% if selected.is_editable %}
+            <div class="card mb-3"><div class="card-header"><div><h3 class="card-title">Pengesahan Hasil</h3><div class="text-secondary small">Pengesahan mengunci identitas, skor, catatan, dan temuan.</div></div></div><div class="card-body">{% if completion_blockers %}<div class="alert alert-warning"><div class="fw-semibold">Belum dapat disahkan</div><ul class="mb-0">{% for blocker in completion_blockers %}<li>{{ blocker }}</li>{% endfor %}</ul></div>{% endif %}{% if can_approve %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="complete_evaluation"><input type="hidden" name="evaluation_id" value="{{ selected.id }}"><label class="form-label">{{ completion_form.decision_notes.label }}</label>{{ completion_form.decision_notes }}<button class="btn btn-success mt-2" type="submit" {% if completion_blockers %}disabled{% endif %}>Sahkan dan Kunci</button></form>{% else %}<div class="text-secondary">Pengesahan menunggu Reviewer/Admin.</div>{% endif %}</div></div>
+            {% endif %}
+
+            <div class="card"><div class="card-header"><h3 class="card-title">Jejak Evaluasi</h3></div><div class="list-group list-group-flush">{% for item in selected.history.all %}<div class="list-group-item"><div class="d-flex justify-content-between gap-2"><span class="fw-semibold">{{ item.get_action_display }}</span><span class="small text-secondary">{{ item.changed_at|date:"d M Y H:i" }}</span></div><div class="small text-secondary">{{ item.changed_by|default:"Sistem" }} · {{ item.notes|default:"Tanpa catatan" }}</div></div>{% endfor %}</div></div>
+            {% else %}
+            <div class="card"><div class="card-body text-center py-5"><h3>Pilih atau buat instrumen evaluasi</h3><p class="text-secondary">Gunakan Validasi Ahli untuk kelayakan substansi dan UAT untuk keberterimaan alur oleh pengguna.</p></div></div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% elif active_tab == 'snapshot' %}
+    <div class="row row-cards">
+        <div class="col-lg-7">
+            <div class="card mb-3"><div class="card-header"><div><h3 class="card-title">Ringkasan Naratif Bab IV</h3><div class="text-secondary small">Dibentuk dari periode dan audit trail yang sedang dipilih.</div></div></div><div class="card-body narrative">{{ narrative }}</div></div>
+            <div class="card"><div class="card-header"><div><h3 class="card-title">Snapshot Tersimpan</h3><div class="text-secondary small">Snapshot mempertahankan angka dan narasi walau data operasional bertambah.</div></div></div><div class="table-responsive"><table class="table card-table"><thead><tr><th>Kode</th><th>Judul</th><th>Periode</th><th>Dibuat</th></tr></thead><tbody>{% for snapshot in snapshots %}<tr><td class="fw-semibold">{{ snapshot.code }}</td><td>{{ snapshot.title }}</td><td>{{ snapshot.period_start|date:"d M Y" }}–{{ snapshot.period_end|date:"d M Y" }}</td><td>{{ snapshot.created_at|date:"d M Y H:i" }} · {{ snapshot.created_by|default:"Sistem" }}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-secondary py-4">Belum ada snapshot.</td></tr>{% endfor %}</tbody></table></div></div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card"><div class="card-header"><div><h3 class="card-title">Bekukan Hasil Periode</h3><div class="text-secondary small">Simpan setelah periode evaluasi dan data review dianggap final.</div></div></div><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create_snapshot"><div class="card-body"><label class="form-label">{{ snapshot_form.snapshot_title.label }}</label>{{ snapshot_form.snapshot_title }}<div class="form-hint">Snapshot mencakup seluruh metrik, numerator/denominator, waktu pembentukan, dan narasi Bab IV.</div></div><div class="card-footer text-end"><button class="btn btn-primary" type="submit">Simpan Snapshot</button></div></form></div>
+        </div>
+    </div>
+
+    {% else %}
+        {% for section in sections %}
+        <div class="mb-4">
+            <div class="d-flex align-items-center justify-content-between mb-2"><h3 class="mb-0">{{ section.title }}</h3><span class="text-secondary small">{{ section.metrics|length }} indikator</span></div>
+            <div class="row row-cards">
+                {% for metric in section.metrics %}
+                <div class="col-sm-6 col-xl-3"><div class="card metric-card"><div class="card-body"><div class="text-secondary small">{{ metric.label }}</div><div class="metric-value fw-bold mt-2 {% if metric.value == None %}text-secondary{% endif %}">{{ metric.display }}</div>{% if metric.denominator != None %}<div class="small text-secondary mt-2">n={{ metric.numerator|default_if_none:"—" }} dari {{ metric.denominator }}</div>{% endif %}{% if metric.note %}<div class="small text-secondary mt-2">{{ metric.note }}</div>{% endif %}</div></div></div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}

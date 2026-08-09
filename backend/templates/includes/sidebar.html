@@ -556,6 +556,42 @@
                     </a>
                 </li>
 
+                <li class="nav-item mt-3">
+                    <span class="nav-link disabled medintel-menu-label">
+                        Mutu & Evaluasi
+                    </span>
+                </li>
+
+                <li class="nav-item">
+                    <a
+                        class="nav-link{% if active_menu == 'quality_evaluation' %} active{% endif %}"
+                        href="{% url 'dashboard:quality-evaluation' %}"
+                    >
+                        <span class="nav-link-icon d-md-none d-lg-inline-block">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M4 19V9"></path>
+                                <path d="M10 19V5"></path>
+                                <path d="M16 19v-7"></path>
+                                <path d="M22 19H2"></path>
+                                <path d="M5 5l3 3l5 -5"></path>
+                            </svg>
+                        </span>
+                        <span class="nav-link-title">
+                            Pusat Mutu & Evaluasi
+                        </span>
+                    </a>
+                </li>
+
             </ul>
         </div>
     </div>

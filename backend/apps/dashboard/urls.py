@@ -10,11 +10,27 @@ from apps.assessments import executive_dashboard_views
 from apps.assessments import report_views
 from apps.signals import views as signal_views
 from apps.requirements import views as requirement_views
+from apps.quality import views as quality_views
 
 
 app_name = "dashboard"
 
 urlpatterns = [
+    path(
+        "mutu-evaluasi/",
+        quality_views.quality_evaluation_workspace,
+        name="quality-evaluation",
+    ),
+    path(
+        "mutu-evaluasi/ekspor-dataset/",
+        quality_views.quality_dataset_export,
+        name="quality-dataset-export",
+    ),
+    path(
+        "mutu-evaluasi/ekspor-bab-iv/",
+        quality_views.quality_bab4_export,
+        name="quality-bab4-export",
+    ),
     path(
         "kebutuhan-intelijen/",
         requirement_views.intelligence_requirement_workspace,
