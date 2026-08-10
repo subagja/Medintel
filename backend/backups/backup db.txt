@@ -116,3 +116,13 @@ if ($restoreExitCode -ne 0) {
 } else {
     Write-Host "Restore database berhasil."
 }
+
+
+python manage.py check
+python manage.py makemigrations --check
+python manage.py migrate
+python manage.py test apps.collection.tests_queue apps.crawlers.tests_unified apps.crawlers.tests apps.crawlers.tests_google_news
+
+//worker
+# Terminal 2
+python manage.py run_collection_worker --concurrency 3

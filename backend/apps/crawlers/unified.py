@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import logging
-import queue
-import threading
 from dataclasses import dataclass
 
 from django.core.exceptions import ValidationError
-from django.db import close_old_connections, transaction
+from django.db import transaction
 
 from apps.collection.models import CollectionJob, CollectionSession
+from apps.collection.services.queue import enqueue_collection_job
 from apps.sources.models import Source, SourceSeedUrl
 from apps.sources.services import check_source_seed_readiness
 
@@ -19,10 +17,6 @@ from .google_news_crawler import (
 from .google_news_queries import build_google_news_disease_scope
 from .real_crawler import GenericHtmlCrawler
 from .rss_crawler import OfficialRssCrawler
-from .services import run_crawler
-
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -195,6 +189,8 @@ def build_unified_collection_plan(
             status__in=(
                 CollectionJob.Status.PENDING,
                 CollectionJob.Status.RUNNING,
+                CollectionJob.Status.RETRY_WAITING,
+                CollectionJob.Status.PAUSED,
             ),
         ).exists()
         if running:
@@ -202,7 +198,7 @@ def build_unified_collection_plan(
                 {
                     "source_code": spec.source_code,
                     "job_type": spec.job_type,
-                    "reason": "Kanal yang sama masih berjalan.",
+                    "reason": "Kanal yang sama masih aktif dalam antrean.",
                 }
             )
         else:
@@ -211,7 +207,7 @@ def build_unified_collection_plan(
     if not specs:
         raise ValidationError(
             "Tidak ada job baru yang dapat dimulai; kanal terpilih masih "
-            "berjalan atau belum siap."
+            "aktif dalam antrean atau belum siap."
         )
 
     return UnifiedCollectionPlan(
@@ -222,102 +218,6 @@ def build_unified_collection_plan(
         skipped=tuple(skipped),
         google_news_source_codes=google_news_codes,
     )
-
-
-def _crawler_for_job(job: CollectionJob, session: CollectionSession):
-    common = {
-        "limit": session.article_limit,
-        "candidate_limit": session.candidate_limit,
-    }
-    if job.job_type == CollectionJob.JobType.RSS:
-        return OfficialRssCrawler(source_code=job.source.code, **common)
-    if job.job_type == CollectionJob.JobType.GOOGLE_NEWS:
-        return GoogleNewsRssCrawler(
-            allowed_source_codes=tuple(
-                session.metadata.get("google_news_source_codes", ())
-            ),
-            **common,
-        )
-    return GenericHtmlCrawler(source_code=job.source.code, **common)
-
-
-def run_unified_session_in_background(
-    session_id,
-    *,
-    max_workers: int = 3,
-) -> threading.Thread:
-    """Jalankan job terencana dengan worker terbatas agar server tetap stabil."""
-
-    worker_count = min(max(int(max_workers), 1), 5)
-
-    def _orchestrate() -> None:
-        close_old_connections()
-        try:
-            session = CollectionSession.objects.get(pk=session_id)
-            job_ids = list(
-                session.jobs.filter(status=CollectionJob.Status.PENDING)
-                .order_by("created_at")
-                .values_list("id", flat=True)
-            )
-            work_queue: queue.Queue = queue.Queue()
-            for job_id in job_ids:
-                work_queue.put(job_id)
-
-            def _worker() -> None:
-                close_old_connections()
-                try:
-                    while True:
-                        try:
-                            job_id = work_queue.get_nowait()
-                        except queue.Empty:
-                            return
-                        try:
-                            job = CollectionJob.objects.select_related(
-                                "source", "session", "triggered_by"
-                            ).get(pk=job_id)
-                            if job.status != CollectionJob.Status.PENDING:
-                                continue
-                            crawler = _crawler_for_job(job, session)
-                            run_crawler(
-                                crawler,
-                                triggered_by=session.triggered_by,
-                                trigger_type=session.trigger_type,
-                                session=session,
-                                existing_job_id=job.id,
-                            )
-                        except Exception:
-                            logger.exception(
-                                "Job Koleksi Terpadu gagal session=%s job=%s",
-                                session_id,
-                                job_id,
-                            )
-                        finally:
-                            work_queue.task_done()
-                finally:
-                    close_old_connections()
-
-            workers = [
-                threading.Thread(
-                    target=_worker,
-                    name=f"unified-collection-{session_id}-{index + 1}",
-                    daemon=True,
-                )
-                for index in range(min(worker_count, len(job_ids)))
-            ]
-            for worker in workers:
-                worker.start()
-            for worker in workers:
-                worker.join()
-        finally:
-            close_old_connections()
-
-    orchestrator = threading.Thread(
-        target=_orchestrate,
-        name=f"unified-collection-session-{session_id}",
-        daemon=True,
-    )
-    orchestrator.start()
-    return orchestrator
 
 
 @transaction.atomic
@@ -331,6 +231,8 @@ def start_unified_collection(
     triggered_by=None,
     trigger_type: str = "user",
     requirement=None,
+    max_attempts: int = 3,
+    schedule=None,
 ) -> CollectionSession:
     plan = build_unified_collection_plan(
         source_code=source_code,
@@ -360,6 +262,7 @@ def start_unified_collection(
             "intelligence_requirement": (
                 requirement.code if requirement else ""
             ),
+            "schedule_id": str(schedule.id) if schedule else "",
         },
     )
     if requirement:
@@ -374,14 +277,14 @@ def start_unified_collection(
             notes="Sesi dibentuk dari Koleksi Terpadu untuk kebutuhan ini.",
         )
     for spec in plan.specs:
-        CollectionJob.objects.create(
-            session=session,
+        enqueue_collection_job(
             source=spec.source,
+            session=session,
             job_type=spec.job_type,
             crawler_name=spec.crawler_name,
-            status=CollectionJob.Status.PENDING,
             triggered_by=triggered_by,
             trigger_type=trigger_type,
+            max_attempts=max_attempts,
             metadata={
                 "unified_session": session.reference,
                 "channel_role": spec.channel_label,
@@ -396,8 +299,4 @@ def start_unified_collection(
                 ),
             },
         )
-
-    transaction.on_commit(
-        lambda: run_unified_session_in_background(session.pk)
-    )
     return session

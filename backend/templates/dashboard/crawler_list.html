@@ -13,7 +13,8 @@
                 HTML sebagai kanal cadangan, dan Google News sebagai penemuan tambahan.
             </div>
         </div>
-        <div class="col-auto ms-auto">
+        <div class="col-auto ms-auto d-flex gap-2">
+            <a class="btn btn-primary" href="{% url 'dashboard:crawler-schedule-workspace' %}">Penjadwalan dan Worker</a>
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:google-news-discovery-settings' %}">
                 Pengaturan Google News
             </a>
@@ -46,6 +47,14 @@
             <div class="medintel-stat-body">
                 <div class="text-secondary">Sedang Berjalan</div>
                 <div class="h1 text-primary mb-0" id="summary-running-jobs">{{ summary.running_jobs|default:0 }}</div>
+            </div>
+        </div></div>
+    </div>
+    <div class="col-sm-6 col-xl">
+        <div class="card"><div class="card-body medintel-stat-card">
+            <div class="medintel-stat-body">
+                <div class="text-secondary">Dalam Antrean</div>
+                <div class="h1 mb-0" id="summary-queued-jobs">{{ summary.queued_jobs|default:0 }}</div>
             </div>
         </div></div>
     </div>
@@ -269,9 +278,8 @@
                 </div>
             </div>
             <div class="form-hint mt-2" id="crawler-run-hint">
-                Crawler berjalan di latar belakang. Anda bisa berpindah
-                halaman; status pada tabel di bawah akan diperbarui
-                otomatis.
+                Proses masuk antrean database. Worker mengeksekusinya meskipun
+                halaman ini ditutup; status diperbarui otomatis.
             </div>
             <div class="alert alert-danger mt-3 mb-0 d-none" role="alert" id="crawler-run-error"></div>
             {% if not ready_sources %}
@@ -435,6 +443,18 @@
 </div>
 {% endif %}
 
+{% if active_workers %}
+<div class="alert alert-success d-flex align-items-center justify-content-between" role="alert">
+    <div><strong>Worker koleksi aktif.</strong> Job antrean diproses terpisah dari server web.</div>
+    <a class="btn btn-sm btn-outline-success" href="{% url 'dashboard:crawler-schedule-workspace' %}">Lihat worker dan jadwal</a>
+</div>
+{% else %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between" role="alert">
+    <div><strong>Worker belum aktif.</strong> Job tetap tersimpan aman, tetapi berstatus Menunggu sampai worker dijalankan.</div>
+    <a class="btn btn-sm btn-outline-warning" href="{% url 'dashboard:crawler-schedule-workspace' %}">Cara menjalankan worker</a>
+</div>
+{% endif %}
+
 {% if recent_collection_sessions %}
 <div class="card mb-3">
     <div class="card-header">
@@ -543,7 +563,7 @@
                 {% for job in page_obj %}
                     <tr
                         data-job-id="{{ job.id }}"
-                        data-job-running="{% if job.status == 'running' or job.status == 'pending' %}1{% else %}0{% endif %}"
+                        data-job-running="{% if job.status == 'running' or job.status == 'pending' or job.status == 'retry_waiting' %}1{% else %}0{% endif %}"
                     >
                         <td class="text-nowrap">
                             <span class="js-started-at">{{ job.started_at|default:job.created_at|date:"d M Y H:i" }}</span>
@@ -576,6 +596,8 @@
                             {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
                             {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
                             {% elif job.status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
+                            {% elif job.status == "paused" %}<span class="badge bg-warning-lt">Dijeda</span>
+                            {% elif job.status == "retry_waiting" %}<span class="badge bg-orange-lt">Menunggu percobaan ulang</span>
                             {% else %}<span class="badge bg-secondary-lt">Menunggu</span>{% endif %}
                         </td>
                         <td class="text-center js-total-found">{{ job.total_found }}</td>
@@ -584,11 +606,17 @@
                         <td class="text-center text-warning js-total-rejected">{{ job.total_rejected }}</td>
                         <td class="text-center text-danger js-total-failed">{{ job.total_failed }}</td>
                         <td class="text-end js-detail-cell">
-                            {% if job.status == "running" or job.status == "pending" %}{% if request.user|has_role:"Admin,Analyst" %}
+                            {% if job.status == "running" or job.status == "pending" or job.status == "retry_waiting" %}{% if request.user|has_role:"Admin,Analyst" %}
+                                <form method="post" action="{% url 'dashboard:crawler-job-pause' job.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-warning">Jeda</button>
+                                </form>
                                 <form method="post" action="{% url 'dashboard:crawler-job-cancel' job.id %}" class="d-inline" onsubmit="return confirm('Batalkan job ini?');">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-sm btn-outline-danger">Batalkan</button>
                                 </form>
+                            {% endif %}{% elif job.status == "paused" %}{% if request.user|has_role:"Admin,Analyst" %}
+                                <form method="post" action="{% url 'dashboard:crawler-job-resume' job.id %}" class="d-inline">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-success">Lanjutkan</button></form>
                             {% endif %}{% endif %}
                             <a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:crawler-job-detail' job.id %}">Detail</a>
                         </td>
@@ -680,9 +708,11 @@
         running: '<span class="badge bg-blue-lt">Sedang berjalan</span>',
         failed: '<span class="badge bg-danger-lt">Gagal</span>',
         cancelled: '<span class="badge bg-secondary-lt">Dibatalkan</span>',
+        paused: '<span class="badge bg-warning-lt">Dijeda</span>',
+        retry_waiting: '<span class="badge bg-orange-lt">Menunggu percobaan ulang</span>',
         pending: '<span class="badge bg-secondary-lt">Menunggu</span>'
     };
-    var STARTING_BADGE = '<span class="badge bg-blue-lt crawler-pulse">Memulai...</span>';
+    var STARTING_BADGE = '<span class="badge bg-blue-lt crawler-pulse">Memasukkan antrean...</span>';
 
     var tbody = document.getElementById("crawler-jobs-tbody");
     var emptyRow = document.getElementById("crawler-jobs-empty-row");
@@ -824,6 +854,7 @@
                 var mapping = {
                     "summary-total-jobs": data.total_jobs,
                     "summary-running-jobs": data.running_jobs,
+                    "summary-queued-jobs": data.queued_jobs,
                     "summary-total-created": data.total_created,
                     "summary-total-rejected": data.total_rejected,
                     "summary-total-failed": data.total_failed,
@@ -956,7 +987,7 @@
             codeToName["google-news-global"] = "Penemuan Lintas Sumber";
 
             submitButton.disabled = true;
-            submitButton.textContent = "Memulai...";
+            submitButton.textContent = "Memasukkan...";
 
             fetch(form.action, {
                 method: "POST",
@@ -1036,7 +1067,7 @@
                     if (!result.ok) {
                         showError(
                             unifiedErrorBox,
-                            result.data.error || "Koleksi Terpadu gagal dimulai."
+                            result.data.error || "Koleksi Terpadu gagal dimasukkan ke antrean."
                         );
                         return;
                     }

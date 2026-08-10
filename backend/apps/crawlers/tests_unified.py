@@ -140,10 +140,8 @@ class UnifiedCollectionTests(TestCase):
             {spec.job_type for spec in plan.specs},
         )
 
-    @patch("apps.crawlers.unified.transaction.on_commit")
     def test_start_creates_one_session_with_pending_channel_jobs(
         self,
-        mock_on_commit,
     ):
         session = start_unified_collection(
             source_code="all",
@@ -164,7 +162,7 @@ class UnifiedCollectionTests(TestCase):
             session.metadata["policy"],
             "rss_primary_html_fallback",
         )
-        mock_on_commit.assert_called_once()
+        self.assertTrue(session.jobs.exclude(queue_key="").exists())
 
     def test_running_channel_is_skipped_instead_of_duplicated(self):
         CollectionJob.objects.create(
@@ -239,10 +237,8 @@ class UnifiedCollectionTests(TestCase):
         )
         self.assertNotContains(response, "Crawler Artikel/Web")
 
-    @patch("apps.crawlers.unified.transaction.on_commit")
     def test_unified_endpoint_returns_session_detail_url(
         self,
-        _mock_on_commit,
     ):
         self.client.force_login(self.user)
 
@@ -261,10 +257,8 @@ class UnifiedCollectionTests(TestCase):
         self.assertEqual(payload["planned_job_count"], 2)
         self.assertIn("/crawler-artikel/sesi/", payload["detail_url"])
 
-    @patch("apps.crawlers.unified.transaction.on_commit")
     def test_session_detail_aggregates_child_jobs(
         self,
-        _mock_on_commit,
     ):
         session = start_unified_collection(
             source_code="all",

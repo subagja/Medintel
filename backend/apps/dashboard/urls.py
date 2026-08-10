@@ -11,6 +11,7 @@ from apps.assessments import report_views
 from apps.signals import views as signal_views
 from apps.requirements import views as requirement_views
 from apps.quality import views as quality_views
+from apps.collection import views as collection_views
 
 
 app_name = "dashboard"
@@ -135,6 +136,26 @@ urlpatterns = [
         "crawler-artikel/job/<uuid:job_id>/batalkan/",
         views.crawler_job_cancel,
         name="crawler-job-cancel",
+    ),
+    path(
+        "crawler-artikel/job/<uuid:job_id>/jeda/",
+        views.crawler_job_pause,
+        name="crawler-job-pause",
+    ),
+    path(
+        "crawler-artikel/job/<uuid:job_id>/lanjutkan/",
+        views.crawler_job_resume,
+        name="crawler-job-resume",
+    ),
+    path(
+        "crawler-artikel/job/<uuid:job_id>/jalankan-ulang/",
+        views.crawler_job_rerun,
+        name="crawler-job-rerun",
+    ),
+    path(
+        "crawler-artikel/jadwal/",
+        collection_views.collection_schedule_workspace,
+        name="crawler-schedule-workspace",
     ),
     path(
         "sumber-osint/",

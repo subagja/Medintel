@@ -84,7 +84,7 @@
 
 {% if is_running %}
 <div class="alert alert-info" role="alert">
-    Sesi masih berjalan. Halaman ini diperbarui otomatis setiap 5 detik.
+    Sesi masih berada dalam antrean atau sedang berjalan. Halaman ini diperbarui otomatis setiap 5 detik.
 </div>
 {% endif %}
 
@@ -126,6 +126,9 @@
                         {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
                         {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
                         {% elif job.status == "pending" %}<span class="badge bg-secondary-lt">Menunggu giliran</span>
+                        {% elif job.status == "retry_waiting" %}<span class="badge bg-orange-lt">Menunggu percobaan ulang</span>
+                        {% elif job.status == "paused" %}<span class="badge bg-warning-lt">Dijeda</span>
+                        {% elif job.status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
                         {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
                         {% else %}<span class="badge bg-secondary-lt">{{ job.get_status_display }}</span>{% endif %}
                     </td>

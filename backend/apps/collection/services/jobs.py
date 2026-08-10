@@ -1,9 +1,13 @@
+from datetime import timedelta
+
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from apps.sources.models import Source
 
 from ..models import CollectionJob, CollectionSession
+from .queue import queue_key_for
 
 
 @transaction.atomic
@@ -22,19 +26,36 @@ def start_collection_job(
         locked_job = CollectionJob.objects.select_for_update().get(
             pk=existing_job.pk,
         )
-        if locked_job.status != CollectionJob.Status.PENDING:
+        if locked_job.status not in {
+            CollectionJob.Status.PENDING,
+            CollectionJob.Status.RUNNING,
+            CollectionJob.Status.RETRY_WAITING,
+        }:
             raise ValueError(
-                "Job terencana hanya dapat dimulai dari status Menunggu."
+                "Job antrean hanya dapat dimulai dari status Menunggu/Running."
             )
+        now = timezone.now()
+        was_claimed = locked_job.status == CollectionJob.Status.RUNNING
         locked_job.source = source
         locked_job.session = session or locked_job.session
         locked_job.job_type = job_type
         locked_job.crawler_name = crawler_name
         locked_job.status = CollectionJob.Status.RUNNING
-        locked_job.started_at = timezone.now()
+        locked_job.started_at = now
         locked_job.finished_at = None
         locked_job.triggered_by = triggered_by
         locked_job.trigger_type = trigger_type
+        locked_job.queue_key = locked_job.queue_key or queue_key_for(
+            source_id=source.pk if source else None,
+            job_type=job_type,
+        )
+        if not was_claimed:
+            locked_job.attempt_count += 1
+            locked_job.last_attempt_at = now
+        locked_job.heartbeat_at = now
+        locked_job.lease_expires_at = now + timedelta(
+            seconds=int(getattr(settings, "COLLECTION_JOB_LEASE_SECONDS", 180))
+        )
         locked_job.metadata = {
             **locked_job.metadata,
             **(metadata or {}),
@@ -50,19 +71,36 @@ def start_collection_job(
                 "finished_at",
                 "triggered_by",
                 "trigger_type",
+                "queue_key",
+                "attempt_count",
+                "last_attempt_at",
+                "heartbeat_at",
+                "lease_expires_at",
                 "metadata",
                 "updated_at",
             ]
         )
         return locked_job
 
+    now = timezone.now()
     return CollectionJob.objects.create(
         source=source,
         session=session,
         job_type=job_type,
         crawler_name=crawler_name,
         status=CollectionJob.Status.RUNNING,
-        started_at=timezone.now(),
+        started_at=now,
+        available_at=now,
+        attempt_count=1,
+        last_attempt_at=now,
+        heartbeat_at=now,
+        lease_expires_at=now + timedelta(
+            seconds=int(getattr(settings, "COLLECTION_JOB_LEASE_SECONDS", 180))
+        ),
+        queue_key=queue_key_for(
+            source_id=source.pk if source else None,
+            job_type=job_type,
+        ),
         triggered_by=triggered_by,
         trigger_type=trigger_type,
         metadata=metadata or {},
@@ -106,6 +144,9 @@ def complete_collection_job(
     job.total_duplicate = total_duplicate
     job.total_rejected = total_rejected
     job.total_failed = total_failed
+    job.worker_id = ""
+    job.lease_expires_at = None
+    job.heartbeat_at = job.finished_at
 
     job.save(
         update_fields=[
@@ -116,6 +157,9 @@ def complete_collection_job(
             "total_duplicate",
             "total_rejected",
             "total_failed",
+            "worker_id",
+            "lease_expires_at",
+            "heartbeat_at",
             "updated_at",
         ]
     )
@@ -163,6 +207,9 @@ def fail_collection_job(
         else total_failed
     )
     job.total_failed = max(failed_count, 1)
+    job.worker_id = ""
+    job.lease_expires_at = None
+    job.heartbeat_at = job.finished_at
 
     job.save(
         update_fields=[
@@ -174,6 +221,9 @@ def fail_collection_job(
             "total_duplicate",
             "total_rejected",
             "total_failed",
+            "worker_id",
+            "lease_expires_at",
+            "heartbeat_at",
             "updated_at",
         ]
     )

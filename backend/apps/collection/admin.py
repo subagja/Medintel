@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import CollectionJob, CollectionJobItem, CollectionSession
+from .models import (
+    CollectionJob,
+    CollectionJobItem,
+    CollectionJobLog,
+    CollectionSchedule,
+    CollectionSession,
+    CollectionWorker,
+)
 
 
 class CollectionJobInline(admin.TabularInline):
@@ -60,6 +67,13 @@ class CollectionJobItemInline(admin.TabularInline):
     show_change_link = True
 
 
+class CollectionJobLogInline(admin.TabularInline):
+    model = CollectionJobLog
+    extra = 0
+    fields = ("created_at", "level", "event", "message")
+    readonly_fields = fields
+
+
 @admin.register(CollectionJob)
 class CollectionJobAdmin(admin.ModelAdmin):
     list_display = (
@@ -68,6 +82,9 @@ class CollectionJobAdmin(admin.ModelAdmin):
         "job_type",
         "crawler_name",
         "status",
+        "attempt_count",
+        "max_attempts",
+        "worker_id",
         "total_found",
         "total_created",
         "total_duplicate",
@@ -107,6 +124,7 @@ class CollectionJobAdmin(admin.ModelAdmin):
 
     inlines = [
         CollectionJobItemInline,
+        CollectionJobLogInline,
     ]
 
 
@@ -145,3 +163,49 @@ class CollectionJobItemAdmin(admin.ModelAdmin):
         "collection_job__source",
         "article",
     )
+
+
+@admin.register(CollectionSchedule)
+class CollectionScheduleAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "source",
+        "recurrence",
+        "is_active",
+        "next_run_at",
+        "last_run_at",
+        "last_session",
+    )
+    list_filter = ("recurrence", "is_active", "include_google_news")
+    search_fields = ("name", "source__name", "source__code")
+    list_select_related = ("source", "last_session", "created_by")
+
+
+@admin.register(CollectionWorker)
+class CollectionWorkerAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "hostname",
+        "process_id",
+        "status",
+        "concurrency",
+        "last_heartbeat_at",
+    )
+    list_filter = ("status",)
+    readonly_fields = (
+        "id",
+        "hostname",
+        "process_id",
+        "started_at",
+        "last_heartbeat_at",
+        "stopped_at",
+        "metadata",
+    )
+
+
+@admin.register(CollectionJobLog)
+class CollectionJobLogAdmin(admin.ModelAdmin):
+    list_display = ("job", "level", "event", "created_at")
+    list_filter = ("level", "event", "created_at")
+    search_fields = ("job__id", "message")
+    readonly_fields = ("job", "level", "event", "message", "metadata", "created_at")

@@ -1,8 +1,10 @@
 import uuid
+from datetime import time
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.articles.models import Article
@@ -73,11 +75,14 @@ class CollectionSession(models.Model):
         statuses = list(self.jobs.values_list("status", flat=True))
         if not statuses:
             return CollectionJob.Status.PENDING
-        if any(
-            status in {CollectionJob.Status.PENDING, CollectionJob.Status.RUNNING}
-            for status in statuses
-        ):
+        if CollectionJob.Status.RUNNING in statuses:
             return CollectionJob.Status.RUNNING
+        if CollectionJob.Status.RETRY_WAITING in statuses:
+            return CollectionJob.Status.RETRY_WAITING
+        if CollectionJob.Status.PENDING in statuses:
+            return CollectionJob.Status.PENDING
+        if CollectionJob.Status.PAUSED in statuses:
+            return CollectionJob.Status.PAUSED
         if all(status == CollectionJob.Status.CANCELLED for status in statuses):
             return CollectionJob.Status.CANCELLED
         if all(
@@ -133,6 +138,8 @@ class CollectionJob(models.Model):
         )
         FAILED = "failed", "Gagal"
         CANCELLED = "cancelled", "Dibatalkan"
+        PAUSED = "paused", "Dijeda"
+        RETRY_WAITING = "retry_waiting", "Menunggu Percobaan Ulang"
 
     id = models.UUIDField(
         primary_key=True,
@@ -229,6 +236,50 @@ class CollectionJob(models.Model):
         blank=True,
     )
 
+    queue_key = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        help_text="Kunci eksklusif sumber-kanal selama job berjalan.",
+    )
+
+    available_at = models.DateTimeField(
+        default=timezone.now,
+        db_index=True,
+        help_text="Waktu paling awal job boleh diklaim worker.",
+    )
+
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+
+    max_attempts = models.PositiveSmallIntegerField(
+        default=3,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+    )
+
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+
+    heartbeat_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    lease_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    worker_id = models.CharField(max_length=150, blank=True, db_index=True)
+
+    pause_requested_at = models.DateTimeField(null=True, blank=True)
+
+    cancel_requested_at = models.DateTimeField(null=True, blank=True)
+
+    rerun_of = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        related_name="reruns",
+        null=True,
+        blank=True,
+    )
+
     metadata = models.JSONField(
         default=dict,
         blank=True,
@@ -253,6 +304,17 @@ class CollectionJob(models.Model):
                 fields=["job_type", "created_at"],
                 name="colljob_type_created_idx",
             ),
+            models.Index(
+                fields=["status", "available_at", "created_at"],
+                name="colljob_queue_ready_idx",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["queue_key"],
+                condition=Q(status="running") & ~Q(queue_key=""),
+                name="uniq_running_coll_queue_key",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -266,6 +328,165 @@ class CollectionJob(models.Model):
             f"{self.get_job_type_display()} - "
             f"{self.get_status_display()}"
         )
+
+    @property
+    def control_requested(self) -> str:
+        if self.cancel_requested_at:
+            return "cancel"
+        if self.pause_requested_at:
+            return "pause"
+        return ""
+
+
+class CollectionJobLog(models.Model):
+    class Level(models.TextChoices):
+        INFO = "info", "Informasi"
+        WARNING = "warning", "Peringatan"
+        ERROR = "error", "Kesalahan"
+
+    id = models.BigAutoField(primary_key=True)
+    job = models.ForeignKey(
+        CollectionJob,
+        on_delete=models.CASCADE,
+        related_name="logs",
+    )
+    level = models.CharField(
+        max_length=20,
+        choices=Level.choices,
+        default=Level.INFO,
+        db_index=True,
+    )
+    event = models.CharField(max_length=50, db_index=True)
+    message = models.TextField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["job", "created_at"],
+                name="colljoblog_job_created_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.job_id} · {self.event}"
+
+
+class CollectionSchedule(models.Model):
+    WEEKDAY_LABELS = (
+        "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"
+    )
+    class Recurrence(models.TextChoices):
+        HOURLY = "hourly", "Setiap Jam"
+        EVERY_6_HOURS = "every_6_hours", "Setiap 6 Jam"
+        DAILY = "daily", "Harian"
+        WEEKLY = "weekly", "Mingguan"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=200)
+    source = models.ForeignKey(
+        Source,
+        on_delete=models.PROTECT,
+        related_name="collection_schedules",
+    )
+    recurrence = models.CharField(
+        max_length=30,
+        choices=Recurrence.choices,
+        default=Recurrence.DAILY,
+        db_index=True,
+    )
+    run_time = models.TimeField(
+        default=time(6, 0),
+        help_text="Dipakai untuk jadwal harian dan mingguan.",
+    )
+    weekday = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="0=Senin sampai 6=Minggu.",
+    )
+    include_google_news = models.BooleanField(default=True)
+    html_deep_scan = models.BooleanField(default=False)
+    article_limit = models.PositiveIntegerField(null=True, blank=True)
+    candidate_limit = models.PositiveIntegerField(null=True, blank=True)
+    max_attempts = models.PositiveSmallIntegerField(
+        default=3,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+    )
+    intelligence_requirement = models.ForeignKey(
+        "requirements.IntelligenceRequirement",
+        on_delete=models.SET_NULL,
+        related_name="collection_schedules",
+        null=True,
+        blank=True,
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    next_run_at = models.DateTimeField(db_index=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_session = models.ForeignKey(
+        CollectionSession,
+        on_delete=models.SET_NULL,
+        related_name="schedule_runs",
+        null=True,
+        blank=True,
+    )
+    last_error = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_collection_schedules",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_active", "next_run_at", "name"]
+        indexes = [
+            models.Index(
+                fields=["is_active", "next_run_at"],
+                name="collsched_due_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} · {self.source.code}"
+
+    @property
+    def weekday_label(self) -> str:
+        try:
+            return self.WEEKDAY_LABELS[self.weekday]
+        except (IndexError, TypeError):
+            return "-"
+
+
+class CollectionWorker(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Aktif"
+        STOPPED = "stopped", "Berhenti"
+
+    id = models.CharField(primary_key=True, max_length=150)
+    hostname = models.CharField(max_length=150)
+    process_id = models.PositiveIntegerField()
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+    concurrency = models.PositiveSmallIntegerField(default=1)
+    started_at = models.DateTimeField(default=timezone.now)
+    last_heartbeat_at = models.DateTimeField(default=timezone.now, db_index=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-last_heartbeat_at"]
+
+    def __str__(self) -> str:
+        return self.id
 
 
 class CollectionJobItem(models.Model):

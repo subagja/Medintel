@@ -43,6 +43,7 @@ from apps.collection.models import (
     CollectionJob,
     CollectionJobItem,
     CollectionSession,
+    CollectionWorker,
 )
 from apps.crawlers.real_crawler import GenericHtmlCrawler
 from apps.crawlers.rss_crawler import OfficialRssCrawler
@@ -55,7 +56,7 @@ from apps.crawlers.google_news_crawler import (
 from apps.crawlers.google_news_queries import (
     build_google_news_disease_scope,
 )
-from apps.crawlers.services import run_crawler_in_background
+from apps.crawlers.services import enqueue_crawler
 from apps.crawlers.unified import (
     get_unified_source_readiness,
     start_unified_collection,
@@ -93,6 +94,13 @@ from apps.indicators.services.generation import (
 )
 from apps.dashboard.threat_level import resolve_dashboard_threat_level
 from apps.requirements.models import IntelligenceRequirement
+from apps.collection.services.queue import (
+    request_collection_job_cancel,
+    request_collection_job_pause,
+    rerun_collection_job,
+    resume_collection_job,
+)
+from apps.collection.services.worker import active_worker_cutoff
 
 
 logger = logging.getLogger(__name__)
@@ -288,6 +296,12 @@ def _crawler_summary():
         "running_jobs": all_jobs.filter(
             status=CollectionJob.Status.RUNNING,
         ).count(),
+        "queued_jobs": all_jobs.filter(
+            status__in=(
+                CollectionJob.Status.PENDING,
+                CollectionJob.Status.RETRY_WAITING,
+            ),
+        ).count(),
         "total_created": totals["total_created"] or 0,
         "total_rejected": totals["total_rejected"] or 0,
         "total_failed": totals["total_failed"] or 0,
@@ -302,6 +316,7 @@ def crawler_summary_status(request: HttpRequest) -> HttpResponse:
     return JsonResponse(_crawler_summary())
 
 
+@require_role(*Roles.ALL)
 def crawler_list(request: HttpRequest) -> HttpResponse:
     source_code = request.GET.get(
         "source",
@@ -325,6 +340,7 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
             "source",
             "session",
             "triggered_by",
+            "rerun_of",
         )
         .annotate(
             item_count=Count("items"),
@@ -467,6 +483,10 @@ def crawler_list(request: HttpRequest) -> HttpResponse:
         "selected_status": status,
         "page_obj": page_obj,
         "summary": _crawler_summary(),
+        "active_workers": CollectionWorker.objects.filter(
+            status=CollectionWorker.Status.ACTIVE,
+            last_heartbeat_at__gte=active_worker_cutoff(),
+        ),
     }
 
     return render(
@@ -548,7 +568,7 @@ def crawler_unified_run(request: HttpRequest) -> HttpResponse:
     messages.success(
         request,
         (
-            f"{session.reference} dimulai dengan "
+            f"{session.reference} masuk antrean dengan "
             f"{session.planned_job_count} proses kanal."
         ),
     )
@@ -594,6 +614,7 @@ def crawler_session_detail(
         "is_running": session_status in {
             CollectionJob.Status.PENDING,
             CollectionJob.Status.RUNNING,
+            CollectionJob.Status.RETRY_WAITING,
         },
     }
     return render(
@@ -759,7 +780,12 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         already_running = CollectionJob.objects.filter(
             source__isnull=True,
             job_type=CollectionJob.JobType.GOOGLE_NEWS,
-            status=CollectionJob.Status.RUNNING,
+            status__in=(
+                CollectionJob.Status.PENDING,
+                CollectionJob.Status.RUNNING,
+                CollectionJob.Status.RETRY_WAITING,
+                CollectionJob.Status.PAUSED,
+            ),
         ).exists()
         started = []
         skipped = []
@@ -770,7 +796,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
                 limit=limit,
                 candidate_limit=candidate_limit,
             )
-            run_crawler_in_background(
+            enqueue_crawler(
                 crawler,
                 triggered_by=(
                     request.user if request.user.is_authenticated else None
@@ -791,12 +817,12 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         if started:
             messages.success(
                 request,
-                "Google News RSS global mulai dijalankan.",
+                "Google News RSS global masuk antrean.",
             )
         if skipped:
             messages.warning(
                 request,
-                "Google News RSS global masih berjalan dan tidak diduplikasi.",
+                "Google News RSS global masih aktif dalam antrean dan tidak diduplikasi.",
             )
         return redirect("dashboard:crawler-list")
 
@@ -857,7 +883,12 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         already_running = CollectionJob.objects.filter(
             source=source,
             job_type=channel_config["job_type"],
-            status=CollectionJob.Status.RUNNING,
+            status__in=(
+                CollectionJob.Status.PENDING,
+                CollectionJob.Status.RUNNING,
+                CollectionJob.Status.RETRY_WAITING,
+                CollectionJob.Status.PAUSED,
+            ),
         ).exists()
 
         if already_running:
@@ -870,11 +901,9 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
             candidate_limit=candidate_limit,
         )
 
-        # Crawl berjalan di background thread supaya request ini tidak
-        # perlu menunggu proses selesai. Progres tetap terlihat karena
-        # CollectionJob langsung dibuat berstatus "Sedang Berjalan" dan
-        # tabel di halaman crawler-list akan mem-polling perubahannya.
-        run_crawler_in_background(
+        # Request hanya menulis job Menunggu. Worker terpisah mengklaim dan
+        # mengeksekusinya sehingga restart server web tidak memutus koleksi.
+        enqueue_crawler(
             crawler,
             triggered_by=triggered_by,
             trigger_type="user",
@@ -898,7 +927,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         messages.success(
             request,
             (
-                f"Kanal {channel_config['label']} dimulai untuk "
+                f"Kanal {channel_config['label']} masuk antrean untuk "
                 f"{len(started_sources)} sumber: "
                 + ", ".join(started_sources)
                 + ". Status akan diperbarui otomatis pada tabel di bawah."
@@ -909,7 +938,7 @@ def crawler_run(request: HttpRequest) -> HttpResponse:
         messages.warning(
             request,
             (
-                "Dilewati karena masih berjalan: "
+                "Dilewati karena masih aktif dalam antrean: "
                 + ", ".join(skipped_sources)
                 + "."
             ),
@@ -956,7 +985,11 @@ def _serialize_job_status(job: CollectionJob) -> dict:
         not in (
             CollectionJob.Status.PENDING,
             CollectionJob.Status.RUNNING,
+            CollectionJob.Status.RETRY_WAITING,
         ),
+        "attempt_count": job.attempt_count,
+        "max_attempts": job.max_attempts,
+        "control_requested": job.control_requested,
     }
 
 
@@ -968,8 +1001,8 @@ def crawler_status(request: HttpRequest) -> HttpResponse:
     - `job_ids` (dipisah koma): job yang sudah tampil di tabel, dicek
       progresnya (dipakai polling rutin).
     - `source_codes` (dipisah koma) + `since` (ISO datetime): dipakai
-      begitu crawler baru saja dimulai lewat AJAX, untuk menemukan
-      CollectionJob yang baru terbentuk di background thread sebelum
+      begitu crawler baru saja dimasukkan lewat AJAX, untuk menemukan
+      CollectionJob antrean yang baru terbentuk sebelum
       client tahu UUID job-nya.
     """
     raw_ids = request.GET.get("job_ids", "")
@@ -1051,41 +1084,62 @@ def crawler_job_cancel(
     request: HttpRequest,
     job_id,
 ) -> HttpResponse:
-    """Batalkan manual job yang macet di status RUNNING/PENDING --
-    dipakai kalau job dianggap macet tapi belum kena ambang waktu
-    auto-cleanup (30 menit).
-    """
+    """Minta pembatalan aman pada job antrean atau job berjalan."""
     job = get_object_or_404(CollectionJob, id=job_id)
 
-    if job.status not in (
-        CollectionJob.Status.RUNNING,
-        CollectionJob.Status.PENDING,
-    ):
-        messages.warning(
-            request,
-            "Job ini sudah selesai, tidak perlu dibatalkan.",
-        )
-        return redirect("dashboard:crawler-list")
-
-    job.status = CollectionJob.Status.FAILED
-    job.finished_at = timezone.now()
-    job.error_message = (
-        f"Dibatalkan manual oleh {request.user.get_username()}."
-    )
-    job.save(
-        update_fields=["status", "finished_at", "error_message"],
-    )
+    try:
+        request_collection_job_cancel(job=job, actor=request.user)
+    except ValidationError as exc:
+        messages.warning(request, exc.messages[0])
+        return redirect("dashboard:crawler-job-detail", job_id=job.id)
 
     messages.success(
         request,
         (
-            f"Job untuk {job.source.name} dibatalkan."
+            f"Permintaan pembatalan untuk {job.source.name} dicatat."
             if job.source_id
-            else "Job Google News RSS global dibatalkan."
+            else "Permintaan pembatalan Google News RSS global dicatat."
         ),
     )
 
-    return redirect("dashboard:crawler-list")
+    return redirect("dashboard:crawler-job-detail", job_id=job.id)
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def crawler_job_pause(request: HttpRequest, job_id) -> HttpResponse:
+    job = get_object_or_404(CollectionJob, id=job_id)
+    try:
+        request_collection_job_pause(job=job, actor=request.user)
+        messages.success(request, "Permintaan jeda berhasil dicatat.")
+    except ValidationError as exc:
+        messages.warning(request, exc.messages[0])
+    return redirect("dashboard:crawler-job-detail", job_id=job.id)
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def crawler_job_resume(request: HttpRequest, job_id) -> HttpResponse:
+    job = get_object_or_404(CollectionJob, id=job_id)
+    try:
+        resume_collection_job(job=job, actor=request.user)
+        messages.success(request, "Proses dikembalikan ke antrean.")
+    except ValidationError as exc:
+        messages.warning(request, exc.messages[0])
+    return redirect("dashboard:crawler-job-detail", job_id=job.id)
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def crawler_job_rerun(request: HttpRequest, job_id) -> HttpResponse:
+    job = get_object_or_404(CollectionJob, id=job_id)
+    try:
+        rerun = rerun_collection_job(job=job, actor=request.user)
+        messages.success(request, "Jalankan ulang berhasil dimasukkan ke antrean.")
+    except ValidationError as exc:
+        messages.warning(request, exc.messages[0])
+        return redirect("dashboard:crawler-job-detail", job_id=job.id)
+    return redirect("dashboard:crawler-job-detail", job_id=rerun.id)
 
 
 @require_role(*Roles.ALL)
@@ -1098,6 +1152,7 @@ def crawler_job_detail(
             "source",
             "session",
             "triggered_by",
+            "rerun_of",
         ),
         id=job_id,
         job_type__in=(
@@ -1171,6 +1226,13 @@ def crawler_job_detail(
             if duration_seconds is not None
             else "-"
         ),
+        "job_logs": job.logs.order_by("-created_at")[:100],
+        "worker_online": CollectionWorker.objects.filter(
+            id=job.worker_id,
+            status=CollectionWorker.Status.ACTIVE,
+            last_heartbeat_at__gte=active_worker_cutoff(),
+        ).exists() if job.worker_id else False,
+        "job_reruns": job.reruns.order_by("created_at"),
     }
 
     return render(

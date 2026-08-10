@@ -240,8 +240,7 @@ class IntelligenceRequirementWorkspaceTests(TestCase):
 
         self.assertIn("penyakit", " ".join(error.exception.messages).lower())
 
-    @patch("apps.crawlers.unified.transaction.on_commit")
-    def test_unified_collection_is_linked_to_active_requirement(self, _on_commit):
+    def test_unified_collection_is_linked_to_active_requirement(self):
         requirement = self._active()
 
         session = start_unified_collection(
@@ -421,4 +420,3 @@ class IntelligenceRequirementWorkspaceTests(TestCase):
             f'value="{requirement.pk}" selected',
             html=False,
         )
-

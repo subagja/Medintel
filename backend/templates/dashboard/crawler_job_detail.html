@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 
 {% block title %}Detail Pengumpulan | MEDINTEL OSINT{% endblock %}
 
@@ -13,11 +14,26 @@
                 <div class="text-secondary small mt-1">Disease Master global · URL penerbit dipetakan ke sumber yang diizinkan · maksimum {{ job.metadata.max_age_days|default:7 }} hari</div>
             {% endif %}
         </div>
-        <div class="col-auto ms-auto">
+        <div class="col-auto ms-auto d-flex gap-2">
+            {% if request.user|has_role:"Admin,Analyst" %}
+                {% if job.status == "running" or job.status == "pending" or job.status == "retry_waiting" %}
+                <form method="post" action="{% url 'dashboard:crawler-job-pause' job.id %}">{% csrf_token %}<button class="btn btn-outline-warning" type="submit">Jeda</button></form>
+                <form method="post" action="{% url 'dashboard:crawler-job-cancel' job.id %}" onsubmit="return confirm('Batalkan proses ini?');">{% csrf_token %}<button class="btn btn-outline-danger" type="submit">Batalkan</button></form>
+                {% elif job.status == "paused" %}
+                <form method="post" action="{% url 'dashboard:crawler-job-resume' job.id %}">{% csrf_token %}<button class="btn btn-success" type="submit">Lanjutkan</button></form>
+                <form method="post" action="{% url 'dashboard:crawler-job-cancel' job.id %}">{% csrf_token %}<button class="btn btn-outline-danger" type="submit">Batalkan</button></form>
+                {% else %}
+                <form method="post" action="{% url 'dashboard:crawler-job-rerun' job.id %}">{% csrf_token %}<button class="btn btn-primary" type="submit">Jalankan Ulang</button></form>
+                {% endif %}
+            {% endif %}
             <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali ke Riwayat</a>
         </div>
     </div>
 </div>
+
+{% if messages %}{% for message in messages %}
+<div class="alert {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+{% endfor %}{% endif %}
 
 {% if job.session %}
 <div class="alert alert-info d-flex align-items-center justify-content-between" role="alert">
@@ -29,8 +45,8 @@
 {% endif %}
 
 {% if job.error_message %}
-    <div class="alert alert-danger" role="alert">
-        <div class="fw-semibold mb-1">Proses gagal</div>
+    <div class="alert {% if job.status == 'retry_waiting' %}alert-warning{% else %}alert-danger{% endif %}" role="alert">
+        <div class="fw-semibold mb-1">{% if job.status == 'retry_waiting' %}Kegagalan sementara—percobaan ulang dijadwalkan{% else %}Proses gagal{% endif %}</div>
         <div>{{ job.error_message }}</div>
     </div>
 {% endif %}
@@ -57,6 +73,9 @@
                     {% elif job.status == "completed_with_errors" %}<span class="badge bg-warning-lt">Selesai dengan kesalahan</span>
                     {% elif job.status == "running" %}<span class="badge bg-blue-lt">Sedang berjalan</span>
                     {% elif job.status == "failed" %}<span class="badge bg-danger-lt">Gagal</span>
+                    {% elif job.status == "retry_waiting" %}<span class="badge bg-orange-lt">Menunggu percobaan ulang</span>
+                    {% elif job.status == "paused" %}<span class="badge bg-warning-lt">Dijeda</span>
+                    {% elif job.status == "cancelled" %}<span class="badge bg-secondary-lt">Dibatalkan</span>
                     {% else %}<span class="badge bg-secondary-lt">{{ job.get_status_display }}</span>{% endif %}
                 </div>
             </div>
@@ -73,6 +92,24 @@
                 <div class="fw-semibold">{{ duration_label }}</div>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md"><div class="text-secondary">Percobaan</div><div class="fw-semibold">{{ job.attempt_count }} dari {{ job.max_attempts }}</div></div>
+            <div class="col-md"><div class="text-secondary">Siap dieksekusi</div><div class="fw-semibold">{{ job.available_at|date:"d M Y H:i:s" }}</div></div>
+            <div class="col-md"><div class="text-secondary">Heartbeat</div><div class="fw-semibold">{{ job.heartbeat_at|date:"d M Y H:i:s"|default:"-" }}</div></div>
+            <div class="col-md"><div class="text-secondary">Worker</div><div class="fw-semibold">{% if worker_online %}<span class="badge bg-success-lt">Aktif</span>{% elif job.worker_id %}<span class="badge bg-warning-lt">Tidak terdeteksi</span>{% else %}-{% endif %}</div><div class="small text-secondary">{{ job.worker_id }}</div></div>
+            <div class="col-md"><div class="text-secondary">Kontrol</div><div class="fw-semibold">{% if job.control_requested == "pause" %}Jeda diminta{% elif job.control_requested == "cancel" %}Batal diminta{% else %}Normal{% endif %}</div></div>
+        </div>
+        {% if job.rerun_of or job_reruns %}
+        <div class="border-top mt-3 pt-3 small">
+            {% if job.rerun_of %}Jalankan ulang dari <a href="{% url 'dashboard:crawler-job-detail' job.rerun_of.id %}">{{ job.rerun_of.id }}</a>.{% endif %}
+            {% if job_reruns %} Turunan: {% for rerun in job_reruns %}<a class="me-2" href="{% url 'dashboard:crawler-job-detail' rerun.id %}">{{ rerun.id }}</a>{% endfor %}{% endif %}
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -111,6 +148,20 @@
     </div>
 </div>
 {% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><div><h3 class="card-title">Log Proses</h3><div class="text-secondary small">Riwayat antrean, klaim worker, retry, kontrol pengguna, dan penyelesaian.</div></div></div>
+    <div class="table-responsive" style="max-height: 320px;">
+        <table class="table table-sm table-vcenter card-table">
+            <thead><tr><th>Waktu</th><th>Peristiwa</th><th>Pesan</th></tr></thead>
+            <tbody>
+            {% for log in job_logs %}
+                <tr><td class="text-nowrap">{{ log.created_at|date:"d M Y H:i:s" }}</td><td><span class="badge {% if log.level == 'error' %}bg-danger-lt{% elif log.level == 'warning' %}bg-warning-lt{% else %}bg-blue-lt{% endif %}">{{ log.event }}</span></td><td>{{ log.message }}</td></tr>
+            {% empty %}<tr><td colspan="3" class="text-center text-secondary py-4">Belum ada log proses.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 
 <div class="card">
     <div class="card-header">
@@ -205,6 +256,12 @@
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if job.status == "running" or job.status == "pending" or job.status == "retry_waiting" %}
+<script>window.setTimeout(function () { window.location.reload(); }, 5000);</script>
+{% endif %}
 {% endblock %}
 
 {% block extra_css %}

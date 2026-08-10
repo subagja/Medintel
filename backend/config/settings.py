@@ -245,3 +245,15 @@ CRAWLER_SAVE_REJECTED_DEBUG_HTML = False
 # Dinaikkan dari 30 -> 100 karena banyak artikel relevan terlewat begitu
 # saja hanya karena berada di luar 30 link pertama pada halaman listing.
 CRAWLER_CANDIDATE_LIMIT = 100
+
+# Antrean koleksi berbasis database. Worker memperbarui heartbeat pada setiap
+# checkpoint dan job dipulihkan bila lease ini kedaluwarsa.
+COLLECTION_JOB_LEASE_SECONDS = int(
+    os.getenv("COLLECTION_JOB_LEASE_SECONDS", "180")
+)
+COLLECTION_RETRY_BASE_SECONDS = int(
+    os.getenv("COLLECTION_RETRY_BASE_SECONDS", "60")
+)
+COLLECTION_RETRY_MAX_SECONDS = int(
+    os.getenv("COLLECTION_RETRY_MAX_SECONDS", "900")
+)

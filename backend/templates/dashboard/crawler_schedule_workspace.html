@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Penjadwalan Koleksi | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Pengumpulan OSINT</div>
+            <h2 class="page-title">Penjadwalan dan Worker Koleksi</h2>
+            <div class="text-secondary mt-1">Jadwal membentuk sesi Koleksi Terpadu; worker terpisah mengambil job dari antrean database.</div>
+        </div>
+        <div class="col-auto ms-auto">
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard:crawler-list' %}">Kembali ke Pengumpulan Artikel</a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}{% for message in messages %}
+<div class="alert {% if message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+{% endfor %}{% endif %}
+
+{% if active_workers %}
+<div class="alert alert-success" role="alert">
+    <div class="fw-semibold">Worker aktif</div>
+    {% for worker in active_workers %}<span class="me-3">{{ worker.hostname }} · {{ worker.concurrency }} proses paralel · heartbeat {{ worker.last_heartbeat_at|timesince }} lalu</span>{% endfor %}
+</div>
+{% else %}
+<div class="alert alert-warning" role="alert">
+    <div class="fw-semibold">Belum ada worker aktif</div>
+    Job tetap aman di antrean, tetapi baru diproses setelah menjalankan <code>python manage.py run_collection_worker</code> pada terminal terpisah.
+</div>
+{% endif %}
+
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-4"><div class="card"><div class="card-body"><div class="text-secondary">Menunggu Worker</div><div class="h1 mb-0">{{ queue_summary.pending|default:0 }}</div></div></div></div>
+    <div class="col-sm-4"><div class="card"><div class="card-body"><div class="text-secondary">Sedang Berjalan</div><div class="h1 text-primary mb-0">{{ queue_summary.running|default:0 }}</div></div></div></div>
+    <div class="col-sm-4"><div class="card"><div class="card-body"><div class="text-secondary">Dijeda</div><div class="h1 text-warning mb-0">{{ queue_summary.paused|default:0 }}</div></div></div></div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Buat Jadwal per Sumber</h3>
+            <div class="text-secondary small">RSS tetap diprioritaskan; HTML menjadi cadangan atau pemindaian mendalam sesuai konfigurasi.</div>
+        </div>
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <div class="card-body">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">{{ form.name.label }}</label>{{ form.name }}{{ form.name.errors }}</div>
+                <div class="col-md-4"><label class="form-label">{{ form.source.label }}</label>{{ form.source }}{{ form.source.errors }}</div>
+                <div class="col-md-4"><label class="form-label">{{ form.intelligence_requirement.label }}</label>{{ form.intelligence_requirement }}{{ form.intelligence_requirement.errors }}</div>
+                <div class="col-md-3"><label class="form-label">{{ form.recurrence.label }}</label>{{ form.recurrence }}{{ form.recurrence.errors }}</div>
+                <div class="col-md-3" id="schedule-time-field"><label class="form-label">{{ form.run_time.label }}</label>{{ form.run_time }}{{ form.run_time.errors }}</div>
+                <div class="col-md-3" id="schedule-weekday-field"><label class="form-label">{{ form.weekday.label }}</label>{{ form.weekday }}{{ form.weekday.errors }}</div>
+                <div class="col-md-3"><label class="form-label">{{ form.max_attempts.label }}</label>{{ form.max_attempts }}{{ form.max_attempts.errors }}</div>
+                <div class="col-md-3"><label class="form-label">{{ form.article_limit.label }}</label>{{ form.article_limit }}<div class="form-hint">Kosong = konfigurasi sumber.</div>{{ form.article_limit.errors }}</div>
+                <div class="col-md-3"><label class="form-label">{{ form.candidate_limit.label }}</label>{{ form.candidate_limit }}<div class="form-hint">Kosong = default sistem.</div>{{ form.candidate_limit.errors }}</div>
+                <div class="col-md-6 d-flex align-items-end gap-4 pb-2">
+                    <label class="form-check">{{ form.include_google_news }} <span class="form-check-label">{{ form.include_google_news.label }}</span></label>
+                    <label class="form-check">{{ form.html_deep_scan }} <span class="form-check-label">{{ form.html_deep_scan.label }}</span></label>
+                    <label class="form-check">{{ form.is_active }} <span class="form-check-label">{{ form.is_active.label }}</span></label>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-end"><button class="btn btn-primary" type="submit">Simpan Jadwal</button></div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title">Jadwal Tersimpan</h3></div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead><tr><th>Jadwal</th><th>Sumber dan Cakupan</th><th>Frekuensi</th><th>Pelaksanaan Berikutnya</th><th>Status Terakhir</th><th></th></tr></thead>
+            <tbody>
+            {% for schedule in schedules %}
+                <tr>
+                    <td><div class="fw-semibold">{{ schedule.name }}</div>{% if schedule.intelligence_requirement %}<div class="small text-secondary">{{ schedule.intelligence_requirement.code|upper }}</div>{% endif %}</td>
+                    <td><div>{{ schedule.source.name }}</div><div class="small text-secondary">{% if schedule.include_google_news %}Google News aktif{% else %}Tanpa Google News{% endif %} · {% if schedule.html_deep_scan %}HTML mendalam{% else %}kanal otomatis{% endif %}</div></td>
+                    <td>{{ schedule.get_recurrence_display }}{% if schedule.recurrence == 'daily' or schedule.recurrence == 'weekly' %}<div class="small text-secondary">{{ schedule.run_time|time:"H:i" }} WIB{% if schedule.recurrence == 'weekly' %} · {{ schedule.weekday_label }}{% endif %}</div>{% endif %}</td>
+                    <td>{% if schedule.is_active %}<div>{{ schedule.next_run_at|date:"d M Y H:i" }}</div><span class="badge bg-success-lt">Aktif</span>{% else %}<span class="badge bg-secondary-lt">Nonaktif</span>{% endif %}</td>
+                    <td>{% if schedule.last_session %}<a href="{% url 'dashboard:crawler-session-detail' schedule.last_session.id %}">{{ schedule.last_session.reference }}</a>{% else %}-{% endif %}{% if schedule.last_error %}<div class="small text-danger">{{ schedule.last_error|truncatechars:100 }}</div>{% endif %}</td>
+                    <td class="text-end text-nowrap">
+                        {% if request.user|has_role:"Admin,Analyst" %}
+                        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="run_now"><input type="hidden" name="schedule_id" value="{{ schedule.id }}"><button class="btn btn-sm btn-outline-primary" type="submit">Jalankan Sekarang</button></form>
+                        <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="schedule_id" value="{{ schedule.id }}"><button class="btn btn-sm btn-outline-secondary" type="submit">{% if schedule.is_active %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6" class="text-center text-secondary py-5">Belum ada jadwal koleksi.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var recurrence = document.getElementById("id_recurrence");
+    var timeField = document.getElementById("schedule-time-field");
+    var weekdayField = document.getElementById("schedule-weekday-field");
+    function updateFields() {
+        if (!recurrence) return;
+        var timed = recurrence.value === "daily" || recurrence.value === "weekly";
+        timeField.classList.toggle("d-none", !timed);
+        weekdayField.classList.toggle("d-none", recurrence.value !== "weekly");
+    }
+    if (recurrence) recurrence.addEventListener("change", updateFields);
+    updateFields();
+})();
+</script>
+{% endblock %}

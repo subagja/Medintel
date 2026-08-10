@@ -1,7 +1,5 @@
 import logging
-import threading
 
-from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.collection.models import (
@@ -14,6 +12,12 @@ from apps.collection.services import (
     fail_collection_job,
     start_collection_job,
 )
+from apps.collection.services.queue import (
+    log_collection_job,
+    mark_collection_job_interrupted,
+    touch_collection_job,
+)
+from apps.collection.services.queue import enqueue_collection_job
 from apps.ingestion.services import ingest_article
 from apps.sources.models import Source
 
@@ -26,6 +30,18 @@ from .results import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class CollectionJobPauseRequested(Exception):
+    pass
+
+
+class CollectionJobCancelRequested(Exception):
+    pass
+
+
+class CollectionJobLeaseLost(Exception):
+    pass
 
 
 def run_crawler(
@@ -124,6 +140,59 @@ def run_crawler(
         },
     )
 
+    # Retry dan pemulihan tetap memakai job yang sama. Total serta item
+    # terminal dipertahankan agar kandidat yang sudah selesai tidak dihitung
+    # atau diproses ulang.
+    total_found = job.total_found
+    total_created = job.total_created
+    total_duplicate = job.total_duplicate
+    total_rejected = job.total_rejected
+    total_failed = job.total_failed
+    previously_processed_urls = set(
+        job.items.exclude(status=CollectionJobItem.Status.FOUND)
+        .values_list("original_url", flat=True)
+    )
+
+    def current_totals() -> dict[str, int]:
+        return {
+            "total_found": total_found,
+            "total_created": total_created,
+            "total_duplicate": total_duplicate,
+            "total_rejected": total_rejected,
+            "total_failed": total_failed,
+        }
+
+    def checkpoint() -> None:
+        control = CollectionJob.objects.filter(pk=job.pk).values(
+            "status",
+            "worker_id",
+            "pause_requested_at",
+            "cancel_requested_at",
+        ).first()
+        if not control:
+            raise CollectionJobLeaseLost("Job tidak lagi tersedia.")
+        if (
+            control["status"] != CollectionJob.Status.RUNNING
+            or (job.worker_id and control["worker_id"] != job.worker_id)
+        ):
+            raise CollectionJobLeaseLost(
+                "Lease worker tidak lagi berlaku; eksekusi lama dihentikan."
+            )
+        if control["cancel_requested_at"]:
+            raise CollectionJobCancelRequested(
+                "Pembatalan diminta oleh pengguna."
+            )
+        if control["pause_requested_at"]:
+            raise CollectionJobPauseRequested("Jeda diminta oleh pengguna.")
+        touch_collection_job(
+            job_id=job.id,
+            worker_id=job.worker_id,
+            totals=current_totals(),
+            lease_seconds=job.metadata.get("lease_seconds"),
+        )
+
+    checkpoint()
+
     def persist_execution_metadata() -> None:
         metadata_builder = getattr(
             crawler,
@@ -150,7 +219,7 @@ def run_crawler(
 
     # Menyimpan URL yang sudah ditemukan dalam satu eksekusi crawler.
     # URL yang sama tidak akan dibuat sebagai CollectionJobItem.
-    seen_urls: set[str] = set()
+    seen_urls: set[str] = set(previously_processed_urls)
 
     def record_item_event(
         event: CrawlItemEvent,
@@ -159,6 +228,8 @@ def run_crawler(
         nonlocal total_duplicate
         nonlocal total_rejected
         nonlocal total_failed
+
+        checkpoint()
 
         original_url = (
             event.original_url or ""
@@ -222,24 +293,47 @@ def run_crawler(
         if status == CrawlItemStatus.FOUND:
             return
 
+        # Baris database sudah informatif dari event sebelumnya untuk
+        # URL yang sama (mis. entri RSS duplikat dalam satu proses) --
+        # baris TIDAK perlu ditimpa lagi, TAPI ringkasan (total_found/
+        # total_duplicate/dst) tetap harus dihitung, karena event ini
+        # tetap mewakili kejadian nyata yang terjadi saat crawling.
+        skip_row_update = (
+            not item_created
+            and item.status != CollectionJobItem.Status.FOUND
+        )
+
         total_found += 1
 
         if status == CrawlItemStatus.DUPLICATE:
             total_duplicate += 1
-
-            # URL yang sama dapat sudah memiliki hasil lebih informatif
-            # pada job ini. Jangan menimpanya hanya karena ditemukan lagi.
-            if not item_created:
-                return
-
         elif status in {
             CrawlItemStatus.REJECTED,
             CrawlItemStatus.METADATA_ONLY,
         }:
             total_rejected += 1
-
         else:
             total_failed += 1
+
+        # Heartbeat/lease job tetap diperbarui untuk SETIAP event nyata
+        # (termasuk yang barisnya tidak perlu ditimpa), supaya job yang
+        # sedang memproses banyak duplikat berturut-turut tidak salah
+        # dianggap macet oleh pembersih job basi.
+        touch_collection_job(
+            job_id=job.id,
+            worker_id=job.worker_id,
+            totals=current_totals(),
+            lease_seconds=job.metadata.get("lease_seconds"),
+        )
+
+        # URL yang sama dapat sudah memiliki hasil lebih informatif pada
+        # job ini (baik karena baris sudah informatif sebelumnya, maupun
+        # karena baris ini baru pertama kali dibuat langsung sebagai
+        # DUPLICATE). Jangan menimpanya hanya karena ditemukan lagi.
+        if skip_row_update or (
+            status == CrawlItemStatus.DUPLICATE and not item_created
+        ):
+            return
 
         if not item_created:
             item.normalized_url = (
@@ -281,7 +375,7 @@ def run_crawler(
         payloads = crawler.crawl()
 
         for payload in payloads:
-            total_found += 1
+            checkpoint()
 
             original_url = (payload.url or "").strip()
 
@@ -295,6 +389,11 @@ def run_crawler(
                     payload.title,
                 )
                 continue
+
+            if original_url in previously_processed_urls:
+                continue
+
+            total_found += 1
 
             # Duplikat dalam hasil crawler pada job yang sama.
             # Tidak disimpan ke database.
@@ -471,6 +570,8 @@ def run_crawler(
                     original_url,
                 )
 
+            checkpoint()
+
         persist_execution_metadata()
 
         complete_collection_job(
@@ -480,6 +581,34 @@ def run_crawler(
             total_duplicate=total_duplicate,
             total_rejected=total_rejected,
             total_failed=total_failed,
+        )
+
+    except CollectionJobLeaseLost as exc:
+        persist_execution_metadata()
+        job.refresh_from_db()
+        log_collection_job(
+            job,
+            event="lease_lost",
+            message=str(exc),
+            level="warning",
+        )
+
+    except CollectionJobPauseRequested as exc:
+        persist_execution_metadata()
+        mark_collection_job_interrupted(
+            job=job,
+            status=CollectionJob.Status.PAUSED,
+            totals=current_totals(),
+            message=str(exc),
+        )
+
+    except CollectionJobCancelRequested as exc:
+        persist_execution_metadata()
+        mark_collection_job_interrupted(
+            job=job,
+            status=CollectionJob.Status.CANCELLED,
+            totals=current_totals(),
+            message=str(exc),
         )
 
     except Exception as exc:
@@ -526,49 +655,31 @@ def run_crawler_in_background(
     trigger_type: str = "system",
     session: CollectionSession | None = None,
     existing_job_id=None,
-) -> threading.Thread:
-    """Jalankan `run_crawler` di background thread, tidak memblokir request.
-
-    Status kemajuan tetap terlihat karena `run_crawler` sendiri sudah
-    menulis progres ke `CollectionJob` (status RUNNING di awal, lalu
-    COMPLETED/COMPLETED_WITH_ERRORS/FAILED di akhir beserta hitungannya).
-    Frontend cukup polling baris job tersebut untuk melihat pembaruan,
-    tanpa perlu request ini menunggu crawl selesai.
-    """
-
-    def _run() -> None:
-        # Setiap thread butuh koneksi DB sendiri; Django membuatnya
-        # otomatis saat dipakai, tapi harus ditutup manual saat thread
-        # selesai supaya tidak menumpuk koneksi menganggur.
-        close_old_connections()
-
-        try:
-            run_crawler(
-                crawler,
-                triggered_by=triggered_by,
-                trigger_type=trigger_type,
-                session=session,
-                existing_job_id=existing_job_id,
-            )
-        except Exception:
-            # run_crawler sudah menandai job sebagai FAILED di database
-            # sebelum melempar ulang exception-nya; di sini kita cuma
-            # perlu memastikan thread tidak mati diam-diam tanpa log.
-            logger.exception(
-                "Crawler background thread gagal: %s",
-                getattr(crawler, "source_code", "") or "lintas-sumber",
-            )
-        finally:
-            close_old_connections()
-
-    thread = threading.Thread(
-        target=_run,
-        name=(
-            f"crawler-{getattr(crawler, 'job_type', 'crawler')}-"
-            f"{getattr(crawler, 'source_code', '') or 'lintas-sumber'}"
-        ),
-        daemon=True,
+) -> CollectionJob:
+    """Kompatibilitas lama: masukkan crawler ke antrean, tanpa thread Django."""
+    if existing_job_id is not None:
+        return CollectionJob.objects.get(pk=existing_job_id)
+    is_global = bool(getattr(crawler, "global_discovery", False))
+    source = None
+    if not is_global:
+        source = Source.objects.get(code=crawler.source_code)
+    job_type = getattr(crawler, "job_type", CollectionJob.JobType.CRAWLER)
+    return enqueue_collection_job(
+        source=source,
+        session=session,
+        job_type=job_type,
+        crawler_name=crawler.__class__.__name__,
+        triggered_by=triggered_by,
+        trigger_type=trigger_type,
+        metadata={
+            "article_limit": getattr(crawler, "limit", None),
+            "candidate_limit": getattr(crawler, "candidate_limit", None),
+            "max_age_days": getattr(crawler, "max_age_days", None),
+            "collection_channel": getattr(
+                crawler, "discovery_channel", "publisher_html"
+            ),
+        },
     )
-    thread.start()
 
-    return thread
+
+enqueue_crawler = run_crawler_in_background

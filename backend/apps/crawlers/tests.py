@@ -539,7 +539,7 @@ class OfficialRssCrawlerTests(TestCase):
         self.assertContains(response, "Jalankan RSS Resmi")
         self.assertContains(response, self.source.code)
 
-    @patch("apps.dashboard.views.run_crawler_in_background")
+    @patch("apps.dashboard.views.enqueue_crawler")
     def test_collection_endpoint_starts_official_rss_crawler(
         self,
         mock_run_in_background,
