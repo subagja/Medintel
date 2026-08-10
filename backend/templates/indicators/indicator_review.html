@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 {% block title %}Review Indikator | MEDINTEL{% endblock %}
 {% block content %}
 <div class="page-header mb-3">
@@ -56,9 +57,13 @@
           {% for evidence in evidences %}<div class="card card-sm mb-2"><div class="card-body"><div class="fw-semibold">{{ evidence.article.title }}</div><div class="small text-secondary mt-1">{{ evidence.evidence_text|default:"Evidence text belum tersedia." }}</div></div></div>{% empty %}<div class="alert alert-warning">Indikator belum memiliki bukti pendukung.</div>{% endfor %}
           {% if linked_signals %}<hr><h3 class="h4">Signal Terkait</h3>{% for relation in linked_signals %}<div class="alert alert-info"><strong>{{ relation.signal.code }}</strong> — {{ relation.signal.title }}</div>{% endfor %}{% endif %}
           <hr><div class="d-flex flex-wrap gap-2">
-            <button type="submit" name="action" value="validate" class="btn btn-success">Validasi & Bentuk Signal</button>
-            <button type="submit" name="action" value="correct" class="btn btn-primary">Simpan Koreksi & Bentuk Signal</button>
-            <button type="submit" name="action" value="reject" class="btn btn-danger">Tolak Indikator</button>
+            {% if request.user|has_role:"contributors" %}
+              <button type="submit" name="action" value="validate" class="btn btn-success">Validasi & Bentuk Signal</button>
+              <button type="submit" name="action" value="correct" class="btn btn-primary">Simpan Koreksi & Bentuk Signal</button>
+              <button type="submit" name="action" value="reject" class="btn btn-danger">Tolak Indikator</button>
+            {% else %}
+              <span class="text-secondary small">Peran Anda hanya bisa melihat.</span>
+            {% endif %}
           </div>
         </div>
       </div>

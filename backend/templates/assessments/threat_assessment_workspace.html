@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 
 {% block title %}Assessment Ancaman | MEDINTEL{% endblock %}
 
@@ -239,9 +240,13 @@
                                     <div class="invalid-feedback d-block">{{ error }}</div>
                                 {% endfor %}
                                 <div class="text-end mt-3">
-                                    <button type="submit" class="btn btn-success">
-                                        Konfirmasi dan Terapkan Rekomendasi
-                                    </button>
+                                    {% if request.user|has_role:"contributors" %}
+                                        <button type="submit" class="btn btn-success">
+                                            Konfirmasi dan Terapkan Rekomendasi
+                                        </button>
+                                    {% else %}
+                                        <span class="text-secondary small">Peran Anda hanya bisa melihat, tidak dapat mengonfirmasi keputusan.</span>
+                                    {% endif %}
                                 </div>
                             </form>
                         {% endif %}
@@ -318,9 +323,13 @@
                         <div class="small text-secondary">
                             Neraca Informasi terkonfirmasi akan dipakai otomatis sebagai baseline keyakinan.
                         </div>
-                        <button type="submit" class="btn btn-primary">
-                            {% if current_assessment %}Hitung Versi Baru{% else %}Hitung Assessment{% endif %}
-                        </button>
+                        {% if request.user|has_role:"contributors" %}
+                            <button type="submit" class="btn btn-primary">
+                                {% if current_assessment %}Hitung Versi Baru{% else %}Hitung Assessment{% endif %}
+                            </button>
+                        {% else %}
+                            <span class="text-secondary small">Peran Anda hanya bisa melihat.</span>
+                        {% endif %}
                     </div>
                 </div>
             </form>

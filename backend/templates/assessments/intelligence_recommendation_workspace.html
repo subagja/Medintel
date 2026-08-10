@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load role_tags %}
 
 {% block title %}Rekomendasi Intelijen | MEDINTEL{% endblock %}
 
@@ -312,7 +313,11 @@
                                 </div>
                                 <div class="card-footer d-flex justify-content-between align-items-center">
                                     <div class="text-secondary small">Penetapan dicatat dalam audit trail.</div>
-                                    <button class="btn btn-primary" type="submit">Tetapkan Rekomendasi</button>
+                                    {% if request.user|has_role:"contributors" %}
+                                        <button class="btn btn-primary" type="submit">Tetapkan Rekomendasi</button>
+                                    {% else %}
+                                        <span class="text-secondary small">Hanya bisa melihat.</span>
+                                    {% endif %}
                                 </div>
                             </form>
                         </div>
@@ -334,7 +339,9 @@
                                             <label class="form-label" for="{{ progress_form.progress_notes.id_for_label }}">{{ progress_form.progress_notes.label }}</label>
                                             {{ progress_form.progress_notes }}
                                             {% for error in progress_form.progress_notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-                                            <button class="btn btn-primary mt-2" type="submit">Simpan dan Mulai</button>
+                                            {% if request.user|has_role:"contributors" %}
+                                                <button class="btn btn-primary mt-2" type="submit">Simpan dan Mulai</button>
+                                            {% endif %}
                                         </form>
                                     </details>
                                 {% endif %}
@@ -350,7 +357,9 @@
                                         <label class="form-label" for="{{ complete_form.completion_notes.id_for_label }}">{{ complete_form.completion_notes.label }}</label>
                                         {{ complete_form.completion_notes }}
                                         {% for error in complete_form.completion_notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-                                        <button class="btn btn-success mt-2" type="submit">Simpan Hasil</button>
+                                        {% if request.user|has_role:"contributors" %}
+                                            <button class="btn btn-success mt-2" type="submit">Simpan Hasil</button>
+                                        {% endif %}
                                     </form>
                                 </details>
                             </div>
@@ -375,7 +384,9 @@
                                         {% for error in cancel_form.cancellation_reason.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                                     </div>
                                     <div class="card-footer text-end">
-                                        <button class="btn btn-outline-danger" type="submit">Batalkan</button>
+                                        {% if request.user|has_role:"contributors" %}
+                                            <button class="btn btn-outline-danger" type="submit">Batalkan</button>
+                                        {% endif %}
                                     </div>
                                 </form>
                             </details>
@@ -425,7 +436,11 @@
                             </div>
                             <div class="card-footer d-flex justify-content-between align-items-center">
                                 <div class="text-secondary small">Draf belum menjadi arahan operasional.</div>
-                                <button class="btn btn-primary" type="submit">Bentuk Draf Rekomendasi</button>
+                                {% if request.user|has_role:"contributors" %}
+                                    <button class="btn btn-primary" type="submit">Bentuk Draf Rekomendasi</button>
+                                {% else %}
+                                    <span class="text-secondary small">Hanya bisa melihat.</span>
+                                {% endif %}
                             </div>
                         </form>
                     </div>
