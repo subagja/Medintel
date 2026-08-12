@@ -295,3 +295,220 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
             response,
             '<form method="post" novalidate>',
         )
+
+    def test_rejected_article_keeps_correction_buttons_inside_main_form(self):
+        """Form hapus tidak boleh memutus form validasi utama di browser."""
+        self.client.force_login(self.analyst)
+        self.article.processing_status = (
+            Article.ProcessingStatus.REJECTED
+        )
+        self.article.save(update_fields=["processing_status"])
+
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"article": str(self.article.id), "tab": "disease"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        main_form_start = html.index(
+            '<form method="post" novalidate>'
+        )
+        main_form_end = html.index("</form>", main_form_start)
+        main_form = html[main_form_start:main_form_end]
+
+        self.assertIn('value="correct_primary_disease"', main_form)
+        self.assertIn('value="correct_primary_location"', main_form)
+        self.assertNotIn("delete-selected-article-form\" method", main_form)
+        self.assertIn('form="delete-selected-article-form"', main_form)
+        self.assertIn('id="delete-selected-article-form"', html)
+
+    def test_view_records_primary_location_and_returns_to_tab(self):
+        self.client.force_login(self.analyst)
+        alternate_location = Location.objects.create(
+            name="Kota Tangerang Disease Test",
+            code="36.71-disease-test",
+            administrative_level=(
+                Location.AdministrativeLevel.CITY
+            ),
+            country_code="ID",
+        )
+
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.article.id),
+                "action": "correct_primary_location",
+                "primary_location": str(alternate_location.id),
+                "correction_notes": (
+                    "Angka kasus pada artikel merujuk Kota Tangerang."
+                ),
+                "disease_correction_notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("tab=location", response.url)
+        self.assertTrue(
+            ArticleLocation.objects.filter(
+                article=self.article,
+                location=alternate_location,
+                is_primary=True,
+            ).exists()
+        )
+
+    def _create_articles_for_pagination(self, count=54):
+        articles = []
+        for index in range(count):
+            articles.append(
+                Article(
+                    source=self.source,
+                    original_url=(
+                        "https://penyakit.example.com/pagination-"
+                        f"{index}"
+                    ),
+                    normalized_url=(
+                        "https://penyakit.example.com/pagination-"
+                        f"{index}"
+                    ),
+                    title=f"Artikel pagination {index}",
+                    content_text=(
+                        "Artikel pengujian pagination validasi."
+                    ),
+                    content_hash=f"{index + 1:064x}",
+                    processing_status=(
+                        Article.ProcessingStatus.VALIDATED
+                    ),
+                )
+            )
+        Article.objects.bulk_create(articles)
+
+    def test_validation_workspace_paginates_fifty_articles(self):
+        self._create_articles_for_pagination()
+        self.client.force_login(self.analyst)
+
+        first_page = self.client.get(
+            reverse("dashboard:article-validation")
+        )
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(
+            first_page.context["page_obj"].paginator.count,
+            55,
+        )
+        self.assertEqual(
+            len(first_page.context["articles"]),
+            50,
+        )
+        self.assertEqual(
+            first_page.context["page_obj"].start_index(),
+            1,
+        )
+        self.assertEqual(
+            first_page.context["page_obj"].end_index(),
+            50,
+        )
+
+        second_page = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"page": 2},
+        )
+
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(
+            len(second_page.context["articles"]),
+            5,
+        )
+        self.assertEqual(
+            second_page.context["page_obj"].start_index(),
+            51,
+        )
+        self.assertEqual(
+            second_page.context["page_obj"].end_index(),
+            55,
+        )
+
+    def test_validation_search_applies_before_pagination(self):
+        self._create_articles_for_pagination()
+        target = Article.objects.create(
+            source=self.source,
+            original_url=(
+                "https://penyakit.example.com/target-pagination"
+            ),
+            normalized_url=(
+                "https://penyakit.example.com/target-pagination"
+            ),
+            title="Target khusus lintas halaman",
+            content_text="Target pencarian validasi artikel.",
+            content_hash="e" * 64,
+            processing_status=(
+                Article.ProcessingStatus.VALIDATED
+            ),
+        )
+        self.client.force_login(self.analyst)
+
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"q": "Target khusus lintas halaman"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            1,
+        )
+        self.assertEqual(
+            response.context["articles"][0].id,
+            target.id,
+        )
+        self.assertEqual(
+            response.context["search_query"],
+            "Target khusus lintas halaman",
+        )
+
+    def test_validation_status_filter_applies_before_pagination(self):
+        self._create_articles_for_pagination()
+        self.client.force_login(self.analyst)
+
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"validation_status": "validated"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["page_obj"].paginator.count,
+            1,
+        )
+        self.assertEqual(
+            response.context["articles"][0].id,
+            self.article.id,
+        )
+        self.assertEqual(
+            response.context["validation_status_filter"],
+            "validated",
+        )
+
+    def test_validation_redirect_keeps_current_page(self):
+        self._create_articles_for_pagination()
+        self.client.force_login(self.analyst)
+
+        response = self.client.post(
+            (
+                reverse("dashboard:article-validation")
+                + "?page=2"
+            ),
+            {
+                "article_id": str(self.article.id),
+                "page": "2",
+                "action": "correct_primary_disease",
+                "primary_disease": str(self.tuberculosis.id),
+                "disease_correction_notes": (
+                    "Judul dan angka kasus merujuk TBC."
+                ),
+                "correction_notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("page=2", response.url)

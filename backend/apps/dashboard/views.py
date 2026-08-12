@@ -1496,16 +1496,22 @@ def _build_validation_redirect_url(
     tab: str,
     eligibility: str,
     filters: dict,
+    page=None,
 ) -> str:
     """URL kembali ke workspace Validasi Artikel setelah aksi POST,
     dengan seluruh filter (eligibility + filter artikel baru) tetap
     dipertahankan supaya daftar artikel tidak ter-reset ke tanpa filter.
     """
     params = {
-        "article": str(article_id),
         "eligibility": eligibility,
         "tab": tab,
     }
+
+    if article_id:
+        params["article"] = str(article_id)
+
+    if page:
+        params["page"] = page
 
     for key in (
         "source",
@@ -1516,6 +1522,8 @@ def _build_validation_redirect_url(
         "date_field",
         "date_from",
         "date_to",
+        "q",
+        "validation_status",
     ):
         value = filters.get(key)
         if value:
@@ -1561,18 +1569,87 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         request.GET,
     )
 
+    search_query = request.GET.get("q", "").strip()
+    if search_query:
+        articles = articles.filter(
+            Q(title__icontains=search_query)
+            | Q(source__name__icontains=search_query)
+        )
+
+    validation_status_filter = request.GET.get(
+        "validation_status",
+        "",
+    )
+    allowed_validation_statuses = {
+        ArticleValidationAssessment.ValidationStatus.PENDING,
+        ArticleValidationAssessment.ValidationStatus.VALIDATED,
+        ArticleValidationAssessment.ValidationStatus.REJECTED,
+    }
+    if validation_status_filter not in allowed_validation_statuses:
+        validation_status_filter = ""
+
+    if validation_status_filter:
+        if (
+            validation_status_filter
+            == ArticleValidationAssessment.ValidationStatus.PENDING
+        ):
+            articles = articles.filter(
+                Q(
+                    validation_assessment__validation_status=(
+                        ArticleValidationAssessment
+                        .ValidationStatus
+                        .PENDING
+                    )
+                )
+                | Q(validation_assessment__isnull=True)
+            )
+        else:
+            articles = articles.filter(
+                validation_assessment__validation_status=(
+                    validation_status_filter
+                )
+            )
+
+    active_filters["q"] = search_query
+    active_filters["validation_status"] = (
+        validation_status_filter
+    )
+
+    paginator = Paginator(articles, 50)
+    requested_page = (
+        request.POST.get("page")
+        or request.GET.get("page")
+        or 1
+    )
+    page_obj = paginator.get_page(requested_page)
+    page_articles = list(page_obj.object_list)
+    page_obj.object_list = page_articles
+
     selected_article_id = (
         request.POST.get("article_id")
         or request.GET.get("article")
     )
 
     if selected_article_id:
-        selected_article = get_object_or_404(
-            articles,
+        selected_article = articles.filter(
             id=selected_article_id,
-        )
+        ).first()
+        if selected_article is None:
+            get_object_or_404(
+                _validation_queryset(),
+                id=selected_article_id,
+            )
+            selected_article = (
+                page_articles[0]
+                if page_articles
+                else None
+            )
     else:
-        selected_article = articles.first()
+        selected_article = (
+            page_articles[0]
+            if page_articles
+            else None
+        )
 
     assessment = None
     form = None
@@ -1764,6 +1841,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             tab="disease",
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            page=page_obj.number,
                         )
                     )
         elif (
@@ -1839,6 +1917,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             tab="location",
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            page=page_obj.number,
                         )
                     )
         else:
@@ -1986,6 +2065,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             tab=active_validation_tab,
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            page=page_obj.number,
                         )
                     )
             else:
@@ -2051,7 +2131,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     context = {
         "page_title": "Validasi Artikel",
         "active_menu": "article_validation",
-        "articles": articles[:50],
+        "articles": page_articles,
+        "page_obj": page_obj,
         "selected_article": selected_article,
         "assessment": assessment,
         "assessment_form": form,
@@ -2069,6 +2150,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "selected_facts": selected_facts,
         "selected_eligibility": selected_eligibility,
         "eligibility_filter": eligibility_filter,
+        "search_query": search_query,
+        "validation_status_filter": validation_status_filter,
         "active_filters": active_filters,
         "extra_filter_qs": _extra_filter_querystring(active_filters),
         **build_article_filter_options(),
@@ -3941,16 +4024,10 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
 
     total_articles = Article.objects.count()
 
-    # "Butuh diproses" itu soal STATUS EKSTRAKSI (belum pernah/gagal
-    # diekstrak), BUKAN soal sudah/belum divalidasi analis -- dua hal
-    # yang independen. Artikel berstatus PROCESSED sudah selesai
-    # diekstrak meski belum tentu sudah divalidasi analis, jadi TIDAK
-    # boleh ikut dihitung "menunggu diproses" di sini.
-    pending_qs = Article.objects.filter(
+    pending_qs = Article.objects.exclude(
         processing_status__in=[
-            Article.ProcessingStatus.NEW,
-            Article.ProcessingStatus.PROCESSING,
-            Article.ProcessingStatus.FAILED,
+            Article.ProcessingStatus.VALIDATED,
+            Article.ProcessingStatus.REJECTED,
         ],
     )
 
@@ -4024,50 +4101,31 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
 @require_role(Roles.ADMIN, Roles.ANALYST)
 @require_POST
 def entity_extraction_run(request: HttpRequest) -> HttpResponse:
-    """Proses (ekstraksi) artikel yang belum lengkap -- SINKRON,
-    selesai penuh sebelum response dikirim. Sengaja TIDAK pakai
-    thread background: kalau server Django restart di tengah proses
-    thread, job itu hilang tanpa jejak dan tidak bisa dilanjutkan.
-    Berbeda dari crawler (yang sudah pakai antrean database + worker
-    terpisah tahan restart -- lihat `run_collection_worker`),
-    ekstraksi ulang artikel itu operasi lokal database yang relatif
-    cepat per artikel, jadi diproses langsung per klik dengan batas
-    jumlah supaya tidak melebihi waktu tunggu wajar. Kalau tersisa
-    banyak, analis tinggal klik "Proses Sekarang" lagi.
+    """Picu pemrosesan (ekstraksi) artikel yang belum lengkap,
+    berjalan di background thread supaya tidak memblokir request --
+    pola sama seperti "Jalankan Crawler".
     """
-    from apps.entities.services import process_article_full
+    import threading
+
+    from django.db import close_old_connections
 
     force = request.POST.get("force") == "1"
     limit_raw = request.POST.get("limit", "").strip()
 
     try:
-        limit = int(limit_raw) if limit_raw else 30
+        limit = int(limit_raw) if limit_raw else 200
     except ValueError:
-        limit = 30
-
-    # Dibatasi supaya satu klik selalu selesai dalam waktu wajar
-    # (tidak ada proses yang "menggantung" kalau server di-restart).
-    limit = max(1, min(limit, 50))
+        limit = 200
 
     if force:
         articles_qs = Article.objects.all()
     else:
-        # Sama seperti dashboard: "butuh diproses" itu soal status
-        # EKSTRAKSI (NEW/PROCESSING/FAILED), bukan soal sudah/belum
-        # divalidasi analis -- keduanya independen. Sebelumnya query
-        # ini keliru pakai exclude(VALIDATED/REJECTED), yang membuat
-        # artikel PROCESSED (sudah selesai diekstrak) tetap terhitung
-        # "tersisa" selamanya, dan angka "tersisa" cuma naik (dari
-        # artikel baru masuk lewat crawler) tanpa pernah berkurang.
-        articles_qs = Article.objects.filter(
+        articles_qs = Article.objects.exclude(
             processing_status__in=[
-                Article.ProcessingStatus.NEW,
-                Article.ProcessingStatus.PROCESSING,
-                Article.ProcessingStatus.FAILED,
+                Article.ProcessingStatus.VALIDATED,
+                Article.ProcessingStatus.REJECTED,
             ],
         )
-
-    total_pending = articles_qs.count()
 
     article_ids = list(
         articles_qs.order_by("-created_at").values_list(
@@ -4082,34 +4140,38 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
         )
         return redirect("dashboard:entity-extraction")
 
-    processed_count = 0
-    failed_count = 0
+    def _run() -> None:
+        close_old_connections()
 
-    for article_id in article_ids:
-        try:
-            article = Article.objects.get(id=article_id)
-            process_article_full(article)
-            processed_count += 1
-        except Exception:
-            failed_count += 1
-            logger.exception(
-                "Ekstraksi manual gagal untuk artikel=%s",
-                article_id,
-            )
+        from apps.entities.services import process_article_full
 
-    remaining = max(total_pending - processed_count, 0)
+        for article_id in article_ids:
+            try:
+                article = Article.objects.get(id=article_id)
+                process_article_full(article)
+            except Exception:
+                logger.exception(
+                    "Ekstraksi manual gagal untuk artikel=%s",
+                    article_id,
+                )
 
-    summary_text = (
-        f"{processed_count} artikel selesai diproses."
-        + (f" {failed_count} gagal." if failed_count else "")
+        close_old_connections()
+
+    thread = threading.Thread(
+        target=_run,
+        name="entity-extraction-batch",
+        daemon=True,
     )
-    if remaining:
-        summary_text += (
-            f" Masih ada sekitar {remaining} artikel tersisa -- "
-            "klik \"Proses Sekarang\" lagi untuk melanjutkan."
-        )
+    thread.start()
 
-    messages.success(request, summary_text)
+    messages.success(
+        request,
+        (
+            f"Ekstraksi dimulai untuk {len(article_ids)} artikel di "
+            "latar belakang. Refresh halaman ini beberapa saat lagi "
+            "untuk melihat progresnya."
+        ),
+    )
 
     return redirect("dashboard:entity-extraction")
 

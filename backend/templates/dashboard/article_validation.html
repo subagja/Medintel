@@ -54,7 +54,7 @@ Validasi Artikel | MEDINTEL OSINT
             <div class="card-body medintel-stat-card">
                 <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v5"></path><path d="M4.5 19.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0"></path><path d="M6.5 21.5l-1.5 -1.5"></path></svg></div>
                 <div class="medintel-stat-body">
-                    <div class="text-secondary">Artikel Ditampilkan</div>
+                    <div class="text-secondary">Total Artikel</div>
                     <div class="h1 mb-0">{{ summary.total|default:0 }}</div>
                 </div>
             </div>
@@ -124,14 +124,26 @@ Validasi Artikel | MEDINTEL OSINT
                 </div>
             </div>
 
-            <div class="card-body border-bottom py-3">
+            <form
+                method="get"
+                id="article-filter-form"
+                class="card-body border-bottom py-3"
+            >
+                <input
+                    type="hidden"
+                    name="eligibility"
+                    value="{{ eligibility_filter }}"
+                >
+
                 <div class="row g-2 mb-2">
                     <div class="col">
                         <input
                             type="search"
                             id="article-search"
+                            name="q"
                             class="form-control"
                             placeholder="Cari judul atau sumber"
+                            value="{{ search_query }}"
                             autocomplete="off"
                         >
                     </div>
@@ -139,13 +151,38 @@ Validasi Artikel | MEDINTEL OSINT
                     <div class="col-auto">
                         <select
                             id="article-status-filter"
+                            name="validation_status"
                             class="form-select"
                         >
-                            <option value="">Semua status</option>
-                            <option value="pending">Perlu tinjau</option>
-                            <option value="validated">Tervalidasi</option>
-                            <option value="rejected">Tidak relevan</option>
+                            <option value="" {% if not validation_status_filter %}selected{% endif %}>Semua status</option>
+                            <option value="pending" {% if validation_status_filter == "pending" %}selected{% endif %}>Perlu tinjau</option>
+                            <option value="validated" {% if validation_status_filter == "validated" %}selected{% endif %}>Tervalidasi</option>
+                            <option value="rejected" {% if validation_status_filter == "rejected" %}selected{% endif %}>Tidak relevan</option>
                         </select>
+                    </div>
+
+                    <div class="col-auto">
+                        <button
+                            class="btn btn-primary"
+                            type="submit"
+                            title="Cari artikel"
+                            aria-label="Cari artikel"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="M21 21l-4.35-4.35"></path>
+                            </svg>
+                        </button>
                     </div>
 
                     <div class="col-auto">
@@ -161,8 +198,7 @@ Validasi Artikel | MEDINTEL OSINT
                 </div>
 
                 <div class="collapse{% if active_filters.source or active_filters.disease or active_filters.location or active_filters.processing_status or active_filters.trend or active_filters.date_from or active_filters.date_to %} show{% endif %} mb-2" id="article-advanced-filters">
-                    <form method="get" class="row g-2 border rounded p-2 mb-2">
-                        <input type="hidden" name="eligibility" value="{{ eligibility_filter }}">
+                    <div class="row g-2 border rounded p-2 mb-2">
 
                         <div class="col-md-6">
                             <label class="form-label small">Sumber OSINT</label>
@@ -237,7 +273,7 @@ Validasi Artikel | MEDINTEL OSINT
                             <button type="submit" class="btn btn-sm btn-primary">Terapkan Filter</button>
                             <a href="{% url 'dashboard:article-validation' %}?eligibility={{ eligibility_filter }}" class="btn btn-sm btn-outline-secondary">Reset</a>
                         </div>
-                    </form>
+                    </div>
                 </div>
 
                 <div class="btn-group w-100" role="group">
@@ -277,7 +313,7 @@ Validasi Artikel | MEDINTEL OSINT
                         Data Belum Lengkap
                     </a>
                 </div>
-            </div>
+            </form>
 
             <div
                 class="list-group list-group-flush medintel-article-list"
@@ -286,7 +322,7 @@ Validasi Artikel | MEDINTEL OSINT
                 {% for article in articles %}
                     {% with article_assessment=article.validation_assessment %}
                         <a
-                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}&eligibility={{ eligibility_filter }}{{ extra_filter_qs }}"
+                            href="{% url 'dashboard:article-validation' %}?article={{ article.id }}&page={{ page_obj.number }}&eligibility={{ eligibility_filter }}{{ extra_filter_qs }}"
                             class="
                                 list-group-item
                                 list-group-item-action
@@ -374,6 +410,50 @@ Validasi Artikel | MEDINTEL OSINT
                     </div>
                 {% endfor %}
             </div>
+
+            <div class="card-footer py-2">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div class="text-secondary small">
+                        Menampilkan
+                        <strong>{{ page_obj.start_index }}–{{ page_obj.end_index }}</strong>
+                        dari
+                        <strong>{{ page_obj.paginator.count }}</strong>
+                        artikel
+                    </div>
+
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Navigasi halaman artikel">
+                        {% if page_obj.has_previous %}
+                            <a
+                                class="btn btn-outline-secondary"
+                                href="{% url 'dashboard:article-validation' %}?page={{ page_obj.previous_page_number }}&eligibility={{ eligibility_filter }}{{ extra_filter_qs }}"
+                            >
+                                Sebelumnya
+                            </a>
+                        {% else %}
+                            <button class="btn btn-outline-secondary" type="button" disabled>
+                                Sebelumnya
+                            </button>
+                        {% endif %}
+
+                        <button class="btn btn-outline-secondary" type="button" disabled>
+                            {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                        </button>
+
+                        {% if page_obj.has_next %}
+                            <a
+                                class="btn btn-outline-secondary"
+                                href="{% url 'dashboard:article-validation' %}?page={{ page_obj.next_page_number }}&eligibility={{ eligibility_filter }}{{ extra_filter_qs }}"
+                            >
+                                Berikutnya
+                            </a>
+                        {% else %}
+                            <button class="btn btn-outline-secondary" type="button" disabled>
+                                Berikutnya
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -386,6 +466,12 @@ Validasi Artikel | MEDINTEL OSINT
                     type="hidden"
                     name="article_id"
                     value="{{ selected_article.id }}"
+                >
+
+                <input
+                    type="hidden"
+                    name="page"
+                    value="{{ page_obj.number }}"
                 >
 
                 <input
@@ -703,17 +789,14 @@ Validasi Artikel | MEDINTEL OSINT
                                 </a>
 
                                 {% if selected_article.processing_status == "rejected" and request.user|has_role:"Admin,Analyst" %}
-                                    <form
-                                        method="post"
-                                        action="{% url 'dashboard:article-delete' selected_article.id %}"
-                                        onsubmit="return confirm('Hapus artikel ini secara permanen? Tindakan ini tidak bisa dibatalkan.');"
+                                    <button
+                                        type="submit"
+                                        form="delete-selected-article-form"
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Hapus artikel ini secara permanen? Tindakan ini tidak bisa dibatalkan.');"
                                     >
-                                        {% csrf_token %}
-                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            Hapus Artikel
-                                        </button>
-                                    </form>
+                                        Hapus Artikel
+                                    </button>
                                 {% endif %}
                             </div>
                         </div>
@@ -1348,6 +1431,18 @@ Validasi Artikel | MEDINTEL OSINT
                     </div>
                 </div>
             </form>
+
+            {% if selected_article.processing_status == "rejected" and request.user|has_role:"Admin,Analyst" %}
+                <form
+                    id="delete-selected-article-form"
+                    method="post"
+                    action="{% url 'dashboard:article-delete' selected_article.id %}"
+                    class="d-none"
+                >
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                </form>
+            {% endif %}
         {% else %}
             <div class="card">
                 <div class="card-body">
@@ -1368,9 +1463,8 @@ Validasi Artikel | MEDINTEL OSINT
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const searchInput = document.getElementById("article-search");
     const statusFilter = document.getElementById("article-status-filter");
-    const articleItems = document.querySelectorAll(".medintel-article-item");
+    const articleFilterForm = document.getElementById("article-filter-form");
     const activeTabInput = document.getElementById("active-validation-tab");
     const tabButtons = document.querySelectorAll("[data-medintel-tab]");
     const reliabilitySelect = document.getElementById("id_source_reliability");
@@ -1384,7 +1478,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // "lompat" ke atas tiap kali klik satu artikel (halaman ini masih
     // reload penuh saat pindah artikel, jadi scroll browser normalnya
     // reset -- ini kompensasi manual pakai sessionStorage).
-    const SCROLL_STORAGE_KEY = "medintel-article-list-scroll";
+    const SCROLL_STORAGE_KEY = "medintel-article-list-scroll:{{ page_obj.number }}";
     const articleListEl = document.getElementById("article-list");
 
     if (articleListEl) {
@@ -1414,35 +1508,9 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function applyFilters() {
-        const query = (searchInput?.value || "").trim().toLowerCase();
-        const status = statusFilter?.value || "";
-
-        articleItems.forEach(function (item) {
-            const title = item.dataset.title || "";
-            const source = item.dataset.source || "";
-            const itemStatus = item.dataset.status || "pending";
-
-            const textMatches = (
-                !query
-                || title.includes(query)
-                || source.includes(query)
-            );
-
-            const statusMatches = (
-                !status
-                || itemStatus === status
-            );
-
-            item.classList.toggle(
-                "d-none",
-                !(textMatches && statusMatches),
-            );
-        });
-    }
-
-    searchInput?.addEventListener("input", applyFilters);
-    statusFilter?.addEventListener("change", applyFilters);
+    statusFilter?.addEventListener("change", function () {
+        articleFilterForm?.requestSubmit();
+    });
 
     tabButtons.forEach(function (button) {
         button.addEventListener("shown.bs.tab", function () {
