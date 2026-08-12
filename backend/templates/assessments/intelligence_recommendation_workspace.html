@@ -313,10 +313,10 @@
                                 </div>
                                 <div class="card-footer d-flex justify-content-between align-items-center">
                                     <div class="text-secondary small">Penetapan dicatat dalam audit trail.</div>
-                                    {% if request.user|has_role:"contributors" %}
+                                    {% if request.user|has_role:"approvers" %}
                                         <button class="btn btn-primary" type="submit">Tetapkan Rekomendasi</button>
                                     {% else %}
-                                        <span class="text-secondary small">Hanya bisa melihat.</span>
+                                        <span class="text-secondary small">Penetapan memerlukan peran Reviewer atau Admin.</span>
                                     {% endif %}
                                 </div>
                             </form>

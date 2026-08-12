@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.accounts.permissions import Roles, require_role_by_method
+from apps.accounts.permissions import Roles, has_role, require_role_by_method
 
 from .forms import (
     IntelligenceRecommendationCancelForm,
@@ -250,7 +250,12 @@ def intelligence_recommendation_workspace(
                     decision_form = (
                         IntelligenceRecommendationDecisionForm(request.POST)
                     )
-                    if decision_form.is_valid():
+                    if not has_role(request.user, *Roles.APPROVERS):
+                        messages.error(
+                            request,
+                            "Penetapan rekomendasi memerlukan peran Reviewer atau Admin.",
+                        )
+                    elif decision_form.is_valid():
                         try:
                             approve_intelligence_recommendation(
                                 recommendation=recommendation,

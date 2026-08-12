@@ -4,7 +4,7 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from apps.accounts.permissions import Roles, require_role_by_method
+from apps.accounts.permissions import Roles, has_role, require_role_by_method
 
 from apps.signals.services.generation import generate_signal_from_indicator
 
@@ -53,6 +53,13 @@ def indicator_review(request: HttpRequest) -> HttpResponse:
 
             if not request.user.is_authenticated:
                 messages.error(request, "Pengguna harus login untuk mereview indikator.")
+                return redirect(_review_url(selected_indicator.id, status_filter))
+
+            if not has_role(request.user, *Roles.APPROVERS):
+                messages.error(
+                    request,
+                    "Validasi/koreksi/penolakan indikator memerlukan peran Reviewer atau Admin.",
+                )
                 return redirect(_review_url(selected_indicator.id, status_filter))
 
             try:

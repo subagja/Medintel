@@ -3941,10 +3941,16 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
 
     total_articles = Article.objects.count()
 
-    pending_qs = Article.objects.exclude(
+    # "Butuh diproses" itu soal STATUS EKSTRAKSI (belum pernah/gagal
+    # diekstrak), BUKAN soal sudah/belum divalidasi analis -- dua hal
+    # yang independen. Artikel berstatus PROCESSED sudah selesai
+    # diekstrak meski belum tentu sudah divalidasi analis, jadi TIDAK
+    # boleh ikut dihitung "menunggu diproses" di sini.
+    pending_qs = Article.objects.filter(
         processing_status__in=[
-            Article.ProcessingStatus.VALIDATED,
-            Article.ProcessingStatus.REJECTED,
+            Article.ProcessingStatus.NEW,
+            Article.ProcessingStatus.PROCESSING,
+            Article.ProcessingStatus.FAILED,
         ],
     )
 
@@ -4018,31 +4024,50 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
 @require_role(Roles.ADMIN, Roles.ANALYST)
 @require_POST
 def entity_extraction_run(request: HttpRequest) -> HttpResponse:
-    """Picu pemrosesan (ekstraksi) artikel yang belum lengkap,
-    berjalan di background thread supaya tidak memblokir request --
-    pola sama seperti "Jalankan Crawler".
+    """Proses (ekstraksi) artikel yang belum lengkap -- SINKRON,
+    selesai penuh sebelum response dikirim. Sengaja TIDAK pakai
+    thread background: kalau server Django restart di tengah proses
+    thread, job itu hilang tanpa jejak dan tidak bisa dilanjutkan.
+    Berbeda dari crawler (yang sudah pakai antrean database + worker
+    terpisah tahan restart -- lihat `run_collection_worker`),
+    ekstraksi ulang artikel itu operasi lokal database yang relatif
+    cepat per artikel, jadi diproses langsung per klik dengan batas
+    jumlah supaya tidak melebihi waktu tunggu wajar. Kalau tersisa
+    banyak, analis tinggal klik "Proses Sekarang" lagi.
     """
-    import threading
-
-    from django.db import close_old_connections
+    from apps.entities.services import process_article_full
 
     force = request.POST.get("force") == "1"
     limit_raw = request.POST.get("limit", "").strip()
 
     try:
-        limit = int(limit_raw) if limit_raw else 200
+        limit = int(limit_raw) if limit_raw else 30
     except ValueError:
-        limit = 200
+        limit = 30
+
+    # Dibatasi supaya satu klik selalu selesai dalam waktu wajar
+    # (tidak ada proses yang "menggantung" kalau server di-restart).
+    limit = max(1, min(limit, 50))
 
     if force:
         articles_qs = Article.objects.all()
     else:
-        articles_qs = Article.objects.exclude(
+        # Sama seperti dashboard: "butuh diproses" itu soal status
+        # EKSTRAKSI (NEW/PROCESSING/FAILED), bukan soal sudah/belum
+        # divalidasi analis -- keduanya independen. Sebelumnya query
+        # ini keliru pakai exclude(VALIDATED/REJECTED), yang membuat
+        # artikel PROCESSED (sudah selesai diekstrak) tetap terhitung
+        # "tersisa" selamanya, dan angka "tersisa" cuma naik (dari
+        # artikel baru masuk lewat crawler) tanpa pernah berkurang.
+        articles_qs = Article.objects.filter(
             processing_status__in=[
-                Article.ProcessingStatus.VALIDATED,
-                Article.ProcessingStatus.REJECTED,
+                Article.ProcessingStatus.NEW,
+                Article.ProcessingStatus.PROCESSING,
+                Article.ProcessingStatus.FAILED,
             ],
         )
+
+    total_pending = articles_qs.count()
 
     article_ids = list(
         articles_qs.order_by("-created_at").values_list(
@@ -4057,38 +4082,34 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
         )
         return redirect("dashboard:entity-extraction")
 
-    def _run() -> None:
-        close_old_connections()
+    processed_count = 0
+    failed_count = 0
 
-        from apps.entities.services import process_article_full
+    for article_id in article_ids:
+        try:
+            article = Article.objects.get(id=article_id)
+            process_article_full(article)
+            processed_count += 1
+        except Exception:
+            failed_count += 1
+            logger.exception(
+                "Ekstraksi manual gagal untuk artikel=%s",
+                article_id,
+            )
 
-        for article_id in article_ids:
-            try:
-                article = Article.objects.get(id=article_id)
-                process_article_full(article)
-            except Exception:
-                logger.exception(
-                    "Ekstraksi manual gagal untuk artikel=%s",
-                    article_id,
-                )
+    remaining = max(total_pending - processed_count, 0)
 
-        close_old_connections()
-
-    thread = threading.Thread(
-        target=_run,
-        name="entity-extraction-batch",
-        daemon=True,
+    summary_text = (
+        f"{processed_count} artikel selesai diproses."
+        + (f" {failed_count} gagal." if failed_count else "")
     )
-    thread.start()
+    if remaining:
+        summary_text += (
+            f" Masih ada sekitar {remaining} artikel tersisa -- "
+            "klik \"Proses Sekarang\" lagi untuk melanjutkan."
+        )
 
-    messages.success(
-        request,
-        (
-            f"Ekstraksi dimulai untuk {len(article_ids)} artikel di "
-            "latar belakang. Refresh halaman ini beberapa saat lagi "
-            "untuk melihat progresnya."
-        ),
-    )
+    messages.success(request, summary_text)
 
     return redirect("dashboard:entity-extraction")
 

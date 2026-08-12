@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load role_tags %}
+
+{% block title %}Manajemen Peran | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">Administrasi Sistem</div>
+            <h2 class="page-title">Manajemen Peran</h2>
+            <div class="text-secondary mt-1">
+                Lihat, buat, dan ubah peran user. Untuk kelola
+                superuser atau permission lanjutan, tetap gunakan
+                <a href="/admin/auth/user/" target="_blank">Django Admin</a>.
+            </div>
+        </div>
+        <div class="col-auto d-flex gap-2 align-items-center">
+            <a href="{% url 'accounts:user-create' %}" class="btn btn-primary btn-sm">Tambah User Baru</a>
+            <span class="badge bg-blue-lt fs-3">{{ total_users }} user</span>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible" role="alert">
+            <div>{{ message }}</div>
+            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Referensi: Peran boleh apa saja</h3></div>
+    <div class="card-body">
+        <div class="row row-cards">
+            {% for row in capability_table %}
+                <div class="col-md-6 col-xl-3">
+                    <div class="card card-sm h-100">
+                        <div class="card-body">
+                            <div class="fw-bold mb-1">{{ row.label }}</div>
+                            <div class="text-secondary small mb-2">{{ row.summary }}</div>
+                            <div class="small text-success mb-1">
+                                {% for item in row.can %}
+                                    <div>&#10003; {{ item }}</div>
+                                {% endfor %}
+                            </div>
+                            {% if row.cannot %}
+                                <div class="small text-danger mt-2">
+                                    {% for item in row.cannot %}
+                                        <div>&#10007; {{ item }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2">
+            <div class="col-md-5">
+                <input type="text" name="q" class="form-control" placeholder="Cari username/email/nama..." value="{{ query }}">
+            </div>
+            <div class="col-md-3">
+                <select name="role" class="form-select">
+                    <option value="">Semua peran</option>
+                    {% for role in role_choices %}
+                        <option value="{{ role }}" {% if selected_role == role %}selected{% endif %}>{{ role }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Cari</button>
+            </div>
+            <div class="col-md-2">
+                <a href="{% url 'accounts:user-role-list' %}" class="btn btn-outline-secondary w-100">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Nama</th>
+                    <th>Email</th>
+                    <th>Peran Saat Ini</th>
+                    <th>Status</th>
+                    <th>Login Terakhir</th>
+                    <th>Ubah Peran</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in page_obj %}
+                    <tr>
+                        <td class="fw-semibold">{{ u.username }}</td>
+                        <td class="text-secondary small">{{ u.get_full_name|default:"-" }}</td>
+                        <td class="text-secondary small">{{ u.email|default:"-" }}</td>
+                        <td>
+                            {% if u.is_superuser %}
+                                <span class="badge bg-purple-lt">Superuser</span>
+                            {% else %}
+                                {% for group in u.groups.all %}
+                                    <span class="badge bg-blue-lt">{{ group.name }}</span>
+                                {% empty %}
+                                    <span class="badge bg-secondary-lt">Belum ada peran</span>
+                                {% endfor %}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.is_active %}<span class="badge bg-success-lt">Aktif</span>
+                            {% else %}<span class="badge bg-danger-lt">Nonaktif</span>{% endif %}
+                        </td>
+                        <td class="text-secondary small text-nowrap">{{ u.last_login|date:"d M Y H:i"|default:"Belum pernah" }}</td>
+                        <td>
+                            {% if u.is_superuser %}
+                                <span class="text-secondary small">Superuser (kelola lewat Django Admin)</span>
+                            {% else %}
+                                <form method="post" action="{% url 'accounts:user-role-update' u.id %}" class="d-flex gap-1">
+                                    {% csrf_token %}
+                                    <select name="role" class="form-select form-select-sm">
+                                        {% for role in role_choices %}
+                                            <option value="{{ role }}" {% if role == u.current_role %}selected{% endif %}>{{ role }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Simpan</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="7" class="text-center text-secondary py-5">Tidak ada user yang cocok.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer d-flex align-items-center">
+            <div class="text-secondary">Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}</div>
+            <ul class="pagination m-0 ms-auto">
+                {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ query }}&role={{ selected_role }}">Sebelumnya</a></li>
+                {% endif %}
+                {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ query }}&role={{ selected_role }}">Berikutnya</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

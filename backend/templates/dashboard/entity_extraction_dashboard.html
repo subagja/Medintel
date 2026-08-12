@@ -19,6 +19,15 @@
     </div>
 </div>
 
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible" role="alert">
+            <div>{{ message }}</div>
+            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl-2">
         <div class="card"><div class="card-body medintel-stat-card">
@@ -74,8 +83,8 @@
         <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" class="row g-2 align-items-end">
             {% csrf_token %}
             <div class="col-md-3">
-                <label class="form-label small">Maks. artikel diproses</label>
-                <input type="number" name="limit" value="200" min="1" max="2000" class="form-control">
+                <label class="form-label small">Maks. artikel per klik</label>
+                <input type="number" name="limit" value="30" min="1" max="50" class="form-control">
             </div>
             <div class="col-md-4">
                 <div class="form-check mt-4">
@@ -90,7 +99,7 @@
             </div>
         </form>
         <div class="text-secondary small mt-2">
-            Berjalan di latar belakang -- refresh halaman ini beberapa saat untuk melihat progresnya.
+            Diproses langsung (tidak di latar belakang) -- dibatasi per klik supaya selalu selesai. Kalau masih banyak tersisa, klik lagi.
         </div>
     </div>
 </div>

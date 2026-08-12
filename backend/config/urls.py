@@ -42,4 +42,8 @@ urlpatterns = [
         "notifikasi/",
         include("apps.notifications.urls"),
     ),
+    path(
+        "pengguna/",
+        include("apps.accounts.urls"),
+    ),
 ]

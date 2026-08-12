@@ -191,7 +191,20 @@
             <div class="d-flex align-items-center justify-content-between mb-2"><h3 class="mb-0">{{ section.title }}</h3><span class="text-secondary small">{{ section.metrics|length }} indikator</span></div>
             <div class="row row-cards">
                 {% for metric in section.metrics %}
-                <div class="col-sm-6 col-xl-3"><div class="card metric-card"><div class="card-body"><div class="text-secondary small">{{ metric.label }}</div><div class="metric-value fw-bold mt-2 {% if metric.value == None %}text-secondary{% endif %}">{{ metric.display }}</div>{% if metric.denominator != None %}<div class="small text-secondary mt-2">n={{ metric.numerator|default_if_none:"—" }} dari {{ metric.denominator }}</div>{% endif %}{% if metric.note %}<div class="small text-secondary mt-2">{{ metric.note }}</div>{% endif %}</div></div></div>
+                <div class="col-sm-6 col-xl-3"><div class="card metric-card"><div class="card-body medintel-stat-card">
+                    {% if section.title == "Mutu Pengumpulan" %}
+                        <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"></path><path d="M7 11l5 5l5 -5"></path><path d="M12 4l0 12"></path></svg></div>
+                    {% elif section.title == "Mutu Data dan Ekstraksi" %}
+                        <div class="medintel-stat-icon bg-teal-lt text-teal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l11 0"></path><path d="M9 12l11 0"></path><path d="M9 18l11 0"></path><path d="M5 6l0 .01"></path><path d="M5 12l0 .01"></path><path d="M5 18l0 .01"></path></svg></div>
+                    {% elif section.title == "Efektivitas Intelijen" %}
+                        <div class="medintel-stat-icon bg-purple-lt text-purple"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6 -6l4 4l8 -8"></path><path d="M14 7l7 0l0 7"></path></svg></div>
+                    {% elif section.title == "Ketepatan Waktu" %}
+                        <div class="medintel-stat-icon bg-orange-lt text-orange"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 3"></path><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path></svg></div>
+                    {% else %}
+                        <div class="medintel-stat-icon bg-success-lt text-success"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path><path d="M9 12l2 2l4 -4"></path></svg></div>
+                    {% endif %}
+                    <div class="medintel-stat-body"><div class="text-secondary small">{{ metric.label }}</div><div class="metric-value fw-bold mt-1 {% if metric.value == None %}text-secondary{% endif %}">{{ metric.display }}</div>{% if metric.denominator != None %}<div class="small text-secondary mt-1">n={{ metric.numerator|default_if_none:"—" }} dari {{ metric.denominator }}</div>{% endif %}{% if metric.note %}<div class="small text-secondary mt-1">{{ metric.note }}</div>{% endif %}</div>
+                </div></div></div>
                 {% endfor %}
             </div>
         </div>

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Tambah User Baru | MEDINTEL OSINT{% endblock %}
+
+{% block content %}
+<div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+        <div class="col">
+            <div class="page-pretitle">
+                <a href="{% url 'accounts:user-role-list' %}">Manajemen Peran</a>
+            </div>
+            <h2 class="page-title">Tambah User Baru</h2>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% else %}alert-info{% endif %} alert-dismissible" role="alert">
+            <div>{{ message }}</div>
+            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                {{ form.username }}
+                {% for error in form.username.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Nama Depan</label>
+                    {{ form.first_name }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Nama Belakang</label>
+                    {{ form.last_name }}
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                {{ form.email }}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Peran</label>
+                {{ form.role }}
+                {% for error in form.role.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                {{ form.password1 }}
+                {% for error in form.password1.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                <div class="form-hint">Minimal 8 karakter, tidak boleh terlalu umum atau full angka.</div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Konfirmasi Password</label>
+                {{ form.password2 }}
+                {% for error in form.password2.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+            </div>
+
+            <button type="submit" class="btn btn-primary">Buat User</button>
+            <a href="{% url 'accounts:user-role-list' %}" class="btn btn-outline-secondary">Batal</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

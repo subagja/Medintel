@@ -264,7 +264,7 @@
                 </div>
                 {% if selected_signal.status != 'closed' and selected_signal.status != 'rejected' %}
                 <div class="card-footer d-flex justify-content-end gap-2">
-                    {% if request.user|has_role:"contributors" %}
+                    {% if request.user|has_role:"approvers" %}
                         {% if selected_signal.status != 'validated' or selected_signal.analyst_judgement == '' %}
                             <button type="submit" name="action" value="validate_signal" class="btn btn-success">Konfirmasi Sinyal</button>
                         {% else %}
@@ -273,6 +273,8 @@
                         {% if selected_signal.status == 'needs_review' or selected_signal.status == 'under_review' %}
                             <button type="submit" name="action" value="reject_signal" class="btn btn-outline-danger">Tolak</button>
                         {% endif %}
+                    {% elif request.user|has_role:"contributors" %}
+                        <span class="text-secondary small">Konfirmasi/penolakan sinyal memerlukan peran Reviewer atau Admin.</span>
                     {% else %}
                         <span class="text-secondary small">Peran Anda hanya bisa melihat, tidak dapat mengubah status sinyal.</span>
                     {% endif %}
@@ -280,6 +282,125 @@
                 {% endif %}
             </div>
         </form>
+
+        {% if request.user|has_role:"contributors" %}
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Kendali Korelasi Sinyal</h3></div>
+            <div class="card-body">
+                <h4 class="h5">Artikel Bukti Terhubung</h4>
+                {% for relation in selected_signal.signal_articles.all %}
+                    <div class="card card-sm mb-2"><div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div>
+                                <div class="fw-semibold">{{ relation.article.title }}</div>
+                                <div class="small text-secondary">{{ relation.article.source.name }} · {{ relation.get_support_type_display }}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 mt-2 flex-wrap">
+                            <form method="post" class="d-flex gap-1">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="update_support_type">
+                                <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                                <input type="hidden" name="signal_article_id" value="{{ relation.id }}">
+                                <select name="support_type" class="form-select form-select-sm">
+                                    {% for value, label in support_type_choices %}
+                                        <option value="{{ value }}" {% if relation.support_type == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary">Ubah</button>
+                            </form>
+                            <form method="post" class="d-flex gap-1" onsubmit="return confirm('Lepas artikel ini dari sinyal?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="detach_article">
+                                <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                                <input type="hidden" name="signal_article_id" value="{{ relation.id }}">
+                                <input type="text" name="detach_reason" class="form-control form-control-sm" placeholder="Alasan lepas" required>
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Lepas</button>
+                            </form>
+                        </div>
+                    </div></div>
+                {% empty %}<div class="alert alert-warning">Belum ada artikel pendukung.</div>{% endfor %}
+
+                <hr>
+                <h4 class="h5">Tambah Artikel Bukti</h4>
+                <form method="post" class="row g-2 align-items-end">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="attach_article">
+                    <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                    <div class="col-md-7">
+                        <select name="attach_article_id" class="form-select form-select-sm">
+                            <option value="">-- pilih artikel (penyakit sama, belum terhubung) --</option>
+                            {% for article in attachable_articles %}
+                                <option value="{{ article.id }}">{{ article.title }} ({{ article.source.name }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="attach_support_type" class="form-select form-select-sm">
+                            {% for value, label in support_type_choices %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-sm btn-primary w-100">Tambah</button>
+                    </div>
+                </form>
+
+                <hr>
+                <h4 class="h5">Gabungkan dengan Sinyal Lain</h4>
+                <div class="text-secondary small mb-2">Pilih sinyal lain (penyakit sama) yang sebenarnya kejadian yang sama -- semua artikelnya akan dipindah ke sinyal ini.</div>
+                <form method="post" class="row g-2 align-items-end" onsubmit="return confirm('Gabungkan sinyal terpilih ke sinyal ini? Sinyal sumber akan ditutup.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="merge_signal">
+                    <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                    <div class="col-md-5">
+                        <select name="merge_secondary_signal_id" class="form-select form-select-sm" required>
+                            <option value="">-- pilih sinyal untuk digabung --</option>
+                            {% for other in merge_candidates %}
+                                <option value="{{ other.id }}">{{ other.code }} — {{ other.title|truncatechars:40 }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <input type="text" name="merge_reason" class="form-control form-control-sm" placeholder="Alasan penggabungan" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-sm btn-outline-warning w-100">Gabung</button>
+                    </div>
+                </form>
+
+                <hr>
+                <h4 class="h5">Pisahkan Sebagian Artikel</h4>
+                <div class="text-secondary small mb-2">Centang artikel yang sebenarnya kejadian berbeda -- akan dipindah ke sinyal baru terpisah.</div>
+                <form method="post" onsubmit="return confirm('Pisahkan artikel terpilih menjadi sinyal baru?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="split_signal">
+                    <input type="hidden" name="signal_id" value="{{ selected_signal.id }}">
+                    {% for relation in selected_signal.signal_articles.all %}
+                        <label class="form-check">
+                            <input class="form-check-input" type="checkbox" name="split_article_ids" value="{{ relation.article.id }}">
+                            <span class="form-check-label small">{{ relation.article.title }}</span>
+                        </label>
+                    {% endfor %}
+                    <div class="row g-2 mt-2">
+                        <div class="col-md-5">
+                            <input type="text" name="split_title" class="form-control form-control-sm" placeholder="Judul sinyal baru" required>
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="split_summary" class="form-control form-control-sm" placeholder="Ringkasan sinyal baru" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-outline-danger w-100">Pisahkan</button>
+                        </div>
+                        <div class="col-12">
+                            <input type="text" name="split_reason" class="form-control form-control-sm" placeholder="Alasan pemisahan" required>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="card">
             <div class="card-header"><h3 class="card-title">Riwayat Sinyal</h3></div>

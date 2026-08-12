@@ -126,3 +126,17 @@ python manage.py test apps.collection.tests_queue apps.crawlers.tests_unified ap
 //worker
 # Terminal 2
 python manage.py run_collection_worker --concurrency 3
+
+
+//shell buat batalin crawling
+from apps.collection.models import CollectionJob
+from django.utils import timezone
+
+count = CollectionJob.objects.filter(
+    status__in=[CollectionJob.Status.PENDING, CollectionJob.Status.RUNNING]
+).update(
+    status=CollectionJob.Status.CANCELLED,
+    finished_at=timezone.now(),
+    error_message="Dibatalkan manual: restart bersih setelah server di-terminate.",
+)
+print(f"{count} job dibatalkan.")

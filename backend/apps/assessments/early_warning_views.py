@@ -4,7 +4,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from apps.accounts.permissions import Roles, require_role_by_method
+from apps.accounts.permissions import Roles, has_role, require_role_by_method
 
 from .forms import EarlyWarningCloseForm, EarlyWarningIssueForm
 from .models import EarlyWarning, SignalAssessment
@@ -116,8 +116,13 @@ def early_warning_workspace(request: HttpRequest) -> HttpResponse:
             action = request.POST.get("action")
 
             if action == "issue_warning":
-                issue_form = EarlyWarningIssueForm(request.POST)
-                if issue_form.is_valid():
+                if not has_role(request.user, *Roles.APPROVERS):
+                    messages.error(
+                        request,
+                        "Penerbitan peringatan dini memerlukan peran Reviewer atau Admin.",
+                    )
+                    issue_form = EarlyWarningIssueForm(request.POST)
+                elif (issue_form := EarlyWarningIssueForm(request.POST)).is_valid():
                     try:
                         warning = issue_early_warning(
                             assessment=selected_assessment,
@@ -154,7 +159,12 @@ def early_warning_workspace(request: HttpRequest) -> HttpResponse:
                     assessment=selected_assessment,
                     is_current=True,
                 )
-                if close_form.is_valid():
+                if not has_role(request.user, *Roles.APPROVERS):
+                    messages.error(
+                        request,
+                        "Penutupan peringatan dini memerlukan peran Reviewer atau Admin.",
+                    )
+                elif close_form.is_valid():
                     try:
                         close_early_warning(
                             warning=warning,

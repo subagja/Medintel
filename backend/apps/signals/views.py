@@ -5,13 +5,17 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from apps.accounts.permissions import Roles, require_role_by_method
+from apps.accounts.permissions import (
+    Roles,
+    has_role,
+    require_role_by_method,
+)
 
 from apps.articles.models import Article
 from apps.assessments.models import ArticleValidationAssessment
 
 from .forms import SignalFormationForm, SignalReviewForm
-from .models import Signal
+from .models import Signal, SignalArticle
 from .services import (
     correct_signal,
     evaluate_article_signal_candidate,
@@ -19,6 +23,13 @@ from .services import (
     reject_signal,
     start_signal_review,
     validate_signal,
+)
+from .services.correlation import (
+    attach_article_to_signal,
+    detach_article_from_signal,
+    merge_signals,
+    split_signal,
+    update_article_support_type,
 )
 
 
@@ -201,7 +212,12 @@ def signal_workspace(request: HttpRequest) -> HttpResponse:
             mode = "signals"
             selected_signal = signal
 
-            if review_form.is_valid():
+            if not has_role(request.user, *Roles.APPROVERS):
+                messages.error(
+                    request,
+                    "Konfirmasi/penolakan sinyal memerlukan peran Reviewer atau Admin.",
+                )
+            elif review_form.is_valid():
                 notes = review_form.cleaned_data["review_notes"]
                 try:
                     if action == "reject_signal":
@@ -232,6 +248,131 @@ def signal_workspace(request: HttpRequest) -> HttpResponse:
                         _workspace_url(mode="signals", signal_id=signal.pk)
                     )
 
+        elif action == "attach_article":
+            signal = get_object_or_404(Signal, pk=request.POST.get("signal_id"))
+            mode = "signals"
+            selected_signal = signal
+            article_id = request.POST.get("attach_article_id", "").strip()
+            support_type = request.POST.get(
+                "attach_support_type", SignalArticle.SupportType.SUPPORTING
+            )
+            try:
+                article = Article.objects.get(pk=article_id)
+                attach_article_to_signal(
+                    signal=signal,
+                    article=article,
+                    actor=request.user,
+                    support_type=support_type,
+                )
+            except (Article.DoesNotExist, ValueError):
+                messages.error(request, "Artikel tidak ditemukan.")
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    f"Artikel berhasil ditambahkan ke sinyal {signal.code}.",
+                )
+                return redirect(
+                    _workspace_url(mode="signals", signal_id=signal.pk)
+                )
+
+        elif action == "detach_article":
+            signal = get_object_or_404(Signal, pk=request.POST.get("signal_id"))
+            mode = "signals"
+            selected_signal = signal
+            link = get_object_or_404(
+                SignalArticle,
+                pk=request.POST.get("signal_article_id"),
+                signal=signal,
+            )
+            try:
+                detach_article_from_signal(
+                    signal_article=link,
+                    actor=request.user,
+                    reason=request.POST.get("detach_reason", ""),
+                )
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(request, "Artikel berhasil dilepas dari sinyal.")
+                return redirect(
+                    _workspace_url(mode="signals", signal_id=signal.pk)
+                )
+
+        elif action == "update_support_type":
+            signal = get_object_or_404(Signal, pk=request.POST.get("signal_id"))
+            mode = "signals"
+            selected_signal = signal
+            link = get_object_or_404(
+                SignalArticle,
+                pk=request.POST.get("signal_article_id"),
+                signal=signal,
+            )
+            try:
+                update_article_support_type(
+                    signal_article=link,
+                    support_type=request.POST.get("support_type", ""),
+                    actor=request.user,
+                )
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(request, "Jenis dukungan artikel berhasil diperbarui.")
+                return redirect(
+                    _workspace_url(mode="signals", signal_id=signal.pk)
+                )
+
+        elif action == "merge_signal":
+            signal = get_object_or_404(Signal, pk=request.POST.get("signal_id"))
+            mode = "signals"
+            selected_signal = signal
+            secondary = get_object_or_404(
+                Signal, pk=request.POST.get("merge_secondary_signal_id")
+            )
+            try:
+                merge_signals(
+                    primary_signal=signal,
+                    secondary_signal=secondary,
+                    actor=request.user,
+                    reason=request.POST.get("merge_reason", ""),
+                )
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    f"Sinyal {secondary.code} berhasil digabungkan ke {signal.code}.",
+                )
+                return redirect(
+                    _workspace_url(mode="signals", signal_id=signal.pk)
+                )
+
+        elif action == "split_signal":
+            signal = get_object_or_404(Signal, pk=request.POST.get("signal_id"))
+            mode = "signals"
+            selected_signal = signal
+            article_ids = request.POST.getlist("split_article_ids")
+            try:
+                new_signal = split_signal(
+                    source_signal=signal,
+                    article_ids=article_ids,
+                    actor=request.user,
+                    new_title=request.POST.get("split_title", ""),
+                    new_summary=request.POST.get("split_summary", ""),
+                    reason=request.POST.get("split_reason", ""),
+                )
+            except ValidationError as exc:
+                messages.error(request, " ".join(exc.messages))
+            else:
+                messages.success(
+                    request,
+                    f"Sinyal baru {new_signal.code} berhasil dibentuk dari pemisahan.",
+                )
+                return redirect(
+                    _workspace_url(mode="signals", signal_id=new_signal.pk)
+                )
+
     summary = {
         "candidates": len(candidate_rows),
         "needs_review": Signal.objects.filter(
@@ -242,6 +383,32 @@ def signal_workspace(request: HttpRequest) -> HttpResponse:
         ).count(),
         "escalated": Signal.objects.filter(status=Signal.Status.ESCALATED).count(),
     }
+
+    attachable_articles = []
+    merge_candidates = []
+    if selected_signal is not None:
+        linked_article_ids = selected_signal.signal_articles.values_list(
+            "article_id", flat=True
+        )
+        attachable_articles = list(
+            Article.objects.filter(
+                diseases=selected_signal.primary_disease,
+            )
+            .exclude(id__in=linked_article_ids)
+            .select_related("source")
+            .order_by("-published_at")[:30]
+        )
+        merge_candidates = list(
+            Signal.objects.filter(
+                primary_disease=selected_signal.primary_disease,
+            )
+            .exclude(id=selected_signal.id)
+            .exclude(
+                status__in=[Signal.Status.REJECTED, Signal.Status.CLOSED]
+            )
+            .select_related("primary_location")
+            .order_by("-last_updated_at")[:20]
+        )
 
     return render(
         request,
@@ -257,6 +424,9 @@ def signal_workspace(request: HttpRequest) -> HttpResponse:
             "formation_form": formation_form,
             "review_form": review_form,
             "summary": summary,
+            "attachable_articles": attachable_articles,
+            "merge_candidates": merge_candidates,
+            "support_type_choices": SignalArticle.SupportType.choices,
         },
     )
 
