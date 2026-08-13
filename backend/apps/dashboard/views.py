@@ -117,8 +117,18 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
 
     total_articles = Article.objects.count()
 
-    new_articles = Article.objects.filter(
-        processing_status=Article.ProcessingStatus.NEW,
+    # Status pemeriksaan validator adalah sumber utama kartu Dashboard.
+    # Article.processing_status menggambarkan tahap pipeline dan dapat tetap
+    # PROCESSED meskipun artikel sedang menunggu keputusan validator.
+    pending_validation_articles = Article.objects.filter(
+        Q(validation_assessment__isnull=True)
+        | Q(
+            validation_assessment__validation_status=(
+                ArticleValidationAssessment
+                .ValidationStatus
+                .PENDING
+            )
+        )
     ).count()
 
     processed_articles = Article.objects.filter(
@@ -126,11 +136,15 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
     ).count()
 
     validated_articles = Article.objects.filter(
-        processing_status=Article.ProcessingStatus.VALIDATED,
+        validation_assessment__validation_status=(
+            ArticleValidationAssessment.ValidationStatus.VALIDATED
+        )
     ).count()
 
     rejected_articles = Article.objects.filter(
-        processing_status=Article.ProcessingStatus.REJECTED,
+        validation_assessment__validation_status=(
+            ArticleValidationAssessment.ValidationStatus.REJECTED
+        )
     ).count()
 
     latest_articles = (
@@ -193,7 +207,7 @@ def dashboard_overview(request: HttpRequest) -> HttpResponse:
         "active_menu": "dashboard",
         "summary": {
             "total_articles": total_articles,
-            "new_articles": new_articles,
+            "new_articles": pending_validation_articles,
             "processed_articles": processed_articles,
             "validated_articles": validated_articles,
             "rejected_articles": rejected_articles,
@@ -1492,10 +1506,12 @@ def _extra_filter_querystring(filters: dict) -> str:
 
 def _build_validation_redirect_url(
     *,
-    article_id,
+    article_id=None,
     tab: str,
     eligibility: str,
     filters: dict,
+    workspace: str = "queue",
+    history_status: str = "all",
     page=None,
 ) -> str:
     """URL kembali ke workspace Validasi Artikel setelah aksi POST,
@@ -1503,7 +1519,9 @@ def _build_validation_redirect_url(
     dipertahankan supaya daftar artikel tidak ter-reset ke tanpa filter.
     """
     params = {
+        "workspace": workspace,
         "eligibility": eligibility,
+        "history_status": history_status,
         "tab": tab,
     }
 
@@ -1523,7 +1541,6 @@ def _build_validation_redirect_url(
         "date_from",
         "date_to",
         "q",
-        "validation_status",
     ):
         value = filters.get(key)
         if value:
@@ -1544,25 +1561,91 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             "validasi artikel."
         )
 
-    articles = _validation_queryset()
-
-    eligibility_filter = request.GET.get(
-        "eligibility",
-        "all",
+    workspace_mode = (
+        request.POST.get("workspace")
+        or request.GET.get("workspace")
+        or "queue"
     )
+    if workspace_mode not in {"queue", "history"}:
+        workspace_mode = "queue"
 
-    if eligibility_filter == "eligible":
-        articles = articles.filter(
-            has_extracted_disease=True,
-            has_extracted_location=True,
-            has_numeric_fact=True,
+    eligibility_filter = (
+        request.POST.get("eligibility")
+        or request.GET.get("eligibility")
+        or "all"
+    )
+    if eligibility_filter not in {
+        "all",
+        "eligible",
+        "needs_review",
+    }:
+        eligibility_filter = "all"
+
+    history_status_filter = (
+        request.POST.get("history_status")
+        or request.GET.get("history_status")
+        or "all"
+    )
+    if history_status_filter not in {
+        "all",
+        "validated",
+        "rejected",
+    }:
+        history_status_filter = "all"
+
+    articles = _validation_queryset()
+    pending_status = (
+        ArticleValidationAssessment.ValidationStatus.PENDING
+    )
+    completed_statuses = {
+        ArticleValidationAssessment.ValidationStatus.VALIDATED,
+        ArticleValidationAssessment.ValidationStatus.REJECTED,
+    }
+
+    if workspace_mode == "history":
+        # Eligibility adalah filter antrean. Pada riwayat, pengguna
+        # memilih status selesai agar tidak ada filter yang tersembunyi.
+        eligibility_filter = "all"
+        if history_status_filter == "all":
+            articles = articles.filter(
+                validation_assessment__validation_status__in=(
+                    completed_statuses
+                )
+            )
+        else:
+            articles = articles.filter(
+                validation_assessment__validation_status=(
+                    history_status_filter
+                )
+            )
+        articles = articles.order_by(
+            "-validation_assessment__updated_at",
+            "-published_at",
+            "-crawled_at",
         )
-    elif eligibility_filter == "needs_review":
+    else:
+        history_status_filter = "all"
         articles = articles.filter(
-            Q(has_extracted_disease=False)
-            | Q(has_extracted_location=False)
-            | Q(has_numeric_fact=False)
+            Q(validation_assessment__isnull=True)
+            | Q(
+                validation_assessment__validation_status=(
+                    pending_status
+                )
+            )
         )
+
+        if eligibility_filter == "eligible":
+            articles = articles.filter(
+                has_extracted_disease=True,
+                has_extracted_location=True,
+                has_numeric_fact=True,
+            )
+        elif eligibility_filter == "needs_review":
+            articles = articles.filter(
+                Q(has_extracted_disease=False)
+                | Q(has_extracted_location=False)
+                | Q(has_numeric_fact=False)
+            )
 
     articles, active_filters = apply_article_filters(
         articles,
@@ -1575,45 +1658,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             Q(title__icontains=search_query)
             | Q(source__name__icontains=search_query)
         )
-
-    validation_status_filter = request.GET.get(
-        "validation_status",
-        "",
-    )
-    allowed_validation_statuses = {
-        ArticleValidationAssessment.ValidationStatus.PENDING,
-        ArticleValidationAssessment.ValidationStatus.VALIDATED,
-        ArticleValidationAssessment.ValidationStatus.REJECTED,
-    }
-    if validation_status_filter not in allowed_validation_statuses:
-        validation_status_filter = ""
-
-    if validation_status_filter:
-        if (
-            validation_status_filter
-            == ArticleValidationAssessment.ValidationStatus.PENDING
-        ):
-            articles = articles.filter(
-                Q(
-                    validation_assessment__validation_status=(
-                        ArticleValidationAssessment
-                        .ValidationStatus
-                        .PENDING
-                    )
-                )
-                | Q(validation_assessment__isnull=True)
-            )
-        else:
-            articles = articles.filter(
-                validation_assessment__validation_status=(
-                    validation_status_filter
-                )
-            )
-
     active_filters["q"] = search_query
-    active_filters["validation_status"] = (
-        validation_status_filter
-    )
 
     paginator = Paginator(articles, 50)
     requested_page = (
@@ -1635,6 +1680,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             id=selected_article_id,
         ).first()
         if selected_article is None:
+            # URL lama atau artikel yang baru saja berpindah status tidak
+            # boleh membuat workspace 404. ID yang benar tetapi sudah di
+            # luar tab aktif akan dialihkan ke item pertama pada halaman.
             get_object_or_404(
                 _validation_queryset(),
                 id=selected_article_id,
@@ -1841,6 +1889,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             tab="disease",
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            workspace=workspace_mode,
+                            history_status=history_status_filter,
                             page=page_obj.number,
                         )
                     )
@@ -1917,6 +1967,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             tab="location",
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            workspace=workspace_mode,
+                            history_status=history_status_filter,
                             page=page_obj.number,
                         )
                     )
@@ -2059,12 +2111,47 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             ),
                         )
 
+                    saved_is_completed = (
+                        saved_assessment.validation_status
+                        in completed_statuses
+                    )
+                    target_workspace = workspace_mode
+                    target_history_status = history_status_filter
+                    target_article_id = selected_article.id
+
+                    if saved_is_completed and workspace_mode == "queue":
+                        # Artikel selesai langsung keluar dari antrean.
+                        # Tanpa article ID, halaman otomatis memilih item
+                        # antrean berikutnya untuk melanjutkan pekerjaan.
+                        target_article_id = None
+                        target_workspace = "queue"
+                        target_history_status = "all"
+                        messages.info(
+                            request,
+                            (
+                                "Artikel telah dipindahkan ke Riwayat "
+                                "Validasi dan tidak lagi tampil di antrean."
+                            ),
+                        )
+                    elif saved_is_completed:
+                        # Jika status selesai diubah dari halaman riwayat,
+                        # tampilkan lagi itemnya tanpa terjebak subfilter lama.
+                        target_workspace = "history"
+                        target_history_status = "all"
+                    else:
+                        # Mengembalikan artikel selesai ke Perlu Tinjau akan
+                        # memindahkannya kembali ke antrean aktif.
+                        target_workspace = "queue"
+                        target_history_status = "all"
+
                     return redirect(
                         _build_validation_redirect_url(
-                            article_id=selected_article.id,
+                            article_id=target_article_id,
                             tab=active_validation_tab,
                             eligibility=eligibility_filter,
                             filters=active_filters,
+                            workspace=target_workspace,
+                            history_status=target_history_status,
                             page=page_obj.number,
                         )
                     )
@@ -2106,20 +2193,26 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         )
     ).count()
 
-    pending_count = (
-        total_articles
-        - validated_count
-        - rejected_count
+    queue_articles = base_articles.filter(
+        Q(validation_assessment__isnull=True)
+        | Q(
+            validation_assessment__validation_status=(
+                ArticleValidationAssessment
+                .ValidationStatus
+                .PENDING
+            )
+        )
     )
+    pending_count = queue_articles.count()
 
-    eligible_count = _validation_queryset().filter(
+    eligible_count = queue_articles.filter(
         has_extracted_disease=True,
         has_extracted_location=True,
         has_numeric_fact=True,
     ).count()
 
     needs_review_count = (
-        _validation_queryset()
+        queue_articles
         .filter(
             Q(has_extracted_disease=False)
             | Q(has_extracted_location=False)
@@ -2149,15 +2242,18 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "selected_locations": selected_locations,
         "selected_facts": selected_facts,
         "selected_eligibility": selected_eligibility,
+        "workspace_mode": workspace_mode,
         "eligibility_filter": eligibility_filter,
+        "history_status_filter": history_status_filter,
         "search_query": search_query,
-        "validation_status_filter": validation_status_filter,
         "active_filters": active_filters,
         "extra_filter_qs": _extra_filter_querystring(active_filters),
         **build_article_filter_options(),
         "summary": {
-            "total": total_articles,
+            "total": pending_count,
+            "all": total_articles,
             "pending": pending_count,
+            "completed": validated_count + rejected_count,
             "validated": validated_count,
             "rejected": rejected_count,
             "eligible": eligible_count,
@@ -3188,11 +3284,22 @@ def spread_map(request: HttpRequest) -> HttpResponse:
 
 @require_role(*Roles.ALL)
 def spread_map_data(request: HttpRequest) -> HttpResponse:
-    """API JSON: rangkaian waktu jumlah kasus kumulatif per lokasi
-    (level provinsi ATAU kabupaten/kota) untuk satu penyakit, dipakai
-    peta persebaran timeline di frontend.
+    """API timeline metrik sebaran artikel untuk satu penyakit.
+
+    Provinsi dinormalisasi memakai penduduk BPS 2025. Kabupaten/kota
+    tetap memakai jumlah kasus terlapor karena denominator resmi yang
+    lengkap belum dipasang. Setiap frame memakai jendela berjalan 14
+    hari supaya angka lama tidak terus menumpuk tanpa batas.
     """
     from datetime import timedelta
+
+    from .spread_map_metrics import (
+        ROLLING_WINDOW_DAYS,
+        metric_metadata,
+        normalize_bps_code,
+        province_population,
+        rate_per_100k,
+    )
 
     disease_code = request.GET.get("disease", "").strip()
     level = request.GET.get("level", "province").strip()
@@ -3213,8 +3320,12 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
         ArticleFact.objects.filter(
             event_date__isnull=False,
             location__isnull=False,
+            case_count__gt=0,
         )
         .select_related(
+            "article",
+            "article__source",
+            "disease",
             "location",
             "location__parent",
             "location__parent__parent",
@@ -3226,9 +3337,17 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
         facts = facts.filter(disease__code=disease_code)
 
     facts = list(facts.order_by("event_date"))
+    metric = metric_metadata(level)
 
     if not facts:
-        return JsonResponse({"timeline": [], "locations": {}})
+        return JsonResponse(
+            {
+                "timeline": [],
+                "locations": {},
+                "level": level,
+                "metric": metric,
+            }
+        )
 
     def resolve_ancestor(location):
         """Naik rantai parent sampai ketemu level target, None kalau
@@ -3253,6 +3372,10 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
             ancestor_cache[location.id] = resolve_ancestor(location)
         return ancestor_cache[location.id]
 
+    def location_code(location):
+        normalized_code = normalize_bps_code(location.code)
+        return normalized_code or str(location.id)
+
     earliest = facts[0].event_date
     latest = max(f.event_date for f in facts)
 
@@ -3265,52 +3388,122 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
     if not buckets or buckets[-1] < latest:
         buckets.append(latest)
 
-    # cumulative[location_code] -> {"case_count": int, "is_new": bool}
-    cumulative = {}
     timeline = []
-    fact_index = 0
-    facts_sorted = facts
 
     for bucket_end in buckets:
-        new_this_bucket = set()
+        window_start = bucket_end - timedelta(
+            days=ROLLING_WINDOW_DAYS - 1
+        )
+        new_since = bucket_end - timedelta(days=6)
+        frame_groups = {}
+        seen_reported_values = set()
 
-        while (
-            fact_index < len(facts_sorted)
-            and facts_sorted[fact_index].event_date <= bucket_end
-        ):
-            fact = facts_sorted[fact_index]
+        for fact in facts:
+            if fact.event_date < window_start:
+                continue
+            if fact.event_date > bucket_end:
+                break
+
             ancestor = get_ancestor(fact.location)
-            fact_index += 1
-
             if ancestor is None:
                 continue
 
-            code = ancestor.code or str(ancestor.id)
-            locations_meta[code] = {
-                "name": ancestor.name,
-                "id": str(ancestor.id),
-            }
-
-            entry = cumulative.setdefault(
-                code,
-                {"case_count": 0, "is_new": False},
+            code = location_code(ancestor)
+            population_reference = (
+                province_population(ancestor.code)
+                if level == "province"
+                else None
             )
-            entry["case_count"] += fact.case_count or 0
+            locations_meta.setdefault(
+                code,
+                {
+                    "name": ancestor.name,
+                    "id": str(ancestor.id),
+                    "code": code,
+                    "administrative_level": (
+                        ancestor.administrative_level
+                    ),
+                    "population": (
+                        population_reference["population"]
+                        if population_reference
+                        else None
+                    ),
+                    "population_reference_year": (
+                        population_reference["reference_year"]
+                        if population_reference
+                        else None
+                    ),
+                },
+            )
 
-            if fact.trend == ArticleFact.Trend.NEW_OCCURRENCE:
-                new_this_bucket.add(code)
+            entry = frame_groups.setdefault(
+                code,
+                {
+                    "reported_case_count": 0,
+                    "article_ids": set(),
+                    "sources": set(),
+                    "is_new": False,
+                    "population_reference": population_reference,
+                },
+            )
+            entry["article_ids"].add(str(fact.article_id))
+            if fact.article.source_id:
+                entry["sources"].add(fact.article.source.name)
+
+            # Heuristik minimum: angka yang sama untuk penyakit, lokasi
+            # asli, dan tanggal kejadian yang sama dihitung satu kali,
+            # walaupun diberitakan ulang oleh beberapa artikel.
+            reported_value_key = (
+                str(fact.disease_id),
+                str(fact.location_id),
+                fact.event_date,
+                fact.case_count,
+            )
+            if reported_value_key not in seen_reported_values:
+                seen_reported_values.add(reported_value_key)
+                entry["reported_case_count"] += fact.case_count
+
+            if (
+                fact.trend == ArticleFact.Trend.NEW_OCCURRENCE
+                and fact.event_date >= new_since
+            ):
+                entry["is_new"] = True
+
+        frame_locations = {}
+        for code, data in frame_groups.items():
+            case_count = data["reported_case_count"]
+            if case_count <= 0:
+                continue
+
+            population = None
+            metric_value = float(case_count)
+            if level == "province":
+                population_reference = data["population_reference"]
+                population = (
+                    population_reference["population"]
+                    if population_reference
+                    else None
+                )
+                metric_value = rate_per_100k(case_count, population)
+
+            frame_locations[code] = {
+                # case_count dipertahankan untuk kompatibilitas klien lama.
+                "case_count": case_count,
+                "reported_case_count": case_count,
+                "metric_value": metric_value,
+                "population": population,
+                "article_count": len(data["article_ids"]),
+                "source_count": len(data["sources"]),
+                "sources": sorted(data["sources"]),
+                "is_new": data["is_new"],
+            }
 
         timeline.append(
             {
                 "date": bucket_end.isoformat(),
-                "locations": {
-                    code: {
-                        "case_count": data["case_count"],
-                        "is_new": code in new_this_bucket,
-                    }
-                    for code, data in cumulative.items()
-                    if data["case_count"] > 0
-                },
+                "period_start": window_start.isoformat(),
+                "period_end": bucket_end.isoformat(),
+                "locations": frame_locations,
             }
         )
 
@@ -3319,6 +3512,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
             "timeline": timeline,
             "locations": locations_meta,
             "level": level,
+            "metric": metric,
         }
     )
 

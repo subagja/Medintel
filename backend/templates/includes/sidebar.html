@@ -1,6 +1,7 @@
-{% load role_tags %}
+{% load static %}
 <aside
-    class="navbar navbar-vertical navbar-expand-lg"
+    class="navbar navbar-vertical navbar-expand-lg medintel-sidebar"
+    id="medintel-sidebar"
     data-bs-theme="dark"
 >
     <div class="container-fluid">
@@ -19,13 +20,29 @@
         </button>
 
         <!-- Identitas aplikasi -->
-        <h1 class="navbar-brand navbar-brand-autodark">
-            <a href="{% url 'dashboard:overview' %}">
-                <span class="medintel-brand">
-                    MEDINTEL OSINT
+        <h1 class="navbar-brand navbar-brand-autodark medintel-sidebar-brand">
+            <a href="{% url 'dashboard:overview' %}" aria-label="MEDINTEL OSINT">
+                <img class="medintel-sidebar-logo" src="{% static 'img/brand/medintel-sidebar-transparent.png' %}" alt="" aria-hidden="true">
+                <span class="medintel-sidebar-wordmark" aria-hidden="true">
+                    <span>MEDINTEL</span>
+                    <small>OSINT</small>
                 </span>
             </a>
         </h1>
+
+        <button
+            class="btn btn-icon medintel-sidebar-collapse d-none d-lg-inline-flex"
+            id="medintel-sidebar-collapse"
+            type="button"
+            aria-controls="medintel-sidebar"
+            aria-expanded="true"
+            title="Ciutkan sidebar"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 6l-6 6l6 6"></path>
+            </svg>
+            <span class="visually-hidden">Ciutkan sidebar</span>
+        </button>
 
         <div
             class="collapse navbar-collapse"
@@ -593,41 +610,70 @@
                     </a>
                 </li>
 
-                {% if request.user|has_role:"Admin" %}
-                <!-- Administrasi sistem -->
-                <li class="nav-item mt-3">
-                    <span class="nav-link disabled medintel-menu-label">
-                        Administrasi Sistem
-                    </span>
-                </li>
-
-                <li class="nav-item">
-                    <a
-                        class="nav-link{% if active_menu == 'user_roles' %} active{% endif %}"
-                        href="{% url 'accounts:user-role-list' %}"
-                    >
-                        <span class="nav-link-icon d-md-none d-lg-inline-block">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="24"
-                                height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"></path>
-                                <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"></path>
-                            </svg>
-                        </span>
-                        <span class="nav-link-title">Manajemen Peran</span>
-                    </a>
-                </li>
-                {% endif %}
-
             </ul>
         </div>
     </div>
 </aside>
+
+<script>
+    (() => {
+        const button = document.getElementById(
+            "medintel-sidebar-collapse"
+        );
+        const preferenceKey = "medintel.sidebar.collapsed";
+
+        document.querySelectorAll(
+            "#sidebar-menu a.nav-link"
+        ).forEach((link) => {
+            const label = link.querySelector(".nav-link-title");
+            if (label) {
+                link.title = label.textContent.trim();
+            }
+        });
+
+        if (!button) {
+            return;
+        }
+
+        const applyState = (collapsed) => {
+            document.body.classList.toggle(
+                "medintel-sidebar-collapsed",
+                collapsed
+            );
+            button.setAttribute("aria-expanded", String(!collapsed));
+            button.title = collapsed
+                ? "Buka sidebar"
+                : "Ciutkan sidebar";
+
+            const label = button.querySelector(".visually-hidden");
+            if (label) {
+                label.textContent = button.title;
+            }
+        };
+
+        let initialState = false;
+        try {
+            initialState = window.localStorage.getItem(
+                preferenceKey
+            ) === "true";
+        } catch (_error) {
+            initialState = false;
+        }
+        applyState(initialState);
+
+        button.addEventListener("click", () => {
+            const collapsed = !document.body.classList.contains(
+                "medintel-sidebar-collapsed"
+            );
+            applyState(collapsed);
+            try {
+                window.localStorage.setItem(
+                    preferenceKey,
+                    String(collapsed)
+                );
+            } catch (_error) {
+                // Mode ciut tetap berjalan tanpa penyimpanan browser.
+            }
+        });
+    })();
+</script>

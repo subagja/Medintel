@@ -158,3 +158,176 @@ body {
 .medintel-stat-body .h2 {
     line-height: 1.1;
 }
+
+.medintel-sidebar {
+    transition: width 180ms ease;
+    overflow-x: hidden;
+}
+
+#medintel-sidebar .navbar-collapse {
+    overflow-x: hidden;
+}
+
+#medintel-sidebar .medintel-sidebar-brand {
+    position: relative;
+    width: 100%;
+    min-height: 4.25rem;
+    margin: 0;
+    padding: 0.65rem 2.6rem 0.65rem 1rem;
+}
+
+#medintel-sidebar .medintel-sidebar-brand > a {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.7rem;
+}
+
+#medintel-sidebar .medintel-sidebar-logo {
+    display: block;
+    flex: 0 0 auto;
+    width: 2.5rem !important;
+    min-width: 2.5rem !important;
+    max-width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-height: 2.5rem !important;
+    max-height: 2.5rem !important;
+    object-fit: contain;
+}
+
+#medintel-sidebar .medintel-sidebar-wordmark {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: 0.04em;
+}
+
+#medintel-sidebar .medintel-sidebar-wordmark small {
+    margin-top: 0.18rem;
+    color: #3d8cff;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+}
+
+.medintel-sidebar > .container-fluid > .medintel-sidebar-collapse {
+    position: absolute !important;
+    z-index: 3;
+    top: 0.65rem;
+    right: 0.55rem;
+    width: 1.35rem !important;
+    min-width: 1.35rem !important;
+    max-width: 1.35rem !important;
+    height: 1.35rem !important;
+    min-height: 1.35rem !important;
+    max-height: 1.35rem !important;
+    flex: 0 0 1.35rem !important;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+.medintel-sidebar > .container-fluid > .medintel-sidebar-collapse:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.medintel-login-logo {
+    display: block;
+    width: min(82%, 24rem);
+    height: auto;
+    margin: 0 auto;
+}
+
+@media (min-width: 992px) {
+    body.medintel-sidebar-collapsed .medintel-sidebar {
+        width: 4.25rem !important;
+        min-width: 4.25rem !important;
+        max-width: 4.25rem !important;
+    }
+
+    body.medintel-sidebar-collapsed .page-wrapper {
+        margin-left: 4.25rem !important;
+    }
+
+    body.medintel-sidebar-collapsed #medintel-sidebar .medintel-sidebar-brand {
+        display: flex !important;
+        min-height: 3.75rem;
+        padding: 0.55rem 0.85rem;
+    }
+
+    body.medintel-sidebar-collapsed #medintel-sidebar .medintel-sidebar-brand > a {
+        justify-content: center;
+    }
+
+    body.medintel-sidebar-collapsed #medintel-sidebar .medintel-sidebar-logo {
+        width: 2rem !important;
+        min-width: 2rem !important;
+        max-width: 2rem !important;
+        height: 2rem !important;
+        min-height: 2rem !important;
+        max-height: 2rem !important;
+    }
+
+    body.medintel-sidebar-collapsed #medintel-sidebar .medintel-sidebar-wordmark {
+        display: none !important;
+    }
+
+    body.medintel-sidebar-collapsed .medintel-sidebar-collapse svg {
+        transform: rotate(180deg);
+    }
+
+    body.medintel-sidebar-collapsed #medintel-sidebar > .container-fluid > #medintel-sidebar-collapse {
+        top: 3.8rem;
+        right: 50%;
+        transform: translateX(50%);
+    }
+
+    body.medintel-sidebar-collapsed .medintel-sidebar .nav-link-title,
+    body.medintel-sidebar-collapsed .medintel-sidebar .medintel-menu-label {
+        display: none !important;
+    }
+
+    body.medintel-sidebar-collapsed .medintel-sidebar .nav-link {
+        width: 2.75rem;
+        min-width: 2.75rem;
+        height: 2.75rem;
+        min-height: 2.75rem;
+        justify-content: center;
+        margin: 0.2rem auto;
+        padding: 0.5rem;
+    }
+
+    #medintel-sidebar > .container-fluid > #medintel-sidebar-collapse {
+        display: inline-flex !important;
+    }
+
+    body.medintel-sidebar-collapsed .medintel-sidebar .nav-link-icon {
+        display: inline-flex !important;
+        width: 1.5rem;
+        height: 1.5rem;
+        margin: 0 !important;
+    }
+
+    body.medintel-sidebar-collapsed #sidebar-menu {
+        padding-top: 2.35rem;
+    }
+
+    body.medintel-sidebar-collapsed #sidebar-menu .navbar-nav {
+        width: 100%;
+        padding-top: 0 !important;
+    }
+
+    body.medintel-sidebar-collapsed #sidebar-menu .nav-item:has(.medintel-menu-label) {
+        display: none !important;
+    }
+}

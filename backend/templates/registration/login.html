@@ -7,14 +7,17 @@
     <title>Masuk — MEDINTEL OSINT</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css">
-    <link rel="stylesheet" href="{% static 'css/medintel.css' %}">
+    <link rel="stylesheet" href="{% static 'css/medintel.css' %}?v=20260813-7">
 </head>
 <body class="border-top-wide border-primary d-flex flex-column">
     <div class="page page-center">
         <div class="container container-tight py-4">
             <div class="text-center mb-4">
-                <span class="navbar-brand navbar-brand-autodark h1">MEDINTEL OSINT</span>
-                <div class="text-secondary small mt-1">Sistem Intelijen Medik</div>
+                <img
+                    class="medintel-login-logo"
+                    src="{% static 'img/brand/medintel-login-transparent.png' %}"
+                    alt="MedIntel OSINT — Sistem Intelijen Medik Berbasis OSINT"
+                >
             </div>
 
             <form class="card card-md" method="post" action="{% url 'login' %}">

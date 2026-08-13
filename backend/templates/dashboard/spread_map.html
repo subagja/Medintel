@@ -31,6 +31,20 @@
     margin-right: 6px;
     vertical-align: middle;
 }
+.spread-legend-title {
+    max-width: 220px;
+    margin-bottom: 4px;
+    font-weight: 600;
+    color: var(--tblr-body-color);
+}
+.spread-map-tooltip {
+    min-width: 210px;
+    line-height: 1.5;
+}
+.spread-map-tooltip__title {
+    margin-bottom: 4px;
+    font-weight: 700;
+}
 </style>
 {% endblock %}
 
@@ -41,9 +55,9 @@
             <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
             <h2 class="page-title">Peta Sebaran Penyakit</h2>
             <div class="text-secondary mt-1">
-                Visualisasi persebaran kasus berdasarkan lokasi kejadian
-                dan waktu, untuk menelusuri titik mula dan arah
-                pergeserannya.
+                Visualisasi laporan kasus dari artikel OSINT berdasarkan
+                lokasi dan waktu. Indikator ini bukan angka epidemiologis
+                resmi dan tidak menyatakan KLB.
             </div>
         </div>
         <div class="col-auto">
@@ -79,6 +93,16 @@
                 </button>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="alert alert-info mb-3" role="status">
+    <div class="fw-semibold" id="spread-metric-title">
+        Rasio Kasus Terlapor OSINT per 100.000 Penduduk
+    </div>
+    <div class="small mt-1" id="spread-metric-description">
+        Tampilan provinsi dinormalisasi memakai jumlah penduduk BPS 2025
+        dalam jendela berjalan 14 hari.
     </div>
 </div>
 
@@ -126,6 +150,7 @@
     var timelineData = null;
     var currentLevel = "province";
     var playTimer = null;
+    var legendControl = null;
 
     var GEOJSON_URLS = {
         province: "{% static 'geo/indonesia_provinces.geojson' %}",
@@ -139,16 +164,37 @@
     var dateEnd = document.getElementById("spread-date-end");
     var dateCurrent = document.getElementById("spread-date-current");
     var levelButtons = document.querySelectorAll("[data-level]");
+    var metricTitle = document.getElementById("spread-metric-title");
+    var metricDescription = document.getElementById("spread-metric-description");
+
+    var numberFormatter = new Intl.NumberFormat("id-ID");
+    var rateFormatter = new Intl.NumberFormat("id-ID", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
 
     function normalizeName(name) {
         return (name || "").toLowerCase().replace(/[^a-z]/g, "");
     }
 
-    function colorForCount(count, maxCount) {
-        if (!count) {
+    function normalizeCode(value) {
+        return String(value || "").replace(/\D/g, "");
+    }
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function colorForValue(value, maxValue) {
+        if (!value) {
             return "#e5e7eb";
         }
-        var ratio = Math.min(count / (maxCount || 1), 1);
+        var ratio = Math.min(value / (maxValue || 1), 1);
         var stops = ["#fde8d8", "#fac775", "#ef9f27", "#ba7517", "#854f0b"];
         var index = Math.min(
             Math.floor(ratio * stops.length),
@@ -170,10 +216,110 @@
     }
 
     function featureCode(feature) {
-        return (
-            feature.properties.bps_code ||
-            normalizeName(feature.properties.name)
+        return normalizeCode(feature.properties.bps_code) ||
+            normalizeName(feature.properties.name);
+    }
+
+    function formatMetricValue(value) {
+        if (!timelineData || !timelineData.metric) {
+            return numberFormatter.format(value || 0);
+        }
+        return timelineData.metric.normalized
+            ? rateFormatter.format(value || 0)
+            : numberFormatter.format(value || 0);
+    }
+
+    function updateMetricDescription() {
+        var metric = timelineData.metric;
+        metricTitle.textContent = metric.label;
+        metricDescription.textContent = metric.caveat +
+            " Periode setiap frame: " + metric.window_days + " hari.";
+    }
+
+    function updateLegend(maxValue) {
+        if (!legendControl) {
+            legendControl = L.control({ position: "bottomright" });
+            legendControl.onAdd = function () {
+                var container = L.DomUtil.create("div", "spread-legend");
+                container.id = "spread-map-legend";
+                return container;
+            };
+            legendControl.addTo(map);
+        }
+
+        var container = document.getElementById("spread-map-legend");
+        var stops = ["#fde8d8", "#fac775", "#ef9f27", "#ba7517", "#854f0b"];
+        var html = '<div class="spread-legend-title">' +
+            escapeHtml(timelineData.metric.short_label) + "</div>";
+        html += '<div><span class="swatch" style="background:#e5e7eb"></span>Tidak ada data</div>';
+
+        stops.forEach(function (color, index) {
+            var lower = maxValue * (index / stops.length);
+            var upper = maxValue * ((index + 1) / stops.length);
+            html += '<div><span class="swatch" style="background:' + color + '"></span>' +
+                escapeHtml(formatMetricValue(lower)) + " – " +
+                escapeHtml(formatMetricValue(upper)) + "</div>";
+        });
+        container.innerHTML = html;
+    }
+
+    function tooltipContent(featureName, entry, frame) {
+        var lines = [
+            '<div class="spread-map-tooltip">',
+            '<div class="spread-map-tooltip__title">' + escapeHtml(featureName) + "</div>"
+        ];
+
+        if (timelineData.metric.normalized) {
+            lines.push(
+                "<div><strong>Rasio terlapor:</strong> " +
+                escapeHtml(formatMetricValue(entry.metric_value)) +
+                " per 100.000 penduduk</div>"
+            );
+            lines.push(
+                "<div><strong>Kasus terlapor:</strong> " +
+                escapeHtml(numberFormatter.format(entry.reported_case_count)) +
+                "</div>"
+            );
+            lines.push(
+                "<div><strong>Penduduk:</strong> " +
+                escapeHtml(numberFormatter.format(entry.population || 0)) +
+                " jiwa (BPS 2025)</div>"
+            );
+        } else {
+            lines.push(
+                "<div><strong>Kasus terlapor:</strong> " +
+                escapeHtml(numberFormatter.format(entry.reported_case_count)) +
+                "</div>"
+            );
+            lines.push("<div class=\"text-secondary\">Belum dinormalisasi berdasarkan jumlah penduduk.</div>");
+        }
+
+        lines.push(
+            "<div><strong>Artikel:</strong> " + entry.article_count +
+            " &middot; <strong>Sumber:</strong> " + entry.source_count + "</div>"
         );
+        lines.push(
+            "<div><strong>Periode:</strong> " + escapeHtml(frame.period_start) +
+            " s.d. " + escapeHtml(frame.period_end) + "</div>"
+        );
+        if (entry.is_new) {
+            lines.push('<div class="text-danger fw-semibold">Kejadian baru</div>');
+        }
+        lines.push("</div>");
+        return lines.join("");
+    }
+
+    function timelineMaximumValue() {
+        var maximum = 0;
+        (timelineData.timeline || []).forEach(function (frame) {
+            Object.keys(frame.locations).forEach(function (code) {
+                maximum = Math.max(
+                    maximum,
+                    frame.locations[code].metric_value || 0
+                );
+            });
+        });
+        return maximum;
     }
 
     function renderFrame(index) {
@@ -184,10 +330,10 @@
         var frame = timelineData.timeline[index];
         dateCurrent.textContent = frame.date;
 
-        var maxCount = 0;
-        Object.keys(frame.locations).forEach(function (code) {
-            maxCount = Math.max(maxCount, frame.locations[code].case_count);
-        });
+        // Satu skala dipakai untuk seluruh timeline supaya wilayah dengan
+        // nilai yang sama tidak berganti warna hanya karena frame berubah.
+        var maxValue = timelineMaximumValue();
+        updateLegend(maxValue);
 
         if (geoLayer) {
             geoLayer.eachLayer(function (layer) {
@@ -204,21 +350,24 @@
                     });
                 }
 
-                var count = entry ? entry.case_count : 0;
+                var value = entry ? entry.metric_value : 0;
                 var isNew = entry ? entry.is_new : false;
 
                 layer.setStyle({
-                    fillColor: colorForCount(count, maxCount),
+                    fillColor: colorForValue(value, maxValue),
                     fillOpacity: 0.75,
                     color: isNew ? "#e24b4a" : "#9c9a92",
                     weight: isNew ? 2.5 : 0.5,
                 });
 
-                if (count > 0) {
+                if (entry && entry.reported_case_count > 0) {
                     layer.bindTooltip(
-                        layer.feature.properties.name + ": " + count + " kasus" +
-                        (isNew ? " (kejadian baru)" : ""),
-                        { sticky: true }
+                        tooltipContent(
+                            layer.feature.properties.name,
+                            entry,
+                            frame
+                        ),
+                        { sticky: true, className: "spread-map-tooltip-shell" }
                     );
                 } else {
                     layer.unbindTooltip();
@@ -257,6 +406,7 @@
         ]).then(function (results) {
             var geojson = results[0];
             timelineData = results[1];
+            updateMetricDescription();
 
             if (geoLayer) {
                 map.removeLayer(geoLayer);

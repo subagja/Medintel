@@ -140,3 +140,6 @@ count = CollectionJob.objects.filter(
     error_message="Dibatalkan manual: restart bersih setelah server di-terminate.",
 )
 print(f"{count} job dibatalkan.")
+
+
+pg_dump -U isur -d medintel_db -F p -f last_backup.sql
