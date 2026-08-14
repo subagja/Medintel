@@ -4,6 +4,18 @@
 {% block title %}Ekstraksi Entitas | MEDINTEL OSINT{% endblock %}
 
 {% block content %}
+<div
+    id="entity-extraction-live-alert"
+    class="alert alert-info d-none"
+    role="status"
+    aria-live="polite"
+></div>
+<noscript>
+    <div class="alert alert-warning">
+        JavaScript tidak aktif. Muat ulang halaman secara manual untuk melihat
+        progres ekstraksi.
+    </div>
+</noscript>
 <div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
         <div class="col">
@@ -19,22 +31,13 @@
     </div>
 </div>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible" role="alert">
-            <div>{{ message }}</div>
-            <a class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></a>
-        </div>
-    {% endfor %}
-{% endif %}
-
 <div class="row row-deck row-cards mb-3">
     <div class="col-sm-6 col-xl-2">
         <div class="card"><div class="card-body medintel-stat-card">
             <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path><path d="M9 9l1 0"></path><path d="M9 13l6 0"></path><path d="M9 17l6 0"></path></svg></div>
             <div class="medintel-stat-body">
                 <div class="text-secondary">Total Artikel</div>
-                <div class="h1 mb-0">{{ summary.total_articles }}</div>
+                <div class="h1 mb-0" data-extraction-summary="total_articles">{{ summary.total_articles }}</div>
             </div>
         </div></div>
     </div>
@@ -42,8 +45,8 @@
         <div class="card"><div class="card-body medintel-stat-card">
             <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 3"></path><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path></svg></div>
             <div class="medintel-stat-body">
-                <div class="text-secondary">Menunggu Diproses</div>
-                <div class="h1 mb-0 {% if summary.pending_count %}text-warning{% endif %}">{{ summary.pending_count }}</div>
+                <div class="text-secondary">Data Belum Lengkap</div>
+                <div class="h1 mb-0 {% if summary.pending_count %}text-warning{% endif %}" data-extraction-summary="pending_count">{{ summary.pending_count }}</div>
             </div>
         </div></div>
     </div>
@@ -52,7 +55,7 @@
             <div class="medintel-stat-icon bg-teal-lt text-teal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path></svg></div>
             <div class="medintel-stat-body">
                 <div class="text-secondary">Ada Penyakit</div>
-                <div class="h1 mb-0 text-teal">{{ summary.with_disease }}</div>
+                <div class="h1 mb-0 text-teal" data-extraction-summary="with_disease">{{ summary.with_disease }}</div>
             </div>
         </div></div>
     </div>
@@ -61,7 +64,7 @@
             <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
             <div class="medintel-stat-body">
                 <div class="text-secondary">Ada Lokasi</div>
-                <div class="h1 mb-0 text-blue">{{ summary.with_location }}</div>
+                <div class="h1 mb-0 text-blue" data-extraction-summary="with_location">{{ summary.with_location }}</div>
             </div>
         </div></div>
     </div>
@@ -70,7 +73,7 @@
             <div class="medintel-stat-icon bg-azure-lt text-azure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v7a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M9 8m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v11a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M15 4m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v15a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path></svg></div>
             <div class="medintel-stat-body">
                 <div class="text-secondary">Ada Fakta Numerik</div>
-                <div class="h1 mb-0 text-azure">{{ summary.with_fact }}</div>
+                <div class="h1 mb-0 text-azure" data-extraction-summary="with_fact">{{ summary.with_fact }}</div>
             </div>
         </div></div>
     </div>
@@ -80,11 +83,11 @@
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title">Jalankan Ekstraksi</h3></div>
     <div class="card-body">
-        <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" class="row g-2 align-items-end">
+        <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" class="row g-2 align-items-end" id="entity-extraction-form">
             {% csrf_token %}
             <div class="col-md-3">
-                <label class="form-label small">Maks. artikel per klik</label>
-                <input type="number" name="limit" value="30" min="1" max="50" class="form-control">
+                <label class="form-label small">Maks. artikel diproses</label>
+                <input type="number" name="limit" value="200" min="1" max="2000" class="form-control">
             </div>
             <div class="col-md-4">
                 <div class="form-check mt-4">
@@ -95,11 +98,11 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <button type="submit" class="btn btn-primary w-100">Proses Sekarang</button>
+                <button type="submit" class="btn btn-primary w-100" id="entity-extraction-submit">Proses Sekarang</button>
             </div>
         </form>
         <div class="text-secondary small mt-2">
-            Diproses langsung (tidak di latar belakang) -- dibatasi per klik supaya selalu selesai. Kalau masih banyak tersisa, klik lagi.
+            Berjalan di latar belakang. Progres dan status diperbarui otomatis.
         </div>
     </div>
 </div>
@@ -109,7 +112,7 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-header"><h3 class="card-title">Status Pipeline Artikel</h3></div>
-            <div class="card-body">
+            <div class="card-body" id="entity-extraction-status-breakdown">
                 {% for row in status_breakdown %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>{{ row.label }}</span>
@@ -125,7 +128,7 @@
     <div class="col-md-6">
         <div class="card">
             <div class="card-header"><h3 class="card-title">Metode Ekstraksi Penyakit</h3></div>
-            <div class="card-body">
+            <div class="card-body" id="entity-extraction-method-breakdown">
                 {% for row in method_breakdown %}
                     <div class="d-flex justify-content-between mb-2">
                         <span>{{ row.label }}</span>
@@ -151,7 +154,7 @@
                     <th>Diperbarui</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="entity-extraction-recent-body">
                 {% for article in recent_processed %}
                     <tr>
                         <td><a href="{% url 'dashboard:article-extraction-detail' article.id %}">{{ article.title }}</a></td>
@@ -174,4 +177,162 @@
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const params = new URLSearchParams(window.location.search);
+    const batchId = params.get("batch");
+    const statusUrl = "{% url 'dashboard:entity-extraction-status' %}";
+    const alertBox = document.getElementById("entity-extraction-live-alert");
+    const submitButton = document.getElementById("entity-extraction-submit");
+    let pollTimer = null;
+
+    const showAlert = (message, level = "info") => {
+        if (!alertBox) return;
+        alertBox.className = `alert alert-${level}`;
+        alertBox.textContent = message;
+    };
+
+    const updateSummary = (summary) => {
+        Object.entries(summary || {}).forEach(([key, value]) => {
+            const target = document.querySelector(
+                `[data-extraction-summary="${key}"]`
+            );
+            if (target) target.textContent = value;
+        });
+    };
+
+    const updateBreakdown = (rows) => {
+        const target = document.getElementById(
+            "entity-extraction-status-breakdown"
+        );
+        if (!target) return;
+        target.replaceChildren();
+        (rows || []).forEach((row) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "d-flex justify-content-between mb-2";
+            const label = document.createElement("span");
+            label.textContent = row.label;
+            const count = document.createElement("span");
+            count.className = "fw-semibold";
+            count.textContent = row.count;
+            wrapper.append(label, count);
+            target.append(wrapper);
+        });
+    };
+
+    const updateMethodBreakdown = (rows) => {
+        const target = document.getElementById(
+            "entity-extraction-method-breakdown"
+        );
+        if (!target) return;
+        target.replaceChildren();
+        (rows || []).forEach((row) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "d-flex justify-content-between mb-2";
+            const label = document.createElement("span");
+            label.textContent = row.label;
+            const count = document.createElement("span");
+            count.className = "fw-semibold";
+            count.textContent = row.count;
+            wrapper.append(label, count);
+            target.append(wrapper);
+        });
+    };
+
+    const updateRecent = (rows) => {
+        const target = document.getElementById(
+            "entity-extraction-recent-body"
+        );
+        if (!target) return;
+        target.replaceChildren();
+        (rows || []).forEach((row) => {
+            const tr = document.createElement("tr");
+            const titleCell = document.createElement("td");
+            const link = document.createElement("a");
+            link.href = row.detail_url;
+            link.textContent = row.title;
+            titleCell.append(link);
+
+            const sourceCell = document.createElement("td");
+            sourceCell.className = "text-secondary small";
+            sourceCell.textContent = row.source;
+
+            const statusCell = document.createElement("td");
+            const badge = document.createElement("span");
+            badge.className = row.status === "failed"
+                ? "badge bg-danger-lt"
+                : "badge bg-success-lt";
+            badge.textContent = row.status_label;
+            statusCell.append(badge);
+
+            const updatedCell = document.createElement("td");
+            updatedCell.className = "text-nowrap text-secondary small";
+            updatedCell.textContent = row.updated_at;
+            tr.append(titleCell, sourceCell, statusCell, updatedCell);
+            target.append(tr);
+        });
+    };
+
+    const poll = async () => {
+        const url = new URL(statusUrl, window.location.origin);
+        if (batchId) url.searchParams.set("batch", batchId);
+        try {
+            const response = await fetch(url, {
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+                cache: "no-store",
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            updateSummary(data.summary);
+            updateBreakdown(data.status_breakdown);
+            updateMethodBreakdown(data.method_breakdown);
+            updateRecent(data.recent_processed);
+
+            if (!batchId) return;
+            if (!data.batch) {
+                showAlert(
+                    "Status batch tidak lagi tersedia. Ringkasan terbaru sudah dimuat.",
+                    "warning"
+                );
+                if (submitButton) submitButton.disabled = false;
+                return;
+            }
+
+            const {state, processed, total, failed} = data.batch;
+            if (state === "completed") {
+                showAlert(
+                    `Ekstraksi selesai: ${processed}/${total} artikel diproses` +
+                    (failed ? `, ${failed} gagal.` : "."),
+                    failed ? "warning" : "success"
+                );
+                if (submitButton) submitButton.disabled = false;
+                window.clearInterval(pollTimer);
+                return;
+            }
+
+            showAlert(
+                `Ekstraksi berjalan: ${processed}/${total} artikel diproses` +
+                (failed ? `, ${failed} gagal.` : "."),
+                "info"
+            );
+            if (submitButton) submitButton.disabled = true;
+        } catch (_error) {
+            showAlert(
+                "Progres belum dapat diperbarui. Sistem akan mencoba kembali otomatis.",
+                "warning"
+            );
+        }
+    };
+
+    if (batchId) {
+        showAlert("Ekstraksi dimulai. Menyiapkan progres…", "info");
+        if (submitButton) submitButton.disabled = true;
+        poll();
+        pollTimer = window.setInterval(poll, 2000);
+    }
+})();
+</script>
 {% endblock %}

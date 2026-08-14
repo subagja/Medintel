@@ -6,7 +6,7 @@ from functools import lru_cache
 
 from apps.locations.geolocation import (
     clear_geolocation_cache,
-    resolve_indonesia_locations,
+    resolve_global_locations,
 )
 from apps.entities.models import (
     Disease,
@@ -604,7 +604,7 @@ def extract_location_mentions(
     title_length: int = 0,
     anchor_spans: tuple[tuple[int, int], ...] = (),
 ) -> tuple[LocationMention, ...]:
-    result = resolve_indonesia_locations(
+    result = resolve_global_locations(
         text,
         title_length=title_length,
         anchor_spans=anchor_spans,
@@ -755,7 +755,7 @@ def evaluate_surveillance_eligibility(
             location_mentions=(),
             evidence_text="",
             reason=(
-                "Filter lokasi: lokasi kejadian Indonesia "
+                "Filter lokasi: lokasi kejadian domestik/luar negeri "
                 "belum dapat dinormalisasi."
             ),
         )
@@ -814,6 +814,6 @@ def evaluate_surveillance_eligibility(
         ),
         reason=(
             "Artikel memuat penyakit, jumlah kejadian, "
-            "dan lokasi Indonesia dalam konteks yang berdekatan."
+            "dan lokasi dalam konteks yang berdekatan."
         ),
     )

@@ -7,6 +7,14 @@ from django.urls import reverse
 
 from apps.articles.models import Article
 from apps.assessments.models import ArticleValidationAssessment
+from apps.entities.models import (
+    ArticleDisease,
+    ArticleLocation,
+    Disease,
+    ValidationStatus,
+)
+from apps.indicators.models import Indicator
+from apps.locations.models import Location
 from apps.sources.models import Source
 
 
@@ -230,6 +238,112 @@ class ArticleValidationQueueTests(TestCase):
         self.assertEqual(len(first_page.context["articles"]), 50)
         self.assertEqual(len(second_page.context["articles"]), 1)
         self.assertContains(first_page, "Berikutnya")
+
+    def test_relevant_article_without_numbers_validates_as_qualitative(self):
+        disease = Disease.objects.create(
+            name="Rabies Kualitatif",
+            code="rabies-kualitatif",
+        )
+        location = Location.objects.create(
+            name="Indonesia Kualitatif",
+            code="ID-KUALITATIF",
+            administrative_level=Location.AdministrativeLevel.COUNTRY,
+        )
+        disease_relation = ArticleDisease.objects.create(
+            article=self.pending_article,
+            disease=disease,
+            is_primary=True,
+        )
+        location_relation = ArticleLocation.objects.create(
+            article=self.pending_article,
+            location=location,
+            is_primary=True,
+        )
+
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.pending_article.id),
+                "action": "save_assessment",
+                "workspace": "queue",
+                "eligibility": "all",
+                "history_status": "all",
+                "validation_status": "validated",
+                "source_reliability": "B",
+                "information_credibility": "2",
+                "assessment_notes": (
+                    "Relevan sebagai informasi peningkatan rabies, "
+                    "tanpa angka kasus."
+                ),
+                "relevance_notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        assessment = ArticleValidationAssessment.objects.get(
+            article=self.pending_article
+        )
+        self.pending_article.refresh_from_db()
+        disease_relation.refresh_from_db()
+        location_relation.refresh_from_db()
+
+        self.assertEqual(
+            assessment.validation_status,
+            ArticleValidationAssessment.ValidationStatus.VALIDATED,
+        )
+        self.assertEqual(
+            self.pending_article.processing_status,
+            Article.ProcessingStatus.VALIDATED,
+        )
+        self.assertEqual(
+            disease_relation.validation_status,
+            ValidationStatus.VALIDATED,
+        )
+        self.assertEqual(
+            location_relation.validation_status,
+            ValidationStatus.VALIDATED,
+        )
+        self.assertFalse(Indicator.objects.exists())
+
+        history_response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"workspace": "history", "article": self.pending_article.id},
+        )
+        self.assertContains(history_response, "Kualitatif")
+
+    def test_validated_article_missing_disease_and_location_shows_form_error(self):
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.pending_article.id),
+                "action": "save_assessment",
+                "workspace": "queue",
+                "eligibility": "all",
+                "history_status": "all",
+                "validation_status": "validated",
+                "source_reliability": "B",
+                "information_credibility": "2",
+                "assessment_notes": "Belum siap divalidasi.",
+                "relevance_notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Artikel belum memiliki hasil ekstraksi penyakit.",
+        )
+        self.assertContains(
+            response,
+            "Artikel belum memiliki hasil ekstraksi lokasi.",
+        )
+        assessment = ArticleValidationAssessment.objects.get(
+            article=self.pending_article
+        )
+        self.assertEqual(
+            assessment.validation_status,
+            ArticleValidationAssessment.ValidationStatus.PENDING,
+        )
 
 
 class DashboardValidationSummaryTests(TestCase):

@@ -15,6 +15,8 @@ POPULATION_SOURCE_URL = (
     "kelamin-penduduk-menurut-provinsi.html?year=2025"
 )
 ROLLING_WINDOW_DAYS = 14
+MAP_MODE_CUMULATIVE = "cumulative"
+MAP_MODE_ROLLING = "rolling"
 
 
 @lru_cache(maxsize=1)
@@ -57,7 +59,31 @@ def rate_per_100k(case_count: int, population: int | None) -> float | None:
     return round((case_count / population) * 100_000, 4)
 
 
-def metric_metadata(level: str) -> dict:
+def metric_metadata(
+    level: str,
+    mode: str = MAP_MODE_ROLLING,
+) -> dict:
+    if mode == MAP_MODE_CUMULATIVE:
+        return {
+            "id": "osint_validated_cumulative_reported_cases",
+            "label": (
+                "Akumulasi Kasus Terlapor dari Artikel Tervalidasi"
+            ),
+            "short_label": "Akumulasi kasus terlapor",
+            "unit": "kasus",
+            "normalized": False,
+            "reference_year": None,
+            "source_name": "Artikel OSINT tervalidasi",
+            "source_url": "",
+            "window_days": None,
+            "mode": MAP_MODE_CUMULATIVE,
+            "caveat": (
+                "Akumulasi berasal dari angka laporan unik pada artikel "
+                "OSINT yang faktanya telah divalidasi/dikoreksi; bukan "
+                "total kasus resmi dan tidak menyatakan KLB."
+            ),
+        }
+
     if level == "province":
         return {
             "id": "osint_reported_case_rate_per_100k",
@@ -69,6 +95,7 @@ def metric_metadata(level: str) -> dict:
             "source_name": POPULATION_SOURCE_NAME,
             "source_url": POPULATION_SOURCE_URL,
             "window_days": ROLLING_WINDOW_DAYS,
+            "mode": MAP_MODE_ROLLING,
             "caveat": (
                 "Indikator berbasis kasus yang ditemukan dari artikel OSINT; "
                 "bukan angka insidensi resmi dan tidak menyatakan KLB."
@@ -85,6 +112,7 @@ def metric_metadata(level: str) -> dict:
         "source_name": "Artikel OSINT terhimpun",
         "source_url": "",
         "window_days": ROLLING_WINDOW_DAYS,
+        "mode": MAP_MODE_ROLLING,
         "caveat": (
             "Belum dinormalisasi berdasarkan jumlah penduduk kabupaten/kota; "
             "warna menunjukkan volume laporan yang ditemukan, bukan tingkat risiko."

@@ -109,21 +109,89 @@ body {
    (kanan) dikunci ke tinggi viewport yang sama dan scroll sendiri
    masing-masing (pola split-pane/email client), supaya halaman tidak
    ikut memanjang mengikuti konten terpanjang di antara keduanya. */
-.medintel-article-list {
-    max-height: 75vh;
-    overflow-y: auto;
+.medintel-validation-workspace {
+    height: var(--medintel-validation-workspace-height, max(56.25rem, calc(100vh - 18rem))) !important;
+    min-height: 0;
+    max-height: var(--medintel-validation-workspace-height, max(56.25rem, calc(100vh - 18rem)));
+    align-items: stretch;
+    overflow: hidden;
+    margin-bottom: 3rem;
 }
 
+.medintel-validation-workspace .medintel-panel-footer {
+    min-height: 4.25rem;
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+    align-items: center;
+}
+
+.medintel-queue-panel,
 .medintel-detail-panel {
-    max-height: 75vh;
-    overflow-y: auto;
+    height: 100% !important;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.medintel-queue-panel > .card,
+.medintel-detail-panel > form,
+.medintel-detail-panel > form > .card,
+.medintel-detail-panel > .card {
+    height: 100% !important;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.medintel-queue-panel > .card,
+.medintel-detail-panel > form > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+.medintel-detail-panel > form > .card > .card-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.medintel-detail-panel > form > .card > .card-body > .tab-content {
+    min-height: 0;
+}
+
+.medintel-article-list,
+.medintel-detail-panel > form > .card > .card-body,
+.medintel-detail-panel > .card > .card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
 }
 
 @media (max-width: 991.98px) {
+    .medintel-validation-workspace,
+    .medintel-queue-panel,
+    .medintel-detail-panel,
+    .medintel-queue-panel > .card,
+    .medintel-detail-panel > form,
+    .medintel-detail-panel > form > .card,
+    .medintel-detail-panel > .card {
+        height: auto !important;
+        min-height: 0;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    .medintel-validation-workspace {
+        margin-bottom: 2rem;
+    }
+
     .medintel-article-list,
-    .medintel-detail-panel {
-        max-height: none;
-        overflow-y: visible;
+    .medintel-detail-panel > form > .card > .card-body,
+    .medintel-detail-panel > .card > .card-body {
+        overflow-y: visible !important;
     }
 }
 

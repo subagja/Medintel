@@ -17,6 +17,7 @@ from apps.entities.services import (
     exploit_article,
     extract_article_facts,
 )
+from apps.entities.services.fact_extraction import detect_trend
 from apps.sources.models import Source
 
 
@@ -217,3 +218,28 @@ class RuleBasedFactExtractionTests(TestCase):
             self.article.processing_status,
             Article.ProcessingStatus.PROCESSED,
         )
+
+    def test_operational_capacity_increase_is_not_case_trend(self):
+        mention = detect_trend(
+            "Balai Veteriner melakukan peningkatan kapasitas teknis, "
+            "manajemen mutu laboratorium, dan pengembangan kompetensi "
+            "sumber daya manusia untuk penanganan rabies."
+        )
+
+        self.assertIsNone(mention)
+
+    def test_surveillance_increase_is_not_case_trend(self):
+        mention = detect_trend(
+            "Pemerintah meningkatkan surveilans dan kewaspadaan terhadap "
+            "kasus rabies."
+        )
+
+        self.assertIsNone(mention)
+
+    def test_explicit_case_increase_remains_detected(self):
+        mention = detect_trend(
+            "Jumlah kasus rabies meningkat dari 10 menjadi 25 kasus."
+        )
+
+        self.assertIsNotNone(mention)
+        self.assertEqual(mention.trend, ArticleFact.Trend.INCREASING)

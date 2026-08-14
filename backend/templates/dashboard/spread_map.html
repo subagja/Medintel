@@ -45,6 +45,33 @@
     margin-bottom: 4px;
     font-weight: 700;
 }
+.spread-summary-empty {
+    padding: 1.5rem;
+    color: var(--tblr-secondary-color);
+    text-align: center;
+}
+.spread-scope-note {
+    min-height: 1.25rem;
+}
+.global-marker-popup {
+    min-width: 260px;
+    max-width: 340px;
+    line-height: 1.45;
+}
+.global-marker-popup__title {
+    margin-bottom: .35rem;
+    font-weight: 700;
+}
+.global-marker-popup__articles {
+    margin: .5rem 0 0;
+    padding-left: 1.15rem;
+}
+.global-marker-popup__articles li + li {
+    margin-top: .3rem;
+}
+.global-marker-popup__articles a {
+    text-decoration: none;
+}
 </style>
 {% endblock %}
 
@@ -70,6 +97,14 @@
     <div class="card-body">
         <div class="row g-2 align-items-end">
             <div class="col-md-4">
+                <label class="form-label small">Cakupan Peta</label>
+                <div class="btn-group w-100" role="group" aria-label="Cakupan peta">
+                    <button type="button" class="btn btn-outline-primary active" data-map-scope="domestic">Indonesia</button>
+                    <button type="button" class="btn btn-outline-primary" data-map-scope="global">Global</button>
+                </div>
+            </div>
+
+            <div class="col-md-5">
                 <label class="form-label small">Penyakit</label>
                 <select class="form-select" id="spread-disease-select">
                     <option value="">Pilih penyakit</option>
@@ -79,7 +114,13 @@
                 </select>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-3 d-flex gap-2">
+                <button type="button" class="btn btn-primary flex-fill" id="spread-play-btn" disabled>
+                    Putar
+                </button>
+            </div>
+
+            <div class="col-md-6" id="spread-level-control">
                 <label class="form-label small">Level Wilayah</label>
                 <div class="btn-group w-100" role="group">
                     <button type="button" class="btn btn-outline-primary active" id="level-btn-province" data-level="province">Provinsi</button>
@@ -87,10 +128,12 @@
                 </div>
             </div>
 
-            <div class="col-md-4 d-flex gap-2">
-                <button type="button" class="btn btn-primary flex-fill" id="spread-play-btn" disabled>
-                    Putar
-                </button>
+            <div class="col-md-6" id="spread-mode-control">
+                <label class="form-label small">Mode Perhitungan</label>
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-outline-primary active" data-map-mode="cumulative">Akumulasi Kasus</button>
+                    <button type="button" class="btn btn-outline-primary" data-map-mode="rolling">14 Hari Terakhir</button>
+                </div>
             </div>
         </div>
     </div>
@@ -98,11 +141,11 @@
 
 <div class="alert alert-info mb-3" role="status">
     <div class="fw-semibold" id="spread-metric-title">
-        Rasio Kasus Terlapor OSINT per 100.000 Penduduk
+        Akumulasi Kasus Terlapor dari Artikel Tervalidasi
     </div>
-    <div class="small mt-1" id="spread-metric-description">
-        Tampilan provinsi dinormalisasi memakai jumlah penduduk BPS 2025
-        dalam jendela berjalan 14 hari.
+    <div class="small mt-1 spread-scope-note" id="spread-metric-description">
+        Menjumlahkan angka laporan unik yang faktanya telah divalidasi atau
+        dikoreksi. Angka ini bukan total kasus resmi.
     </div>
 </div>
 
@@ -128,6 +171,37 @@
         </div>
     </div>
 </div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title">Ringkasan Sebaran</h3>
+            <div class="text-secondary small" id="spread-summary-period">
+                Pilih penyakit untuk melihat lokasi kasus.
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-vcenter card-table mb-0">
+            <thead>
+                <tr>
+                    <th>Wilayah</th>
+                    <th class="text-end" id="spread-summary-case-heading">Kasus Terlapor</th>
+                    <th class="text-end" id="spread-summary-death-heading">Kematian</th>
+                    <th class="text-end">Artikel</th>
+                    <th>Sumber</th>
+                </tr>
+            </thead>
+            <tbody id="spread-summary-body">
+                <tr>
+                    <td colspan="5" class="spread-summary-empty">
+                        Belum ada data yang dipilih.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -148,7 +222,9 @@
     var geoLayer = null;
     var geojsonCache = {};
     var timelineData = null;
+    var currentScope = "domestic";
     var currentLevel = "province";
+    var currentMode = "cumulative";
     var playTimer = null;
     var legendControl = null;
 
@@ -164,8 +240,15 @@
     var dateEnd = document.getElementById("spread-date-end");
     var dateCurrent = document.getElementById("spread-date-current");
     var levelButtons = document.querySelectorAll("[data-level]");
+    var modeButtons = document.querySelectorAll("[data-map-mode]");
+    var scopeButtons = document.querySelectorAll("[data-map-scope]");
+    var levelControl = document.getElementById("spread-level-control");
     var metricTitle = document.getElementById("spread-metric-title");
     var metricDescription = document.getElementById("spread-metric-description");
+    var summaryPeriod = document.getElementById("spread-summary-period");
+    var summaryBody = document.getElementById("spread-summary-body");
+    var summaryCaseHeading = document.getElementById("spread-summary-case-heading");
+    var summaryDeathHeading = document.getElementById("spread-summary-death-heading");
 
     var numberFormatter = new Intl.NumberFormat("id-ID");
     var rateFormatter = new Intl.NumberFormat("id-ID", {
@@ -232,8 +315,11 @@
     function updateMetricDescription() {
         var metric = timelineData.metric;
         metricTitle.textContent = metric.label;
-        metricDescription.textContent = metric.caveat +
-            " Periode setiap frame: " + metric.window_days + " hari.";
+        metricDescription.textContent = metric.caveat + (
+            metric.window_days
+                ? " Periode setiap frame: " + metric.window_days + " hari."
+                : " Gunakan penggeser waktu untuk melihat akumulasi sampai tanggal tertentu."
+        );
     }
 
     function updateLegend(maxValue) {
@@ -248,6 +334,16 @@
         }
 
         var container = document.getElementById("spread-map-legend");
+        if (currentScope === "global") {
+            container.innerHTML =
+                '<div class="spread-legend-title">Status informasi luar negeri</div>' +
+                '<div><span class="swatch" style="background:#206bc4;border-radius:50%"></span>Informasi kualitatif</div>' +
+                '<div><span class="swatch" style="background:#f59f00;border-radius:50%"></span>Ada angka tervalidasi</div>' +
+                '<div><span class="swatch" style="background:#f76707;border-radius:50%"></span>Tren meningkat/meluas</div>' +
+                '<div><span class="swatch" style="background:#d63939;border-radius:50%"></span>Kejadian baru</div>' +
+                '<div class="text-secondary mt-1">Ukuran lingkaran = jumlah artikel</div>';
+            return;
+        }
         var stops = ["#fde8d8", "#fac775", "#ef9f27", "#ba7517", "#854f0b"];
         var html = '<div class="spread-legend-title">' +
             escapeHtml(timelineData.metric.short_label) + "</div>";
@@ -261,6 +357,38 @@
                 escapeHtml(formatMetricValue(upper)) + "</div>";
         });
         container.innerHTML = html;
+    }
+
+    function globalPopupContent(meta, entry, frame) {
+        var caseText = entry.latest_case_count === null
+            ? "Tidak tersedia"
+            : numberFormatter.format(entry.latest_case_count);
+        var deathText = entry.latest_death_count === null
+            ? "Tidak tersedia"
+            : numberFormatter.format(entry.latest_death_count);
+        var articleItems = (entry.events || []).map(function (event) {
+            var url = safeExternalUrl(event.url);
+            var title = escapeHtml(event.title);
+            var titleMarkup = url
+                ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + title + "</a>"
+                : title;
+            return "<li>" + titleMarkup +
+                '<div class="text-secondary small">' +
+                escapeHtml(event.source) + " · " + escapeHtml(event.date) +
+                "</div></li>";
+        }).join("");
+
+        return '<div class="global-marker-popup">' +
+            '<div class="global-marker-popup__title">' + escapeHtml(meta.display_name) + "</div>" +
+            '<div><strong>Negara:</strong> ' + escapeHtml(meta.country_name) + "</div>" +
+            '<div><strong>Penyakit:</strong> ' + escapeHtml((entry.diseases || []).join(", ")) + "</div>" +
+            '<div><strong>Artikel tervalidasi:</strong> ' + numberFormatter.format(entry.article_count) + "</div>" +
+            '<div><strong>Angka kasus terbaru:</strong> ' + escapeHtml(caseText) + "</div>" +
+            '<div><strong>Kematian terbaru:</strong> ' + escapeHtml(deathText) + "</div>" +
+            '<div><strong>Tren fakta tervalidasi:</strong> ' + escapeHtml(entry.trend_label) + "</div>" +
+            '<div><strong>Periode peta:</strong> ' + escapeHtml(frame.period_start) + " s.d. " + escapeHtml(frame.period_end) + "</div>" +
+            (articleItems ? '<ol class="global-marker-popup__articles">' + articleItems + "</ol>" : "") +
+            "</div>";
     }
 
     function tooltipContent(featureName, entry, frame) {
@@ -291,13 +419,24 @@
                 escapeHtml(numberFormatter.format(entry.reported_case_count)) +
                 "</div>"
             );
-            lines.push("<div class=\"text-secondary\">Belum dinormalisasi berdasarkan jumlah penduduk.</div>");
+            lines.push(
+                timelineData.metric.mode === "cumulative"
+                    ? "<div class=\"text-secondary\">Akumulasi angka laporan unik tervalidasi; bukan total kasus resmi.</div>"
+                    : "<div class=\"text-secondary\">Belum dinormalisasi berdasarkan jumlah penduduk.</div>"
+            );
         }
 
         lines.push(
             "<div><strong>Artikel:</strong> " + entry.article_count +
             " &middot; <strong>Sumber:</strong> " + entry.source_count + "</div>"
         );
+        if (entry.reported_death_count > 0) {
+            lines.push(
+                "<div><strong>Kematian terlapor:</strong> " +
+                escapeHtml(numberFormatter.format(entry.reported_death_count)) +
+                "</div>"
+            );
+        }
         lines.push(
             "<div><strong>Periode:</strong> " + escapeHtml(frame.period_start) +
             " s.d. " + escapeHtml(frame.period_end) + "</div>"
@@ -322,6 +461,88 @@
         return maximum;
     }
 
+    function safeExternalUrl(value) {
+        try {
+            var parsed = new URL(String(value || ""), window.location.origin);
+            if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+                return parsed.href;
+            }
+        } catch (error) {
+            return "";
+        }
+        return "";
+    }
+
+    function severityColor(severity) {
+        return {
+            qualitative: "#206bc4",
+            quantitative: "#f59f00",
+            increasing: "#f76707",
+            new_occurrence: "#d63939"
+        }[severity] || "#206bc4";
+    }
+
+    function renderSummary(frame) {
+        var rows = Object.keys(frame.locations).map(function (code) {
+            return {
+                name: (timelineData.locations[code] || {}).name || code,
+                meta: timelineData.locations[code] || {},
+                entry: frame.locations[code]
+            };
+        }).sort(function (left, right) {
+            if (currentScope === "global") {
+                return right.entry.article_count - left.entry.article_count;
+            }
+            return right.entry.reported_case_count - left.entry.reported_case_count;
+        });
+
+        summaryPeriod.textContent = "Periode " + frame.period_start +
+            " s.d. " + frame.period_end +
+            " · " + rows.length + (
+                currentScope === "global"
+                    ? " lokasi luar negeri terpantau."
+                    : " wilayah memiliki laporan kasus."
+            );
+
+        if (!rows.length) {
+            summaryBody.innerHTML = '<tr><td colspan="5" class="spread-summary-empty">Tidak ada kasus tervalidasi pada periode ini.</td></tr>';
+            return;
+        }
+
+        if (currentScope === "global") {
+            summaryCaseHeading.textContent = "Angka Kasus Terbaru";
+            summaryDeathHeading.textContent = "Tren";
+            summaryBody.innerHTML = rows.map(function (row) {
+                var entry = row.entry;
+                var latestCase = entry.latest_case_count === null
+                    ? "—"
+                    : numberFormatter.format(entry.latest_case_count);
+                return "<tr>" +
+                    "<td><strong>" + escapeHtml(row.meta.display_name || row.name) + "</strong>" +
+                    '<div class="text-secondary small">' + escapeHtml((entry.diseases || []).join(", ")) + "</div></td>" +
+                    '<td class="text-end">' + escapeHtml(latestCase) + "</td>" +
+                    '<td class="text-end"><span style="color:' + severityColor(entry.severity) + '">' + escapeHtml(entry.trend_label) + "</span></td>" +
+                    '<td class="text-end">' + numberFormatter.format(entry.article_count || 0) + "</td>" +
+                    "<td>" + escapeHtml((entry.sources || []).join(", ") || "—") + "</td>" +
+                    "</tr>";
+            }).join("");
+            return;
+        }
+
+        summaryCaseHeading.textContent = "Kasus Terlapor";
+        summaryDeathHeading.textContent = "Kematian";
+        summaryBody.innerHTML = rows.map(function (row) {
+            var entry = row.entry;
+            return "<tr>" +
+                "<td><strong>" + escapeHtml(row.name) + "</strong></td>" +
+                '<td class="text-end">' + escapeHtml(numberFormatter.format(entry.reported_case_count || 0)) + "</td>" +
+                '<td class="text-end">' + escapeHtml(numberFormatter.format(entry.reported_death_count || 0)) + "</td>" +
+                '<td class="text-end">' + escapeHtml(numberFormatter.format(entry.article_count || 0)) + "</td>" +
+                "<td>" + escapeHtml((entry.sources || []).join(", ") || "—") + "</td>" +
+                "</tr>";
+        }).join("");
+    }
+
     function renderFrame(index) {
         if (!timelineData || !timelineData.timeline.length) {
             return;
@@ -329,11 +550,49 @@
 
         var frame = timelineData.timeline[index];
         dateCurrent.textContent = frame.date;
+        renderSummary(frame);
 
         // Satu skala dipakai untuk seluruh timeline supaya wilayah dengan
         // nilai yang sama tidak berganti warna hanya karena frame berubah.
         var maxValue = timelineMaximumValue();
         updateLegend(maxValue);
+
+        if (currentScope === "global") {
+            if (geoLayer) {
+                map.removeLayer(geoLayer);
+            }
+            geoLayer = L.layerGroup().addTo(map);
+            Object.keys(frame.locations).forEach(function (locationId) {
+                var entry = frame.locations[locationId];
+                var meta = timelineData.locations[locationId];
+                if (!meta) {
+                    return;
+                }
+                var radius = Math.min(
+                    26,
+                    8 + (Math.log((entry.article_count || 1) + 1) * 5)
+                );
+                var color = severityColor(entry.severity);
+                L.circleMarker([meta.latitude, meta.longitude], {
+                    radius: radius,
+                    color: "#ffffff",
+                    weight: 2,
+                    fillColor: color,
+                    fillOpacity: 0.82
+                })
+                    .bindPopup(globalPopupContent(meta, entry, frame), {
+                        maxWidth: 360
+                    })
+                    .bindTooltip(
+                        escapeHtml(meta.display_name) + " · " +
+                        numberFormatter.format(entry.article_count) +
+                        " artikel",
+                        { sticky: true }
+                    )
+                    .addTo(geoLayer);
+            });
+            return;
+        }
 
         if (geoLayer) {
             geoLayer.eachLayer(function (layer) {
@@ -390,19 +649,42 @@
 
     function loadAndRender() {
         var disease = diseaseSelect.value;
-        if (!disease) {
+        if (currentScope === "domestic" && !disease) {
+            if (geoLayer) {
+                map.removeLayer(geoLayer);
+                geoLayer = null;
+            }
+            dateCurrent.textContent = "Pilih penyakit untuk mulai";
+            dateStart.textContent = "";
+            dateEnd.textContent = "";
+            metricTitle.textContent = "Akumulasi Kasus Terlapor dari Artikel Tervalidasi";
+            metricDescription.textContent = "Pilih penyakit untuk memuat peta Indonesia.";
+            summaryPeriod.textContent = "Pilih penyakit untuk melihat lokasi kasus.";
+            summaryBody.innerHTML = '<tr><td colspan="5" class="spread-summary-empty">Belum ada data yang dipilih.</td></tr>';
+            slider.disabled = true;
+            playBtn.disabled = true;
             return;
         }
 
         stopPlayback();
+        var geojsonPromise = currentScope === "domestic"
+            ? loadGeojson(currentLevel)
+            : Promise.resolve(null);
 
         Promise.all([
-            loadGeojson(currentLevel),
+            geojsonPromise,
             fetch(
                 "{% url 'dashboard:spread-map-data' %}?disease=" +
                     encodeURIComponent(disease) +
-                    "&level=" + currentLevel
-            ).then(function (r) { return r.json(); })
+                    "&scope=" + currentScope +
+                    "&level=" + currentLevel +
+                    "&mode=" + currentMode
+            ).then(function (response) {
+                if (!response.ok) {
+                    throw new Error("Gagal memuat data peta.");
+                }
+                return response.json();
+            })
         ]).then(function (results) {
             var geojson = results[0];
             timelineData = results[1];
@@ -412,17 +694,31 @@
                 map.removeLayer(geoLayer);
             }
 
-            geoLayer = L.geoJSON(geojson, {
-                style: { fillColor: "#e5e7eb", fillOpacity: 0.6, color: "#9c9a92", weight: 0.5 }
-            }).addTo(map);
+            if (currentScope === "domestic") {
+                geoLayer = L.geoJSON(geojson, {
+                    style: { fillColor: "#e5e7eb", fillOpacity: 0.6, color: "#9c9a92", weight: 0.5 }
+                }).addTo(map);
+            }
 
             if (timelineData.timeline.length > 0) {
                 setupTimeline();
             } else {
-                dateCurrent.textContent = "Tidak ada data kejadian untuk penyakit ini.";
+                dateCurrent.textContent = currentScope === "global"
+                    ? "Belum ada informasi luar negeri tervalidasi."
+                    : "Tidak ada data kejadian untuk penyakit ini.";
                 slider.disabled = true;
                 playBtn.disabled = true;
+                summaryPeriod.textContent = currentScope === "global"
+                    ? "Belum ada lokasi luar negeri dengan koordinat dan artikel tervalidasi."
+                    : "Tidak ada fakta kasus tervalidasi untuk pilihan ini.";
+                summaryBody.innerHTML = '<tr><td colspan="5" class="spread-summary-empty">Tidak ada data.</td></tr>';
             }
+        }).catch(function (error) {
+            dateCurrent.textContent = "Data peta gagal dimuat.";
+            summaryPeriod.textContent = error.message;
+            summaryBody.innerHTML = '<tr><td colspan="5" class="spread-summary-empty">Periksa koneksi dan muat ulang halaman.</td></tr>';
+            slider.disabled = true;
+            playBtn.disabled = true;
         });
     }
 
@@ -459,11 +755,51 @@
 
     diseaseSelect.addEventListener("change", loadAndRender);
 
+    scopeButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            scopeButtons.forEach(function (button) {
+                button.classList.remove("active");
+            });
+            btn.classList.add("active");
+            currentScope = btn.getAttribute("data-map-scope");
+            levelControl.classList.toggle("d-none", currentScope === "global");
+            diseaseSelect.options[0].textContent = currentScope === "global"
+                ? "Semua penyakit"
+                : "Pilih penyakit";
+            modeButtons[0].textContent = currentScope === "global"
+                ? "Akumulasi Artikel"
+                : "Akumulasi Kasus";
+            summaryCaseHeading.textContent = currentScope === "global"
+                ? "Angka Kasus Terbaru"
+                : "Kasus Terlapor";
+            summaryDeathHeading.textContent = currentScope === "global"
+                ? "Tren"
+                : "Kematian";
+            if (currentScope === "global") {
+                map.setView([18, 5], 2);
+            } else {
+                map.setView([-2.5, 118], 5);
+            }
+            loadAndRender();
+        });
+    });
+
     levelButtons.forEach(function (btn) {
         btn.addEventListener("click", function () {
             levelButtons.forEach(function (b) { b.classList.remove("active"); });
             btn.classList.add("active");
             currentLevel = btn.getAttribute("data-level");
+            loadAndRender();
+        });
+    });
+
+    modeButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            modeButtons.forEach(function (button) {
+                button.classList.remove("active");
+            });
+            btn.classList.add("active");
+            currentMode = btn.getAttribute("data-map-mode");
             loadAndRender();
         });
     });

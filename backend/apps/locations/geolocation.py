@@ -14,6 +14,11 @@ AUTOMATED_LEVELS = (
     Location.AdministrativeLevel.CITY,
 )
 
+GLOBAL_AUTOMATED_LEVELS = (
+    Location.AdministrativeLevel.COUNTRY,
+    *AUTOMATED_LEVELS,
+)
+
 LEVEL_SPECIFICITY = {
     Location.AdministrativeLevel.COUNTRY: 0,
     Location.AdministrativeLevel.PROVINCE: 1,
@@ -150,6 +155,7 @@ class IndonesiaGeolocationResult:
                     "administrative_level": (
                         primary.administrative_level
                     ),
+                    "country_code": primary.country_code,
                     "parent_name": primary.parent_name,
                     "latitude": primary.latitude,
                     "longitude": primary.longitude,
@@ -168,6 +174,7 @@ class IndonesiaGeolocationResult:
                     "administrative_level": (
                         item.administrative_level
                     ),
+                    "country_code": item.country_code,
                     "parent_id": item.parent_id,
                     "matched_text": item.matched_text,
                     "confidence_score": item.confidence_score,
@@ -255,17 +262,27 @@ def _automatic_terms(location: Location) -> set[str]:
     }
 
 
-@lru_cache(maxsize=1)
-def get_indonesia_location_index() -> tuple[
+@lru_cache(maxsize=2)
+def _get_location_index(scope: str) -> tuple[
     LocationSearchTerm,
     ...,
 ]:
-    locations = list(
-        Location.objects.filter(
-            is_active=True,
+    queryset = Location.objects.filter(is_active=True)
+
+    if scope == "domestic":
+        queryset = queryset.filter(
             country_code="ID",
             administrative_level__in=AUTOMATED_LEVELS,
         )
+    elif scope == "foreign":
+        queryset = queryset.exclude(country_code="ID").filter(
+            administrative_level__in=GLOBAL_AUTOMATED_LEVELS,
+        )
+    else:
+        raise ValueError(f"Scope indeks lokasi tidak dikenal: {scope}")
+
+    locations = list(
+        queryset
         .select_related("parent")
         .prefetch_related("aliases")
         .order_by(
@@ -354,8 +371,34 @@ def get_indonesia_location_index() -> tuple[
     return tuple(rows)
 
 
+def get_indonesia_location_index() -> tuple[
+    LocationSearchTerm,
+    ...,
+]:
+    return _get_location_index("domestic")
+
+
+def get_foreign_location_index() -> tuple[
+    LocationSearchTerm,
+    ...,
+]:
+    return _get_location_index("foreign")
+
+
+def get_global_location_index() -> tuple[
+    LocationSearchTerm,
+    ...,
+]:
+    rows = [
+        *get_indonesia_location_index(),
+        *get_foreign_location_index(),
+    ]
+    rows.sort(key=lambda item: len(item.term), reverse=True)
+    return tuple(rows)
+
+
 def clear_geolocation_cache() -> None:
-    get_indonesia_location_index.cache_clear()
+    _get_location_index.cache_clear()
 
 
 def infer_event_anchor_spans(
@@ -627,9 +670,11 @@ def _select_primary_location(
     return candidate
 
 
-def resolve_indonesia_locations(
+def _resolve_locations(
     text: str,
     *,
+    search_index: tuple[LocationSearchTerm, ...],
+    resolved_scope: str,
     title_length: int = 0,
     anchor_spans: Iterable[tuple[int, int]] = (),
 ) -> IndonesiaGeolocationResult:
@@ -644,7 +689,7 @@ def resolve_indonesia_locations(
         tuple[int, int, str, tuple[LocationCandidate, ...]]
     ] = []
 
-    for search_term in get_indonesia_location_index():
+    for search_term in search_index:
         pattern = _location_pattern(search_term.term)
 
         for match in pattern.finditer(source_text):
@@ -799,5 +844,58 @@ def resolve_indonesia_locations(
     return IndonesiaGeolocationResult(
         mentions=tuple(mentions),
         ambiguous_terms=tuple(ambiguous_terms),
-        scope="domestic",
+        scope=resolved_scope,
     )
+
+
+def resolve_indonesia_locations(
+    text: str,
+    *,
+    title_length: int = 0,
+    anchor_spans: Iterable[tuple[int, int]] = (),
+) -> IndonesiaGeolocationResult:
+    """Resolver kompatibilitas untuk alur yang khusus wilayah Indonesia."""
+    return _resolve_locations(
+        text,
+        search_index=get_indonesia_location_index(),
+        resolved_scope="domestic",
+        title_length=title_length,
+        anchor_spans=anchor_spans,
+    )
+
+
+def resolve_global_locations(
+    text: str,
+    *,
+    title_length: int = 0,
+    anchor_spans: Iterable[tuple[int, int]] = (),
+) -> IndonesiaGeolocationResult:
+    """Resolusi lokasi domestik dan luar negeri dari master aktif.
+
+    Scope tidak mengubah arti lokasi: data non-ID tetap ditandai ``foreign``
+    dan tidak boleh masuk agregasi/peta domestik Indonesia.
+    """
+    result = _resolve_locations(
+        text,
+        search_index=get_global_location_index(),
+        resolved_scope="unresolved",
+        title_length=title_length,
+        anchor_spans=anchor_spans,
+    )
+
+    if not result.mentions:
+        return result
+
+    country_codes = {
+        mention.country_code
+        for mention in result.mentions
+        if mention.country_code
+    }
+    if country_codes == {"ID"}:
+        scope = "domestic"
+    elif "ID" not in country_codes and len(country_codes) == 1:
+        scope = "foreign"
+    else:
+        scope = "multinational"
+
+    return replace(result, scope=scope)

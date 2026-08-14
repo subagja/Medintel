@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.articles.models import Article
-from apps.entities.models import ArticleFact, Disease
+from apps.entities.models import ArticleFact, Disease, ValidationStatus
 from apps.locations.models import Location
 from apps.sources.models import Source
 
@@ -76,12 +76,17 @@ class SpreadMapRateTests(TestCase):
             event_date=event_date,
             case_count=case_count,
             fact_text=f"Dilaporkan {case_count} kasus.",
+            validation_status=ValidationStatus.VALIDATED,
         )
 
-    def _latest_entry(self, *, level, code):
+    def _latest_entry(self, *, level, code, mode="rolling"):
         response = self.client.get(
             self.url,
-            {"disease": self.disease.code, "level": level},
+            {
+                "disease": self.disease.code,
+                "level": level,
+                "mode": mode,
+            },
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -138,6 +143,7 @@ class SpreadMapRateTests(TestCase):
             event_date=self.event_date,
             case_count=100,
             fact_text="Dilaporkan 100 kasus.",
+            validation_status=ValidationStatus.VALIDATED,
         )
 
         _payload, entry = self._latest_entry(
@@ -171,14 +177,65 @@ class SpreadMapRateTests(TestCase):
             (self.event_date - timedelta(days=13)).isoformat(),
         )
 
+    def test_cumulative_mode_sums_validated_unique_reports(self):
+        self._fact(
+            suffix="kejadian-kedua",
+            event_date=self.event_date + timedelta(days=7),
+            case_count=25,
+        )
+
+        payload, entry = self._latest_entry(
+            level="province",
+            code="36",
+            mode="cumulative",
+        )
+
+        self.assertEqual(payload["mode"], "cumulative")
+        self.assertFalse(payload["metric"]["normalized"])
+        self.assertEqual(entry["reported_case_count"], 125)
+        self.assertEqual(entry["metric_value"], 125.0)
+        self.assertEqual(
+            payload["timeline"][-1]["period_start"],
+            self.event_date.isoformat(),
+        )
+
+    def test_unreviewed_fact_is_not_included_on_map(self):
+        article = Article.objects.create(
+            source=self.source,
+            original_url="https://spread-map.example.com/unreviewed",
+            normalized_url="https://spread-map.example.com/unreviewed",
+            title="Laporan belum ditinjau",
+            content_text="Dilaporkan 900 kasus yang belum ditinjau.",
+            content_hash="u" * 64,
+            processing_status=Article.ProcessingStatus.PROCESSED,
+        )
+        ArticleFact.objects.create(
+            article=article,
+            disease=self.disease,
+            location=self.regency,
+            event_date=self.event_date,
+            case_count=900,
+            fact_text="Dilaporkan 900 kasus.",
+            validation_status=ValidationStatus.UNREVIEWED,
+        )
+
+        _payload, entry = self._latest_entry(
+            level="regency_city",
+            code="3603",
+            mode="cumulative",
+        )
+
+        self.assertEqual(entry["reported_case_count"], 100)
+
     def test_page_explains_metric_limitations(self):
         response = self.client.get(reverse("dashboard:spread-map"))
 
         self.assertContains(response, "bukan angka epidemiologis")
         self.assertContains(
             response,
-            "Rasio Kasus Terlapor OSINT per 100.000 Penduduk",
+            "Akumulasi Kasus Terlapor dari Artikel Tervalidasi",
         )
+        self.assertContains(response, "14 Hari Terakhir")
         self.assertContains(
             response,
             "Belum dinormalisasi berdasarkan jumlah penduduk.",

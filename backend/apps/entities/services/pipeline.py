@@ -41,7 +41,6 @@ def evaluate_article_eligibility(
 
     has_location = ArticleLocation.objects.filter(
         article=article,
-        location__country_code="ID",
     ).exists()
 
     facts = ArticleFact.objects.filter(

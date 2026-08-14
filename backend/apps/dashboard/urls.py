@@ -282,6 +282,11 @@ urlpatterns = [
         name="entity-extraction-run",
     ),
     path(
+        "ekstraksi-entitas/status/",
+        views.entity_extraction_status,
+        name="entity-extraction-status",
+    ),
+    path(
         "ekstraksi-entitas/<uuid:article_id>/",
         views.article_extraction_detail,
         name="article-extraction-detail",

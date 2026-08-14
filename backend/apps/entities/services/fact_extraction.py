@@ -147,6 +147,26 @@ TREND_PATTERNS = {
 }
 
 
+# Kata seperti "peningkatan" hanya boleh menjadi tren jika konteks di
+# kalimat yang sama membicarakan keadaan epidemiologis. Tanpa pembatas ini,
+# frasa "peningkatan kapasitas teknis" atau "peningkatan kewaspadaan" akan
+# keliru dibaca sebagai peningkatan kasus.
+EPIDEMIOLOGICAL_TREND_CONTEXT = re.compile(
+    r"\b(?:jumlah\s+kasus|angka\s+kasus|kasus|kematian|pasien|penderita|"
+    r"korban|rawat\s+inap|kejadian|wabah|penularan)\b",
+    flags=re.IGNORECASE,
+)
+
+NON_EPIDEMIOLOGICAL_TREND_OBJECT = re.compile(
+    r"\b(?:peningkatan|kenaikan|penurunan)\s+(?:kapasitas|kewaspadaan|"
+    r"surveilans|pengawasan|layanan|pelayanan|upaya|respons|respon|"
+    r"koordinasi|kolaborasi|jejaring|target|cakupan|vaksinasi|imunisasi|"
+    r"pemeriksaan|deteksi|pelacakan|anggaran|fasilitas|tenaga|"
+    r"sumber\s+daya)\b",
+    flags=re.IGNORECASE,
+)
+
+
 NEGATION_PATTERNS = [
     r"\btidak ada\b",
     r"\btidak ditemukan\b",
@@ -259,29 +279,78 @@ def has_negation_near_match(
 def detect_trend(
     text: str,
 ) -> TrendMention | None:
+    candidates = []
+
     for trend, expressions in TREND_PATTERNS.items():
         for expression in expressions:
-            match = re.search(
+            for match in re.finditer(
                 expression,
                 text,
                 flags=re.IGNORECASE,
-            )
-
-            if not match:
-                continue
-
-            if has_negation_near_match(
-                text=text,
-                start=match.start(),
             ):
-                continue
+                if has_negation_near_match(
+                    text=text,
+                    start=match.start(),
+                ):
+                    continue
 
-            return TrendMention(
-                trend=trend,
-                matched_text=match.group(0),
-                start=match.start(),
-                end=match.end(),
-            )
+                sentence_start = max(
+                    text.rfind(".", 0, match.start()),
+                    text.rfind("!", 0, match.start()),
+                    text.rfind("?", 0, match.start()),
+                    text.rfind("\n", 0, match.start()),
+                ) + 1
+                sentence_end_candidates = [
+                    position
+                    for position in (
+                        text.find(".", match.end()),
+                        text.find("!", match.end()),
+                        text.find("?", match.end()),
+                        text.find("\n", match.end()),
+                    )
+                    if position >= 0
+                ]
+                sentence_end = (
+                    min(sentence_end_candidates)
+                    if sentence_end_candidates
+                    else len(text)
+                )
+                sentence = text[sentence_start:sentence_end]
+                local_start = match.start() - sentence_start
+
+                false_object_match = (
+                    NON_EPIDEMIOLOGICAL_TREND_OBJECT.search(sentence)
+                )
+                if (
+                    false_object_match
+                    and false_object_match.start()
+                    <= local_start
+                    < false_object_match.end()
+                ):
+                    continue
+
+                context_start = max(0, local_start - 80)
+                context_end = min(
+                    len(sentence),
+                    local_start + len(match.group(0)) + 80,
+                )
+                nearby_context = sentence[context_start:context_end]
+                if not EPIDEMIOLOGICAL_TREND_CONTEXT.search(
+                    nearby_context
+                ):
+                    continue
+
+                candidates.append(
+                    TrendMention(
+                        trend=trend,
+                        matched_text=match.group(0),
+                        start=match.start(),
+                        end=match.end(),
+                    )
+                )
+
+    if candidates:
+        return min(candidates, key=lambda candidate: candidate.start)
 
     return None
 

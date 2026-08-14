@@ -110,10 +110,10 @@ Validasi Artikel | MEDINTEL OSINT
     </div>
 </div>
 
-<div class="row row-cards">
+<div class="row row-cards medintel-validation-workspace" id="validation-workspace">
 
-    <div class="col-lg-5">
-        <div class="card">
+    <div class="col-lg-5 medintel-queue-panel">
+        <div class="card h-100">
 
             <div class="card-header">
                 <div>
@@ -345,9 +345,13 @@ Validasi Artikel | MEDINTEL OSINT
                                     </div>
 
                                     <div class="small mt-2">
-                                        {% if article.has_extracted_disease and article.has_extracted_location and article.has_numeric_fact %}
+                                        {% if article_assessment.validation_status == "validated" and article.has_extracted_disease and article.has_extracted_location and not article.has_numeric_fact %}
+                                            <span class="badge bg-purple-lt">
+                                                Kualitatif
+                                            </span>
+                                        {% elif article.has_extracted_disease and article.has_extracted_location and article.has_numeric_fact %}
                                             <span class="badge bg-success-lt">
-                                                Eligible
+                                                Kuantitatif
                                             </span>
                                         {% else %}
                                             <span class="badge bg-warning-lt">
@@ -401,7 +405,7 @@ Validasi Artikel | MEDINTEL OSINT
                 {% endfor %}
             </div>
 
-            <div class="card-footer py-2">
+            <div class="card-footer medintel-panel-footer">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div class="text-secondary small">
                         {% if page_obj.paginator.count %}
@@ -449,7 +453,7 @@ Validasi Artikel | MEDINTEL OSINT
 
     <div class="col-lg-7 medintel-detail-panel">
         {% if selected_article and assessment_form %}
-            <form method="post" novalidate>
+            <form method="post" novalidate id="article-validation-form">
                 {% csrf_token %}
 
                 <input
@@ -486,6 +490,15 @@ Validasi Artikel | MEDINTEL OSINT
                                 <span class="badge bg-success-lt">
                                     Tervalidasi
                                 </span>
+                                {% if selected_eligibility.has_numeric_fact %}
+                                    <span class="badge bg-blue-lt ms-1">
+                                        Kuantitatif
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-purple-lt ms-1">
+                                        Kualitatif
+                                    </span>
+                                {% endif %}
                             {% elif assessment.validation_status == "rejected" %}
                                 <span class="badge bg-danger-lt">
                                     Tidak Relevan
@@ -553,6 +566,12 @@ Validasi Artikel | MEDINTEL OSINT
                                                 {% if relation.is_primary %}
                                                     <span class="badge bg-primary-lt">
                                                         Utama
+                                                    </span>
+                                                {% endif %}
+
+                                                {% if relation.location.country_code != "ID" %}
+                                                    <span class="badge bg-purple-lt">
+                                                        Luar negeri · {{ relation.location.country_code }}
                                                     </span>
                                                 {% endif %}
 
@@ -935,6 +954,12 @@ Validasi Artikel | MEDINTEL OSINT
                                             </div>
                                         {% endfor %}
                                     </div>
+
+                                    <div class="col-12 d-flex justify-content-end pb-3">
+                                        <button type="submit" name="action" value="save_assessment" class="btn btn-primary" data-medintel-action-submit>
+                                            Simpan Status Validasi
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1008,6 +1033,7 @@ Validasi Artikel | MEDINTEL OSINT
                                             name="action"
                                             value="correct_primary_disease"
                                             class="btn btn-blue"
+                                            data-medintel-action-submit
                                         >
                                             Simpan Penyakit Utama
                                         </button>
@@ -1085,6 +1111,7 @@ Validasi Artikel | MEDINTEL OSINT
                                             name="action"
                                             value="correct_primary_location"
                                             class="btn btn-azure"
+                                            data-medintel-action-submit
                                         >
                                             Simpan Lokasi Utama
                                         </button>
@@ -1240,6 +1267,12 @@ Validasi Artikel | MEDINTEL OSINT
                                                 {{ error }}
                                             </div>
                                         {% endfor %}
+                                    </div>
+
+                                    <div class="col-12 d-flex justify-content-end">
+                                        <button type="submit" name="action" value="save_assessment" class="btn btn-azure" data-medintel-action-submit>
+                                            Simpan Neraca Informasi
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -1404,13 +1437,14 @@ Validasi Artikel | MEDINTEL OSINT
                         </div>
                     </div>
 
-                    <div class="card-footer d-flex justify-content-end">
+                    <div class="card-footer d-flex justify-content-end medintel-panel-footer">
                         {% if request.user|has_role:"contributors" %}
                             <button
                                 type="submit"
                                 name="action"
                                 value="save_assessment"
                                 class="btn btn-primary"
+                                data-medintel-action-submit
                             >
                                 Simpan Penilaian
                             </button>
@@ -1452,6 +1486,18 @@ Validasi Artikel | MEDINTEL OSINT
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    const validationWorkspace = document.getElementById("validation-workspace");
+    const validationForm = document.getElementById("article-validation-form");
+    const queueCard = validationWorkspace?.querySelector(
+        ".medintel-queue-panel > .card"
+    );
+    const detailForm = validationWorkspace?.querySelector(
+        ".medintel-detail-panel > form"
+    );
+    const detailCard = detailForm?.querySelector(":scope > .card")
+        || validationWorkspace?.querySelector(
+            ".medintel-detail-panel > .card"
+        );
     const activeTabInput = document.getElementById("active-validation-tab");
     const tabButtons = document.querySelectorAll("[data-medintel-tab]");
     const reliabilitySelect = document.getElementById("id_source_reliability");
@@ -1460,6 +1506,53 @@ document.addEventListener("DOMContentLoaded", function () {
     const currentAdmiraltyCode = document.getElementById("current-admiralty-code");
     const recommendationButton = document.getElementById("apply-information-recommendation");
     const recommendationMessage = document.getElementById("recommendation-applied-message");
+
+    function syncWorkspaceHeight() {
+        if (!validationWorkspace || window.innerWidth < 992) {
+            validationWorkspace?.style.removeProperty(
+                "--medintel-validation-workspace-height"
+            );
+            validationWorkspace?.style.removeProperty("height");
+            queueCard?.style.removeProperty("height");
+            detailForm?.style.removeProperty("height");
+            detailCard?.style.removeProperty("height");
+            return;
+        }
+
+        const top = validationWorkspace.getBoundingClientRect().top;
+        // Tinggi mengikuti sisa viewport agar footer kedua panel selalu terlihat.
+        // Daftar dapat berisi banyak artikel per halaman, tetapi isi daftar
+        // tetap menggulir di dalam panel. Tinggi minimum memberi ruang visual
+        // untuk sekitar lima kartu artikel pada desktop.
+        // Beri ruang napas di bawah kedua kartu agar footer/pagination tidak
+        // menempel pada batas bawah viewport.
+        const viewportBottomGap = 40;
+        const availableHeight = Math.max(
+            940,
+            Math.floor(window.innerHeight - top - viewportBottomGap)
+        );
+        validationWorkspace.style.setProperty(
+            "--medintel-validation-workspace-height",
+            availableHeight + "px"
+        );
+        validationWorkspace.style.height = availableHeight + "px";
+
+        // Gunakan satu angka piksel yang sama untuk kedua kartu. Ini
+        // menghindari perbedaan perhitungan tinggi dari flex/grid Tabler.
+        if (queueCard) {
+            queueCard.style.height = availableHeight + "px";
+        }
+        if (detailForm) {
+            detailForm.style.height = availableHeight + "px";
+        }
+        if (detailCard) {
+            detailCard.style.height = availableHeight + "px";
+        }
+    }
+
+    syncWorkspaceHeight();
+    window.addEventListener("resize", syncWorkspaceHeight);
+    window.addEventListener("load", syncWorkspaceHeight);
 
     // Simpan & kembalikan posisi scroll daftar artikel supaya tidak
     // "lompat" ke atas tiap kali klik satu artikel (halaman ini masih
@@ -1502,6 +1595,56 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
     });
+
+    if (validationForm) {
+        let clickedActionButton = null;
+
+        validationForm.querySelectorAll(
+            "[data-medintel-action-submit]"
+        ).forEach(function (button) {
+            button.addEventListener("click", function () {
+                clickedActionButton = button;
+            });
+        });
+
+        validationForm.addEventListener("submit", function (event) {
+            const submitter = event.submitter || clickedActionButton;
+            if (!submitter?.matches("[data-medintel-action-submit]")) {
+                return;
+            }
+
+            const action = submitter.value || "save_assessment";
+            if (action === "correct_primary_disease" && activeTabInput) {
+                activeTabInput.value = "disease";
+            } else if (
+                action === "correct_primary_location"
+                && activeTabInput
+            ) {
+                activeTabInput.value = "location";
+            }
+
+            // Tombol akan dinonaktifkan untuk mencegah klik ganda. Karena
+            // elemen disabled tidak ikut payload POST, action disalin ke input
+            // tersembunyi sebelum browser melanjutkan submit normal.
+            let actionInput = validationForm.querySelector(
+                'input[type="hidden"][data-medintel-submit-action]'
+            );
+            if (!actionInput) {
+                actionInput = document.createElement("input");
+                actionInput.type = "hidden";
+                actionInput.name = "action";
+                actionInput.dataset.medintelSubmitAction = "true";
+                validationForm.appendChild(actionInput);
+            }
+            actionInput.value = action;
+
+            submitter.disabled = true;
+            submitter.innerHTML = (
+                '<span class="spinner-border spinner-border-sm me-2" '
+                + 'aria-hidden="true"></span>Menyimpan...'
+            );
+        });
+    }
 
     function updateAdmiraltyCode() {
         if (!currentAdmiraltyCode) {

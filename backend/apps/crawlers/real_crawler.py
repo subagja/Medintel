@@ -211,6 +211,20 @@ def _mention_terms(mention) -> list[str]:
 
 def build_surveillance_metadata(eligibility) -> dict:
     """Bentuk metadata eligibility yang dipakai seluruh kanal crawler."""
+    country_codes = {
+        mention.country_code
+        for mention in eligibility.location_mentions
+        if mention.country_code
+    }
+    if country_codes == {"ID"}:
+        geographic_scope = "domestic"
+    elif "ID" not in country_codes and len(country_codes) == 1:
+        geographic_scope = "foreign"
+    elif country_codes:
+        geographic_scope = "multinational"
+    else:
+        geographic_scope = "unresolved"
+
     return {
         "is_relevant": True,
         "reason": eligibility.reason,
@@ -245,7 +259,7 @@ def build_surveillance_metadata(eligibility) -> dict:
             }
             for mention in eligibility.location_mentions
         ],
-        "geographic_scope": "domestic",
+        "geographic_scope": geographic_scope,
         "evidence_text": eligibility.evidence_text,
     }
 

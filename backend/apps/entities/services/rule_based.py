@@ -7,7 +7,7 @@ from apps.articles.models import Article
 
 from apps.locations.geolocation import (
     IndonesiaGeolocationResult,
-    resolve_indonesia_locations,
+    resolve_global_locations,
 )
 from apps.locations.models import Location, LocationAlias
 
@@ -93,6 +93,7 @@ class EntityExtractionResult:
                     "administrative_level": (
                         primary.administrative_level
                     ),
+                    "country_code": primary.country_code,
                     "parent_name": primary.parent_name,
                     "latitude": primary.latitude,
                     "longitude": primary.longitude,
@@ -291,7 +292,7 @@ def _extract_location_geolocation(
     text = normalize_for_matching(
         f"{article.title}\n{article.content_text}"
     )
-    geolocation = resolve_indonesia_locations(
+    geolocation = resolve_global_locations(
         text,
         title_length=len(article.title),
     )
@@ -382,9 +383,8 @@ def _persist_primary_location(
         validation_status=ValidationStatus.UNREVIEWED,
     ).exists()
 
-    automatic_domestic = ArticleLocation.objects.filter(
+    automatic_locations = ArticleLocation.objects.filter(
         article=article,
-        location__country_code="ID",
         extraction_method__in=AUTOMATED_LOCATION_METHODS,
         validation_status=ValidationStatus.UNREVIEWED,
     )
@@ -392,10 +392,10 @@ def _persist_primary_location(
     if protected_primary_exists:
         # Keputusan analis mengalahkan resolver otomatis. Relasi otomatis
         # yang belum ditinjau tidak perlu dipertahankan sebagai lokasi kedua.
-        automatic_domestic.delete()
+        automatic_locations.delete()
         return
 
-    automatic_domestic.filter(
+    automatic_locations.filter(
         is_primary=True,
     ).update(
         is_primary=False,
@@ -458,7 +458,7 @@ def _persist_primary_location(
 
             result.locations_updated += 1
 
-    automatic_domestic.exclude(
+    automatic_locations.exclude(
         location_id__in=detected_location_ids,
     ).delete()
 

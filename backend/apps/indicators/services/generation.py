@@ -85,13 +85,10 @@ def build_indicator_candidates(
             }
         )
 
-    if (
-        fact.trend == ArticleFact.Trend.INCREASING
-        or (
-            fact.case_count is not None
-            and "meningkat" in fact.fact_text.lower()
-        )
-    ):
+    # Jangan menebak ulang tren dari substring fact_text. Kata seperti
+    # "meningkatkan surveilans" bukan peningkatan kasus. Arah indikator
+    # hanya mengikuti tren fakta yang telah diklasifikasikan dan ditinjau.
+    if fact.trend == ArticleFact.Trend.INCREASING:
         candidates.append(
             {
                 "indicator_type_code": "case-increase",

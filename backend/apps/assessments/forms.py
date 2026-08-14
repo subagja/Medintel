@@ -270,7 +270,6 @@ class PrimaryArticleLocationForm(forms.Form):
         queryset = (
             Location.objects.filter(
                 is_active=True,
-                country_code="ID",
                 administrative_level__in=[
                     Location.AdministrativeLevel.COUNTRY,
                     Location.AdministrativeLevel.PROVINCE,
@@ -285,6 +284,11 @@ class PrimaryArticleLocationForm(forms.Form):
                         pk__in=candidate_ids,
                         then=Value(0),
                     ),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                country_order=Case(
+                    When(country_code="ID", then=Value(0)),
                     default=Value(1),
                     output_field=IntegerField(),
                 ),
@@ -308,6 +312,8 @@ class PrimaryArticleLocationForm(forms.Form):
             )
             .order_by(
                 "article_candidate_order",
+                "country_order",
+                "country_code",
                 "administrative_order",
                 "parent__name",
                 "name",
@@ -348,7 +354,12 @@ class PrimaryArticleLocationForm(forms.Form):
             else ""
         )
 
-        return f"{prefix}{location}"
+        country_suffix = (
+            ""
+            if location.country_code == "ID"
+            else f" [{location.country_code}]"
+        )
+        return f"{prefix}{location}{country_suffix}"
 
 
 SCORE_1_TO_5_CHOICES = [

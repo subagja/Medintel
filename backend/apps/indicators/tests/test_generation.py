@@ -154,6 +154,24 @@ class IndicatorGenerationTests(TestCase):
             result.skipped_reason,
         )
 
+    def test_operational_increase_text_does_not_create_case_increase(self):
+        self.fact.trend = ArticleFact.Trend.UNKNOWN
+        self.fact.fact_text = (
+            "Pemerintah meningkatkan kapasitas surveilans untuk "
+            "menangani 42 kasus DBD."
+        )
+        self.fact.save(
+            update_fields=["trend", "fact_text", "updated_at"]
+        )
+
+        generate_indicators_from_fact(self.fact)
+
+        self.assertFalse(
+            Indicator.objects.filter(
+                indicator_type__code="case-increase",
+            ).exists()
+        )
+
     def test_generation_is_idempotent(self):
         first_result = generate_indicators_from_fact(
             self.fact

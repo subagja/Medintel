@@ -1660,6 +1660,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         )
     active_filters["q"] = search_query
 
+    # Tetap sediakan banyak artikel per halaman. Panel antrean memiliki scroll
+    # internal sehingga hanya beberapa kartu terlihat sekaligus tanpa membuat
+    # keseluruhan halaman memanjang.
     paginator = Paginator(articles, 50)
     requested_page = (
         request.POST.get("page")
@@ -1998,6 +2001,52 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     instance=assessment,
                 )
 
+                if (
+                    form.is_valid()
+                    and form.cleaned_data["validation_status"]
+                    == ArticleValidationAssessment
+                    .ValidationStatus
+                    .VALIDATED
+                ):
+                    readiness_errors = []
+                    if not selected_diseases:
+                        readiness_errors.append(
+                            "Artikel belum memiliki hasil ekstraksi penyakit."
+                        )
+                    if not selected_locations:
+                        readiness_errors.append(
+                            "Artikel belum memiliki hasil ekstraksi lokasi."
+                        )
+
+                    has_numeric_fact = any(
+                        fact.case_count is not None
+                        or fact.death_count is not None
+                        for fact in selected_facts
+                    )
+                    has_linked_numeric_fact = any(
+                        (
+                            fact.case_count is not None
+                            or fact.death_count is not None
+                        )
+                        and fact.disease_id
+                        and fact.location_id
+                        and fact.validation_status
+                        != ValidationStatus.REJECTED
+                        for fact in selected_facts
+                    )
+                    if has_numeric_fact and not has_linked_numeric_fact:
+                        readiness_errors.append(
+                            "Fakta numerik belum dapat digunakan. Pastikan "
+                            "fakta tidak ditolak serta sudah ditautkan ke "
+                            "penyakit dan lokasi."
+                        )
+
+                    if readiness_errors:
+                        form.add_error(
+                            None,
+                            ValidationError(readiness_errors),
+                        )
+
                 if form.is_valid():
                     with transaction.atomic():
                         saved_assessment = form.save(
@@ -2091,7 +2140,23 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                         ),
                     )
 
-                    if generation_summary is not None:
+                    if (
+                        generation_summary is not None
+                        and generation_summary["analysis_mode"]
+                        == "qualitative"
+                    ):
+                        messages.info(
+                            request,
+                            (
+                                "Artikel tervalidasi sebagai informasi "
+                                "kualitatif. Artikel tetap disimpan sebagai "
+                                "sumber pendukung, tetapi tidak membentuk "
+                                "indikator kasus, sinyal kuantitatif, atau "
+                                "nilai peta karena tidak memiliki jumlah "
+                                "kasus/kematian."
+                            ),
+                        )
+                    elif generation_summary is not None:
                         messages.info(
                             request,
                             (
@@ -2521,17 +2586,23 @@ def _validate_extractions_and_generate_indicators(
             "Artikel belum memiliki hasil ekstraksi lokasi."
         )
 
-    if not any(
+    has_numeric_fact = any(
         fact.case_count is not None
         or fact.death_count is not None
         for fact in facts
-    ):
-        raise ValidationError(
-            "Artikel belum memiliki fakta numerik berupa "
-            "jumlah kasus atau kematian."
-        )
+    )
 
     summary = {
+        "analysis_mode": (
+            "quantitative" if has_numeric_fact else "qualitative"
+        ),
+        "quantitative_eligible": has_numeric_fact,
+        "qualitative_reason": (
+            "Artikel relevan, tetapi tidak mencantumkan jumlah kasus "
+            "atau kematian."
+            if not has_numeric_fact
+            else ""
+        ),
         "diseases_validated": 0,
         "locations_validated": 0,
         "facts_validated": 0,
@@ -2557,6 +2628,14 @@ def _validate_extractions_and_generate_indicators(
                 notes=notes,
             )
             summary["locations_validated"] += 1
+
+    # Artikel relevan tanpa angka tetap sah sebagai informasi kualitatif.
+    # Berhenti sebelum validasi fakta/generasi indikator agar artikel ini
+    # tidak masuk hitungan kasus, rasio penduduk, peta, atau sinyal berbasis
+    # indikator kuantitatif.
+    if not has_numeric_fact:
+        summary["facts_skipped"] = len(facts)
+        return summary
 
     eligible_facts = []
 
@@ -3264,10 +3343,40 @@ def spread_map(request: HttpRequest) -> HttpResponse:
     atau kabupaten/kota, bisa di-toggle), dibangun dari ArticleFact
     yang punya event_date + lokasi + penyakit lengkap.
     """
-    diseases = Disease.objects.filter(
+    accepted_extraction_statuses = (
+        ValidationStatus.VALIDATED,
+        ValidationStatus.CORRECTED,
+    )
+    domestic_disease_ids = Disease.objects.filter(
         article_facts__event_date__isnull=False,
         article_facts__location__isnull=False,
-    ).distinct().order_by("name")
+        article_facts__location__country_code="ID",
+        article_facts__case_count__gt=0,
+        article_facts__validation_status__in=(
+            accepted_extraction_statuses
+        ),
+    ).values_list("id", flat=True)
+    foreign_article_ids = ArticleLocation.objects.filter(
+        is_primary=True,
+        validation_status__in=accepted_extraction_statuses,
+    ).exclude(
+        location__country_code="ID",
+    ).values_list("article_id", flat=True)
+    foreign_disease_ids = Disease.objects.filter(
+        article_mentions__is_primary=True,
+        article_mentions__validation_status__in=(
+            accepted_extraction_statuses
+        ),
+        article_mentions__article__validation_assessment__validation_status=(
+            ArticleValidationAssessment.ValidationStatus.VALIDATED
+        ),
+        article_mentions__article_id__in=foreign_article_ids,
+    ).values_list("id", flat=True)
+
+    disease_ids = set(domestic_disease_ids) | set(foreign_disease_ids)
+    diseases = Disease.objects.filter(
+        id__in=disease_ids,
+    ).order_by("name")
 
     context = {
         "page_title": "Peta Sebaran Penyakit",
@@ -3294,6 +3403,8 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
     from datetime import timedelta
 
     from .spread_map_metrics import (
+        MAP_MODE_CUMULATIVE,
+        MAP_MODE_ROLLING,
         ROLLING_WINDOW_DAYS,
         metric_metadata,
         normalize_bps_code,
@@ -3302,10 +3413,22 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
     )
 
     disease_code = request.GET.get("disease", "").strip()
+    scope = request.GET.get("scope", "domestic").strip()
     level = request.GET.get("level", "province").strip()
+    mode = request.GET.get("mode", MAP_MODE_CUMULATIVE).strip()
+
+    if scope == "global":
+        return JsonResponse(
+            _spread_map_global_payload(
+                disease_code=disease_code,
+                mode=mode,
+            )
+        )
 
     if level not in ("province", "regency_city"):
         level = "province"
+    if mode not in (MAP_MODE_CUMULATIVE, MAP_MODE_ROLLING):
+        mode = MAP_MODE_CUMULATIVE
 
     target_levels = (
         {Location.AdministrativeLevel.PROVINCE}
@@ -3320,7 +3443,12 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
         ArticleFact.objects.filter(
             event_date__isnull=False,
             location__isnull=False,
+            location__country_code="ID",
             case_count__gt=0,
+            validation_status__in=(
+                ValidationStatus.VALIDATED,
+                ValidationStatus.CORRECTED,
+            ),
         )
         .select_related(
             "article",
@@ -3337,7 +3465,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
         facts = facts.filter(disease__code=disease_code)
 
     facts = list(facts.order_by("event_date"))
-    metric = metric_metadata(level)
+    metric = metric_metadata(level, mode)
 
     if not facts:
         return JsonResponse(
@@ -3345,6 +3473,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
                 "timeline": [],
                 "locations": {},
                 "level": level,
+                "mode": mode,
                 "metric": metric,
             }
         )
@@ -3391,12 +3520,15 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
     timeline = []
 
     for bucket_end in buckets:
-        window_start = bucket_end - timedelta(
-            days=ROLLING_WINDOW_DAYS - 1
+        window_start = (
+            earliest
+            if mode == MAP_MODE_CUMULATIVE
+            else bucket_end - timedelta(days=ROLLING_WINDOW_DAYS - 1)
         )
         new_since = bucket_end - timedelta(days=6)
         frame_groups = {}
         seen_reported_values = set()
+        seen_death_values = set()
 
         for fact in facts:
             if fact.event_date < window_start:
@@ -3440,6 +3572,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
                 code,
                 {
                     "reported_case_count": 0,
+                    "reported_death_count": 0,
                     "article_ids": set(),
                     "sources": set(),
                     "is_new": False,
@@ -3463,6 +3596,17 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
                 seen_reported_values.add(reported_value_key)
                 entry["reported_case_count"] += fact.case_count
 
+            if fact.death_count:
+                death_value_key = (
+                    str(fact.disease_id),
+                    str(fact.location_id),
+                    fact.event_date,
+                    fact.death_count,
+                )
+                if death_value_key not in seen_death_values:
+                    seen_death_values.add(death_value_key)
+                    entry["reported_death_count"] += fact.death_count
+
             if (
                 fact.trend == ArticleFact.Trend.NEW_OCCURRENCE
                 and fact.event_date >= new_since
@@ -3477,7 +3621,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
 
             population = None
             metric_value = float(case_count)
-            if level == "province":
+            if level == "province" and mode == MAP_MODE_ROLLING:
                 population_reference = data["population_reference"]
                 population = (
                     population_reference["population"]
@@ -3490,6 +3634,7 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
                 # case_count dipertahankan untuk kompatibilitas klien lama.
                 "case_count": case_count,
                 "reported_case_count": case_count,
+                "reported_death_count": data["reported_death_count"],
                 "metric_value": metric_value,
                 "population": population,
                 "article_count": len(data["article_ids"]),
@@ -3512,9 +3657,318 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
             "timeline": timeline,
             "locations": locations_meta,
             "level": level,
+            "mode": mode,
             "metric": metric,
         }
     )
+
+
+def _spread_map_global_payload(
+    *,
+    disease_code: str,
+    mode: str,
+) -> dict:
+    """Bangun timeline marker luar negeri tanpa denominator BPS.
+
+    Ukuran marker menunjukkan banyaknya artikel tervalidasi. Angka kasus
+    tidak dijumlahkan antarartikel karena artikel berikutnya bisa merupakan
+    pembaruan angka kumulatif yang sama; API hanya mengirim angka tervalidasi
+    terbaru pada setiap lokasi.
+    """
+    from datetime import timedelta
+
+    from .spread_map_metrics import (
+        MAP_MODE_CUMULATIVE,
+        MAP_MODE_ROLLING,
+        ROLLING_WINDOW_DAYS,
+    )
+
+    if mode not in (MAP_MODE_CUMULATIVE, MAP_MODE_ROLLING):
+        mode = MAP_MODE_CUMULATIVE
+
+    accepted_statuses = (
+        ValidationStatus.VALIDATED,
+        ValidationStatus.CORRECTED,
+    )
+    relations = (
+        ArticleLocation.objects.filter(
+            is_primary=True,
+            validation_status__in=accepted_statuses,
+            article__validation_assessment__validation_status=(
+                ArticleValidationAssessment.ValidationStatus.VALIDATED
+            ),
+            location__latitude__isnull=False,
+            location__longitude__isnull=False,
+        )
+        .exclude(location__country_code="ID")
+        .select_related(
+            "article",
+            "article__source",
+            "location",
+            "location__parent",
+            "location__parent__parent",
+        )
+    )
+    if disease_code:
+        relations = relations.filter(
+            article__article_diseases__disease__code=disease_code,
+            article__article_diseases__is_primary=True,
+            article__article_diseases__validation_status__in=(
+                accepted_statuses
+            ),
+        )
+
+    relations = list(relations.distinct())
+    article_ids = [relation.article_id for relation in relations]
+    primary_diseases = {
+        relation.article_id: relation.disease
+        for relation in ArticleDisease.objects.filter(
+            article_id__in=article_ids,
+            is_primary=True,
+            validation_status__in=accepted_statuses,
+        ).select_related("disease")
+    }
+    if disease_code:
+        primary_diseases = {
+            article_id: disease
+            for article_id, disease in primary_diseases.items()
+            if disease.code == disease_code
+        }
+
+    validated_facts = list(
+        ArticleFact.objects.filter(
+            article_id__in=article_ids,
+            validation_status__in=accepted_statuses,
+        )
+        .filter(Q(case_count__isnull=False) | Q(death_count__isnull=False))
+        .select_related("disease", "location")
+        .order_by("event_date", "created_at")
+    )
+    facts_by_article = {}
+    for fact in validated_facts:
+        facts_by_article.setdefault(fact.article_id, []).append(fact)
+
+    events = []
+    for relation in relations:
+        disease = primary_diseases.get(relation.article_id)
+        if disease is None:
+            continue
+
+        article = relation.article
+        article_date = (
+            article.published_at.date()
+            if article.published_at
+            else article.crawled_at.date()
+        )
+        matching_facts = [
+            fact
+            for fact in facts_by_article.get(article.id, [])
+            if fact.disease_id == disease.id
+            and (
+                fact.location_id == relation.location_id
+                or fact.location_id is None
+            )
+        ]
+        latest_fact = max(
+            matching_facts,
+            key=lambda fact: (
+                fact.event_date or article_date,
+                fact.updated_at,
+            ),
+            default=None,
+        )
+        events.append(
+            {
+                "date": article_date,
+                "relation": relation,
+                "disease": disease,
+                "fact": latest_fact,
+            }
+        )
+
+    if not events:
+        return {
+            "timeline": [],
+            "locations": {},
+            "scope": "global",
+            "mode": mode,
+            "metric": _global_metric_metadata(mode),
+        }
+
+    events.sort(key=lambda item: item["date"])
+    earliest = events[0]["date"]
+    latest = events[-1]["date"]
+    buckets = []
+    cursor = earliest
+    while cursor <= latest:
+        buckets.append(cursor)
+        cursor += timedelta(days=7)
+    if not buckets or buckets[-1] < latest:
+        buckets.append(latest)
+
+    locations_meta = {}
+    timeline = []
+    def country_for(location):
+        current = location
+        hops = 0
+        while current.parent is not None and hops < 6:
+            current = current.parent
+            hops += 1
+        return current
+
+    for bucket_end in buckets:
+        window_start = (
+            earliest
+            if mode == MAP_MODE_CUMULATIVE
+            else bucket_end - timedelta(days=ROLLING_WINDOW_DAYS - 1)
+        )
+        groups = {}
+        for event in events:
+            if event["date"] < window_start:
+                continue
+            if event["date"] > bucket_end:
+                break
+
+            relation = event["relation"]
+            location = relation.location
+            country = country_for(location)
+            location_id = str(location.id)
+            locations_meta.setdefault(
+                location_id,
+                {
+                    "id": location_id,
+                    "name": location.name,
+                    "display_name": str(location),
+                    "country_name": country.name,
+                    "country_code": location.country_code,
+                    "administrative_level": location.administrative_level,
+                    "latitude": float(location.latitude),
+                    "longitude": float(location.longitude),
+                },
+            )
+            group = groups.setdefault(
+                location_id,
+                {
+                    "article_ids": set(),
+                    "sources": set(),
+                    "diseases": set(),
+                    "events": [],
+                    "latest_fact": None,
+                    "trend": ArticleFact.Trend.UNKNOWN,
+                },
+            )
+            article = relation.article
+            group["article_ids"].add(str(article.id))
+            if article.source_id:
+                group["sources"].add(article.source.name)
+            group["diseases"].add(event["disease"].name)
+            group["events"].append(
+                {
+                    "title": article.title,
+                    "source": article.source.name if article.source_id else "—",
+                    "date": event["date"].isoformat(),
+                    "url": article.original_url,
+                    "disease": event["disease"].name,
+                    "has_numeric_fact": event["fact"] is not None,
+                }
+            )
+            fact = event["fact"]
+            if fact is not None:
+                current_latest = group["latest_fact"]
+                fact_date = fact.event_date or event["date"]
+                if current_latest is None or fact_date >= current_latest[0]:
+                    group["latest_fact"] = (fact_date, fact)
+                    group["trend"] = fact.trend
+
+        frame_locations = {}
+        for location_id, group in groups.items():
+            latest_fact_pair = group["latest_fact"]
+            latest_fact = latest_fact_pair[1] if latest_fact_pair else None
+            trend = group["trend"]
+            if trend == ArticleFact.Trend.NEW_OCCURRENCE:
+                severity = "new_occurrence"
+            elif trend in {
+                ArticleFact.Trend.INCREASING,
+                ArticleFact.Trend.SPREADING,
+            }:
+                severity = "increasing"
+            elif latest_fact is not None:
+                severity = "quantitative"
+            else:
+                severity = "qualitative"
+
+            recent_events = sorted(
+                group["events"],
+                key=lambda item: item["date"],
+                reverse=True,
+            )[:5]
+            frame_locations[location_id] = {
+                "article_count": len(group["article_ids"]),
+                "source_count": len(group["sources"]),
+                "sources": sorted(group["sources"]),
+                "diseases": sorted(group["diseases"]),
+                "latest_case_count": (
+                    latest_fact.case_count if latest_fact else None
+                ),
+                "latest_death_count": (
+                    latest_fact.death_count if latest_fact else None
+                ),
+                "latest_numeric_date": (
+                    latest_fact_pair[0].isoformat()
+                    if latest_fact_pair else None
+                ),
+                "trend": trend,
+                "trend_label": ArticleFact.Trend(trend).label,
+                "severity": severity,
+                "events": recent_events,
+            }
+
+        timeline.append(
+            {
+                "date": bucket_end.isoformat(),
+                "period_start": window_start.isoformat(),
+                "period_end": bucket_end.isoformat(),
+                "locations": frame_locations,
+            }
+        )
+
+    return {
+        "timeline": timeline,
+        "locations": locations_meta,
+        "scope": "global",
+        "mode": mode,
+        "metric": _global_metric_metadata(mode),
+    }
+
+
+def _global_metric_metadata(mode: str) -> dict:
+    from .spread_map_metrics import (
+        MAP_MODE_CUMULATIVE,
+        ROLLING_WINDOW_DAYS,
+    )
+
+    cumulative = mode == MAP_MODE_CUMULATIVE
+    return {
+        "id": "validated_foreign_article_locations",
+        "label": (
+            "Akumulasi Informasi Penyakit Luar Negeri"
+            if cumulative
+            else "Informasi Penyakit Luar Negeri 14 Hari Terakhir"
+        ),
+        "short_label": "Status informasi luar negeri",
+        "unit": "artikel tervalidasi",
+        "normalized": False,
+        "reference_year": None,
+        "source_name": "Artikel OSINT tervalidasi",
+        "source_url": "",
+        "window_days": None if cumulative else ROLLING_WINDOW_DAYS,
+        "mode": mode,
+        "caveat": (
+            "Ukuran marker menunjukkan jumlah artikel tervalidasi. Angka "
+            "kasus yang ditampilkan adalah angka terbaru, bukan hasil "
+            "penjumlahan antarartikel dan bukan statistik resmi."
+        ),
+    }
 
 
 @require_role(*Roles.ALL)
@@ -4202,6 +4656,57 @@ def periodic_summary(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _entity_extraction_incomplete_queryset():
+    """Artikel yang masih kekurangan penyakit, lokasi, atau fakta numerik."""
+    disease_exists = ArticleDisease.objects.filter(
+        article_id=OuterRef("pk"),
+    )
+    location_exists = ArticleLocation.objects.filter(
+        article_id=OuterRef("pk"),
+    )
+    numeric_fact_exists = ArticleFact.objects.filter(
+        article_id=OuterRef("pk"),
+    ).filter(
+        Q(case_count__isnull=False)
+        | Q(death_count__isnull=False)
+    )
+
+    return (
+        Article.objects.exclude(
+            processing_status__in=[
+                Article.ProcessingStatus.VALIDATED,
+                Article.ProcessingStatus.REJECTED,
+            ],
+        )
+        .annotate(
+            extraction_has_disease=Exists(disease_exists),
+            extraction_has_location=Exists(location_exists),
+            extraction_has_numeric_fact=Exists(numeric_fact_exists),
+        )
+        .filter(
+            Q(extraction_has_disease=False)
+            | Q(extraction_has_location=False)
+            | Q(extraction_has_numeric_fact=False)
+        )
+    )
+
+
+def _entity_extraction_summary() -> dict:
+    return {
+        "total_articles": Article.objects.count(),
+        "pending_count": _entity_extraction_incomplete_queryset().count(),
+        "with_disease": Article.objects.filter(
+            diseases__isnull=False,
+        ).distinct().count(),
+        "with_location": Article.objects.filter(
+            locations__isnull=False,
+        ).distinct().count(),
+        "with_fact": Article.objects.filter(
+            facts__isnull=False,
+        ).distinct().count(),
+    }
+
+
 @require_role(*Roles.ALL)
 def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     """Halaman "Ekstraksi Entitas": cakupan hasil ekstraksi
@@ -4215,27 +4720,6 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
         ArticleLocation,
         ExtractionMethod,
     )
-
-    total_articles = Article.objects.count()
-
-    pending_qs = Article.objects.exclude(
-        processing_status__in=[
-            Article.ProcessingStatus.VALIDATED,
-            Article.ProcessingStatus.REJECTED,
-        ],
-    )
-
-    with_disease = Article.objects.filter(
-        diseases__isnull=False,
-    ).distinct().count()
-
-    with_location = Article.objects.filter(
-        locations__isnull=False,
-    ).distinct().count()
-
-    with_fact = Article.objects.filter(
-        facts__isnull=False,
-    ).distinct().count()
 
     status_counts = dict(
         Article.objects.values("processing_status")
@@ -4261,13 +4745,7 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     context = {
         "page_title": "Ekstraksi Entitas",
         "active_menu": "entity_extraction",
-        "summary": {
-            "total_articles": total_articles,
-            "pending_count": pending_qs.count(),
-            "with_disease": with_disease,
-            "with_location": with_location,
-            "with_fact": with_fact,
-        },
+        "summary": _entity_extraction_summary(),
         "status_breakdown": [
             {
                 "label": status_labels.get(status, status),
@@ -4300,7 +4778,9 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
     pola sama seperti "Jalankan Crawler".
     """
     import threading
+    import uuid
 
+    from django.core.cache import cache
     from django.db import close_old_connections
 
     force = request.POST.get("force") == "1"
@@ -4310,16 +4790,12 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
         limit = int(limit_raw) if limit_raw else 200
     except ValueError:
         limit = 200
+    limit = max(1, min(limit, 2000))
 
     if force:
         articles_qs = Article.objects.all()
     else:
-        articles_qs = Article.objects.exclude(
-            processing_status__in=[
-                Article.ProcessingStatus.VALIDATED,
-                Article.ProcessingStatus.REJECTED,
-            ],
-        )
+        articles_qs = _entity_extraction_incomplete_queryset()
 
     article_ids = list(
         articles_qs.order_by("-created_at").values_list(
@@ -4334,6 +4810,16 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
         )
         return redirect("dashboard:entity-extraction")
 
+    batch_id = uuid.uuid4().hex
+    cache_key = f"entity-extraction-batch:{batch_id}"
+    batch_status = {
+        "state": "running",
+        "total": len(article_ids),
+        "processed": 0,
+        "failed": 0,
+    }
+    cache.set(cache_key, batch_status, timeout=3600)
+
     def _run() -> None:
         close_old_connections()
 
@@ -4344,11 +4830,17 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
                 article = Article.objects.get(id=article_id)
                 process_article_full(article)
             except Exception:
+                batch_status["failed"] += 1
                 logger.exception(
                     "Ekstraksi manual gagal untuk artikel=%s",
                     article_id,
                 )
+            finally:
+                batch_status["processed"] += 1
+                cache.set(cache_key, dict(batch_status), timeout=3600)
 
+        batch_status["state"] = "completed"
+        cache.set(cache_key, dict(batch_status), timeout=3600)
         close_old_connections()
 
     thread = threading.Thread(
@@ -4358,16 +4850,82 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
     )
     thread.start()
 
-    messages.success(
-        request,
-        (
-            f"Ekstraksi dimulai untuk {len(article_ids)} artikel di "
-            "latar belakang. Refresh halaman ini beberapa saat lagi "
-            "untuk melihat progresnya."
-        ),
+    target_url = reverse("dashboard:entity-extraction")
+    return redirect(f"{target_url}?batch={batch_id}")
+
+
+@require_role(*Roles.ALL)
+def entity_extraction_status(request: HttpRequest) -> JsonResponse:
+    """Snapshot progres batch dan ringkasan ekstraksi untuk polling UI."""
+    from django.core.cache import cache
+
+    batch_id = request.GET.get("batch", "").strip()
+    batch = None
+    if batch_id:
+        batch = cache.get(f"entity-extraction-batch:{batch_id}")
+
+    status_counts = dict(
+        Article.objects.values("processing_status")
+        .annotate(count=Count("id"))
+        .values_list("processing_status", "count")
+    )
+    status_labels = dict(Article.ProcessingStatus.choices)
+    from apps.entities.models import ExtractionMethod
+
+    method_counts = dict(
+        ArticleDisease.objects.values("extraction_method")
+        .annotate(count=Count("id"))
+        .values_list("extraction_method", "count")
+    )
+    method_labels = dict(ExtractionMethod.choices)
+
+    recent_processed = (
+        Article.objects.filter(
+            processing_status__in=[
+                Article.ProcessingStatus.PROCESSED,
+                Article.ProcessingStatus.FAILED,
+            ],
+        )
+        .select_related("source")
+        .order_by("-updated_at")[:15]
     )
 
-    return redirect("dashboard:entity-extraction")
+    return JsonResponse(
+        {
+            "batch": batch,
+            "summary": _entity_extraction_summary(),
+            "status_breakdown": [
+                {
+                    "label": status_labels.get(status, status),
+                    "count": count,
+                }
+                for status, count in status_counts.items()
+            ],
+            "method_breakdown": [
+                {
+                    "label": method_labels.get(method, method),
+                    "count": count,
+                }
+                for method, count in method_counts.items()
+            ],
+            "recent_processed": [
+                {
+                    "title": article.title,
+                    "source": article.source.name,
+                    "status": article.processing_status,
+                    "status_label": article.get_processing_status_display(),
+                    "updated_at": timezone.localtime(
+                        article.updated_at
+                    ).strftime("%d %b %Y %H:%M"),
+                    "detail_url": reverse(
+                        "dashboard:article-extraction-detail",
+                        args=[article.id],
+                    ),
+                }
+                for article in recent_processed
+            ],
+        }
+    )
 
 
 def _highlight_article_content(article: Article) -> str:

@@ -12,12 +12,12 @@
 
     <link
         rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/css/tabler.min.css"
+        href="{% static 'vendor/tabler/tabler.min.css' %}?v=1.4.0"
     >
 
     <link
         rel="stylesheet"
-        href="{% static 'css/medintel.css' %}?v=20260813-7"
+        href="{% static 'css/medintel.css' %}?v=20260814-8"
     >
 
     {% block extra_css %}{% endblock %}
@@ -39,10 +39,10 @@
     </div>
 
     <script
-        src="https://cdn.jsdelivr.net/npm/@tabler/core@1.4.0/dist/js/tabler.min.js"
+        src="{% static 'vendor/tabler/tabler.min.js' %}?v=1.4.0"
     ></script>
 
-    <script src="{% static 'js/medintel.js' %}?v=20260813-7"></script>
+    <script src="{% static 'js/medintel.js' %}?v=20260814-2"></script>
 
     {% block extra_js %}{% endblock %}
 </body>
