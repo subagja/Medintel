@@ -165,16 +165,27 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # }
 
 ### untuk rails
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.getenv(
-            "DATABASE_URL",
-            "postgresql://isur:53@localhost:5432/medintel_db"
-        ),
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "medintel_db",
+            "USER": "isur",
+            "PASSWORD": os.getenv("DB_PASSWORD", ""),
+            "HOST": "localhost",
+            "PORT": "5432",
+        }
+    }
 
 
 # Password validation
