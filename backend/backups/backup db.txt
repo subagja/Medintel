@@ -143,3 +143,20 @@ print(f"{count} job dibatalkan.")
 
 
 pg_dump -U isur -d medintel_db -F p -f last_backup.sql
+rekomendasi baru
+pg_dump -U isur -d medintel_db --no-owner --no-privileges -f last_backup.sql
+
+restore nya 
+cd C:\Users\nubik\tesis\Medintel\backend
+
+# Putuskan koneksi aktif ke database
+psql -U postgres -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'medintel_db' AND pid <> pg_backend_pid();"
+
+# Drop database lama
+psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS medintel_db;"
+
+# Create ulang dengan owner isur
+psql -U postgres -d postgres -c "CREATE DATABASE medintel_db OWNER isur ENCODING 'UTF8';"
+
+# Restore database lengkap
+psql -U isur -d medintel_db -f "C:\Users\nubik\tesis\Medintel\backend\last_backup.sql"
