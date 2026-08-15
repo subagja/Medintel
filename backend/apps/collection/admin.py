@@ -169,6 +169,7 @@ class CollectionJobItemAdmin(admin.ModelAdmin):
 class CollectionScheduleAdmin(admin.ModelAdmin):
     list_display = (
         "name",
+        "source_scope",
         "source",
         "recurrence",
         "is_active",
@@ -176,7 +177,12 @@ class CollectionScheduleAdmin(admin.ModelAdmin):
         "last_run_at",
         "last_session",
     )
-    list_filter = ("recurrence", "is_active", "include_google_news")
+    list_filter = (
+        "source_scope",
+        "recurrence",
+        "is_active",
+        "include_google_news",
+    )
     search_fields = ("name", "source__name", "source__code")
     list_select_related = ("source", "last_session", "created_by")
 

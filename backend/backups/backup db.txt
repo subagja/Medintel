@@ -160,3 +160,9 @@ psql -U postgres -d postgres -c "CREATE DATABASE medintel_db OWNER isur ENCODING
 
 # Restore database lengkap
 psql -U isur -d medintel_db -f "C:\Users\nubik\tesis\Medintel\backend\last_backup.sql"
+
+
+### push db ke railway
+psql "postgresql://postgres:vbDhsqGOocuWiSravhBtBmWsggJbaPMl@metro.proxy.rlwy.net:36397/railway" -f .\last_backup.sql
+
+pg_dump -U isur -h localhost -d medintel_db --no-owner --no-acl -f last_backup.sql

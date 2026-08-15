@@ -42,8 +42,8 @@
 <div class="card mb-3">
     <div class="card-header">
         <div>
-            <h3 class="card-title">Buat Jadwal per Sumber</h3>
-            <div class="text-secondary small">RSS tetap diprioritaskan; HTML menjadi cadangan atau pemindaian mendalam sesuai konfigurasi.</div>
+            <h3 class="card-title">Buat Jadwal Koleksi Terpadu</h3>
+            <div class="text-secondary small">Pilih semua sumber dalam satu jadwal atau batasi ke satu sumber. RSS tetap diprioritaskan; HTML menjadi cadangan sesuai konfigurasi.</div>
         </div>
     </div>
     <form method="post">
@@ -53,8 +53,8 @@
             {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
             <div class="row g-3">
                 <div class="col-md-4"><label class="form-label">{{ form.name.label }}</label>{{ form.name }}{{ form.name.errors }}</div>
-                <div class="col-md-4"><label class="form-label">{{ form.source.label }}</label>{{ form.source }}{{ form.source.errors }}</div>
-                <div class="col-md-4"><label class="form-label">{{ form.intelligence_requirement.label }}</label>{{ form.intelligence_requirement }}{{ form.intelligence_requirement.errors }}</div>
+                <div class="col-md-4"><label class="form-label">{{ form.source.label }}</label>{{ form.source }}<div class="form-hint">Default: seluruh sumber aktif yang siap pada kanal RSS/HTML.</div>{{ form.source.errors }}</div>
+                <div class="col-md-4"><label class="form-label">{{ form.intelligence_requirement.label }}</label>{{ form.intelligence_requirement }}<div class="form-hint">Kosong berarti koleksi rutin lintas kebutuhan tanpa pengaitan khusus.</div>{{ form.intelligence_requirement.errors }}</div>
                 <div class="col-md-3"><label class="form-label">{{ form.recurrence.label }}</label>{{ form.recurrence }}{{ form.recurrence.errors }}</div>
                 <div class="col-md-3" id="schedule-time-field"><label class="form-label">{{ form.run_time.label }}</label>{{ form.run_time }}{{ form.run_time.errors }}</div>
                 <div class="col-md-3" id="schedule-weekday-field"><label class="form-label">{{ form.weekday.label }}</label>{{ form.weekday }}{{ form.weekday.errors }}</div>
@@ -80,8 +80,8 @@
             <tbody>
             {% for schedule in schedules %}
                 <tr>
-                    <td><div class="fw-semibold">{{ schedule.name }}</div>{% if schedule.intelligence_requirement %}<div class="small text-secondary">{{ schedule.intelligence_requirement.code|upper }}</div>{% endif %}</td>
-                    <td><div>{{ schedule.source.name }}</div><div class="small text-secondary">{% if schedule.include_google_news %}Google News aktif{% else %}Tanpa Google News{% endif %} · {% if schedule.html_deep_scan %}HTML mendalam{% else %}kanal otomatis{% endif %}</div></td>
+                    <td><div class="fw-semibold">{{ schedule.name }}</div>{% if schedule.intelligence_requirement %}<div class="small text-secondary">{{ schedule.intelligence_requirement.code|upper }}</div>{% else %}<div class="small text-secondary">Koleksi rutin lintas kebutuhan</div>{% endif %}</td>
+                    <td><div>{{ schedule.source_scope_label }}</div><div class="small text-secondary">{% if schedule.include_google_news %}Google News aktif{% else %}Tanpa Google News{% endif %} · {% if schedule.html_deep_scan %}HTML mendalam{% else %}kanal otomatis{% endif %}</div></td>
                     <td>{{ schedule.get_recurrence_display }}{% if schedule.recurrence == 'daily' or schedule.recurrence == 'weekly' %}<div class="small text-secondary">{{ schedule.run_time|time:"H:i" }} WIB{% if schedule.recurrence == 'weekly' %} · {{ schedule.weekday_label }}{% endif %}</div>{% endif %}</td>
                     <td>{% if schedule.is_active %}<div>{{ schedule.next_run_at|date:"d M Y H:i" }}</div><span class="badge bg-success-lt">Aktif</span>{% else %}<span class="badge bg-secondary-lt">Nonaktif</span>{% endif %}</td>
                     <td>{% if schedule.last_session %}<a href="{% url 'dashboard:crawler-session-detail' schedule.last_session.id %}">{{ schedule.last_session.reference }}</a>{% else %}-{% endif %}{% if schedule.last_error %}<div class="small text-danger">{{ schedule.last_error|truncatechars:100 }}</div>{% endif %}</td>

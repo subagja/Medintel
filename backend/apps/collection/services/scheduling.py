@@ -52,7 +52,11 @@ def run_collection_schedule(
     ):
         requirement = None
     session = start_unified_collection(
-        source_code=schedule.source.code,
+        source_code=(
+            schedule.source.code
+            if schedule.source_id
+            else schedule.source_scope
+        ),
         include_google_news=schedule.include_google_news,
         html_deep_scan=schedule.html_deep_scan,
         article_limit=schedule.article_limit,

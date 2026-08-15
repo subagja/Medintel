@@ -390,6 +390,17 @@ class CollectionSchedule(models.Model):
         Source,
         on_delete=models.PROTECT,
         related_name="collection_schedules",
+        null=True,
+        blank=True,
+    )
+    source_scope = models.CharField(
+        max_length=30,
+        choices=CollectionSession.Scope.choices,
+        default=CollectionSession.Scope.SINGLE_SOURCE,
+        help_text=(
+            "Gunakan semua sumber siap, semua sumber Indonesia, atau "
+            "satu sumber tertentu."
+        ),
     )
     recurrence = models.CharField(
         max_length=30,
@@ -450,9 +461,42 @@ class CollectionSchedule(models.Model):
                 name="collsched_due_idx",
             ),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        source_scope=CollectionSession.Scope.SINGLE_SOURCE,
+                        source__isnull=False,
+                    )
+                    | Q(
+                        source_scope__in=(
+                            CollectionSession.Scope.ALL_READY,
+                            CollectionSession.Scope.ALL_INDONESIA,
+                        ),
+                        source__isnull=True,
+                    )
+                ),
+                name="collsched_scope_source_valid",
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f"{self.name} · {self.source.code}"
+        source_label = (
+            self.source.code
+            if self.source_id
+            else self.get_source_scope_display()
+        )
+        return f"{self.name} · {source_label}"
+
+    @property
+    def source_scope_label(self) -> str:
+        if self.source_id:
+            return self.source.name
+        if self.source_scope == CollectionSession.Scope.ALL_READY:
+            return "Semua sumber aktif dan siap"
+        if self.source_scope == CollectionSession.Scope.ALL_INDONESIA:
+            return "Semua sumber Indonesia aktif dan siap"
+        return self.get_source_scope_display()
 
     @property
     def weekday_label(self) -> str:

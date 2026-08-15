@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.sources.models import Source
 
+from .forms import CollectionScheduleForm
 from .models import (
     CollectionJob,
     CollectionSchedule,
@@ -28,6 +29,7 @@ from .services.queue import (
 from .services.scheduling import (
     calculate_next_run_at,
     enqueue_due_collection_schedules,
+    run_collection_schedule,
 )
 
 
@@ -183,6 +185,46 @@ class CollectionScheduleTests(TestCase):
         next_run = calculate_next_run_at(schedule, after=timezone.now())
         self.assertGreater(next_run, timezone.now())
 
+    def test_form_creates_one_schedule_for_all_sources_without_requirement(self):
+        form = CollectionScheduleForm(
+            data={
+                "name": "Koleksi Harian Semua Sumber",
+                "source": CollectionSession.Scope.ALL_READY,
+                "recurrence": CollectionSchedule.Recurrence.DAILY,
+                "run_time": "06:00",
+                "weekday": "0",
+                "max_attempts": "3",
+                "intelligence_requirement": "",
+                "is_active": "on",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        schedule = form.save()
+        self.assertIsNone(schedule.source_id)
+        self.assertEqual(
+            schedule.source_scope,
+            CollectionSession.Scope.ALL_READY,
+        )
+        self.assertIsNone(schedule.intelligence_requirement_id)
+
+    @patch("apps.crawlers.unified.start_unified_collection")
+    def test_all_source_schedule_starts_one_unified_session(self, start_mock):
+        session = CollectionSession.objects.create()
+        start_mock.return_value = session
+        schedule = self.schedule(
+            source=None,
+            source_scope=CollectionSession.Scope.ALL_READY,
+        )
+
+        result = run_collection_schedule(schedule)
+
+        self.assertEqual(result, session)
+        self.assertEqual(
+            start_mock.call_args.kwargs["source_code"],
+            CollectionSession.Scope.ALL_READY,
+        )
+
     @patch("apps.crawlers.unified.start_unified_collection")
     def test_due_schedule_creates_session_and_advances_time(self, start_mock):
         session = CollectionSession.objects.create()
@@ -194,12 +236,26 @@ class CollectionScheduleTests(TestCase):
         self.assertEqual(schedule.last_session_id, session.id)
         self.assertGreater(schedule.next_run_at, timezone.now())
 
+    @override_settings(
+        STORAGES={
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+            },
+            "staticfiles": {
+                "BACKEND": (
+                    "django.contrib.staticfiles.storage.StaticFilesStorage"
+                ),
+            },
+        }
+    )
     def test_schedule_workspace_is_readable_and_mutation_is_role_guarded(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("dashboard:crawler-schedule-workspace"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Penjadwalan dan Worker Koleksi")
         self.assertContains(response, "run_collection_worker")
+        self.assertContains(response, "Semua sumber aktif dan siap")
+        self.assertContains(response, "Semua kebutuhan / koleksi rutin")
 
         viewer = get_user_model().objects.create_user(username="queue-viewer")
         viewer_group, _ = Group.objects.get_or_create(name="Viewer")
