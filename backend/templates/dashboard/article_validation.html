@@ -569,12 +569,6 @@ Validasi Artikel | MEDINTEL OSINT
                                                     </span>
                                                 {% endif %}
 
-                                                {% if relation.location.country_code != "ID" %}
-                                                    <span class="badge bg-purple-lt">
-                                                        Luar negeri · {{ relation.location.country_code }}
-                                                    </span>
-                                                {% endif %}
-
                                                 <div class="small text-secondary mt-1">
                                                     {% if relation.mention_text %}
                                                         {{ relation.mention_text }}
@@ -615,6 +609,12 @@ Validasi Artikel | MEDINTEL OSINT
                                                 {% else %}
                                                     <span class="badge bg-secondary-lt">
                                                         Konteks
+                                                    </span>
+                                                {% endif %}
+
+                                                {% if relation.location.country_code != "ID" %}
+                                                    <span class="badge bg-purple-lt">
+                                                        Luar negeri · {{ relation.location.country_code }}
                                                     </span>
                                                 {% endif %}
 
@@ -817,6 +817,14 @@ Validasi Artikel | MEDINTEL OSINT
                             </div>
                         {% endif %}
 
+                        {% if validation_status_form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in validation_status_form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
                         <ul class="nav nav-tabs mb-3" role="tablist">
                             <li class="nav-item">
                                 <button
@@ -912,14 +920,14 @@ Validasi Artikel | MEDINTEL OSINT
                                     <div class="col-md-6">
                                         <label
                                             class="form-label"
-                                            for="{{ assessment_form.validation_status.id_for_label }}"
+                                            for="{{ validation_status_form.validation_status.id_for_label }}"
                                         >
-                                            {{ assessment_form.validation_status.label }}
+                                            {{ validation_status_form.validation_status.label }}
                                         </label>
 
-                                        {{ assessment_form.validation_status }}
+                                        {{ validation_status_form.validation_status }}
 
-                                        {% for error in assessment_form.validation_status.errors %}
+                                        {% for error in validation_status_form.validation_status.errors %}
                                             <div class="invalid-feedback d-block">
                                                 {{ error }}
                                             </div>
@@ -941,14 +949,14 @@ Validasi Artikel | MEDINTEL OSINT
                                     <div class="col-12">
                                         <label
                                             class="form-label"
-                                            for="{{ assessment_form.relevance_notes.id_for_label }}"
+                                            for="{{ validation_status_form.relevance_notes.id_for_label }}"
                                         >
-                                            {{ assessment_form.relevance_notes.label }}
+                                            {{ validation_status_form.relevance_notes.label }}
                                         </label>
 
-                                        {{ assessment_form.relevance_notes }}
+                                        {{ validation_status_form.relevance_notes }}
 
-                                        {% for error in assessment_form.relevance_notes.errors %}
+                                        {% for error in validation_status_form.relevance_notes.errors %}
                                             <div class="invalid-feedback d-block">
                                                 {{ error }}
                                             </div>
@@ -956,11 +964,12 @@ Validasi Artikel | MEDINTEL OSINT
                                     </div>
 
                                     <div class="col-12 d-flex justify-content-end pb-3">
-                                        <button type="submit" name="action" value="save_assessment" class="btn btn-primary" data-medintel-action-submit>
+                                        <button type="submit" name="action" value="save_validation_status" class="btn btn-primary" data-medintel-action-submit>
                                             Simpan Status Validasi
                                         </button>
                                     </div>
                                 </div>
+
                             </div>
 
                             <div
@@ -1039,6 +1048,7 @@ Validasi Artikel | MEDINTEL OSINT
                                         </button>
                                     </div>
                                 </div>
+
                             </div>
 
                             <div
@@ -1073,7 +1083,12 @@ Validasi Artikel | MEDINTEL OSINT
                                             {{ primary_location_form.primary_location.label }}
                                         </label>
 
-                                        {{ primary_location_form.primary_location }}
+                                        <div
+                                            class="medintel-location-autocomplete"
+                                            data-location-autocomplete
+                                        >
+                                            {{ primary_location_form.primary_location }}
+                                        </div>
 
                                         {% if primary_location_form.primary_location.help_text %}
                                             <div class="form-hint">
@@ -1115,6 +1130,48 @@ Validasi Artikel | MEDINTEL OSINT
                                         >
                                             Simpan Lokasi Utama
                                         </button>
+                                    </div>
+                                </div>
+
+                                <div class="card bg-light-lt mt-4">
+                                    <div class="card-body">
+                                        <details class="medintel-new-country" {% if new_country_form.errors %}open{% endif %}>
+                                            <summary class="fw-semibold">
+                                                Negara belum ada dalam daftar? Tambah negara baru
+                                            </summary>
+                                            <div class="text-secondary small mt-2 mb-3">
+                                                Gunakan hanya jika negara benar-benar disebut sebagai
+                                                lokasi kejadian. Negara baru langsung ditambahkan ke
+                                                master lokasi dan ditetapkan sebagai lokasi utama artikel.
+                                            </div>
+                                            {% if new_country_form.non_field_errors %}
+                                                <div class="alert alert-danger">
+                                                    {% for error in new_country_form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+                                                </div>
+                                            {% endif %}
+                                            <div class="row g-3">
+                                                <div class="col-md-8">
+                                                    <label class="form-label" for="{{ new_country_form.country_name.id_for_label }}">{{ new_country_form.country_name.label }}</label>
+                                                    {{ new_country_form.country_name }}
+                                                    {% for error in new_country_form.country_name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label" for="{{ new_country_form.country_code.id_for_label }}">{{ new_country_form.country_code.label }}</label>
+                                                    {{ new_country_form.country_code }}
+                                                    {% for error in new_country_form.country_code.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label" for="{{ new_country_form.country_notes.id_for_label }}">{{ new_country_form.country_notes.label }}</label>
+                                                    {{ new_country_form.country_notes }}
+                                                    {% for error in new_country_form.country_notes.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                                </div>
+                                                <div class="col-12 d-flex justify-content-end">
+                                                    <button type="submit" name="action" value="create_primary_country" class="btn btn-outline-azure" data-medintel-action-submit>
+                                                        Tambah dan Pilih Negara
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
                                     </div>
                                 </div>
                             </div>
@@ -1617,7 +1674,10 @@ document.addEventListener("DOMContentLoaded", function () {
             if (action === "correct_primary_disease" && activeTabInput) {
                 activeTabInput.value = "disease";
             } else if (
-                action === "correct_primary_location"
+                (
+                    action === "correct_primary_location"
+                    || action === "create_primary_country"
+                )
                 && activeTabInput
             ) {
                 activeTabInput.value = "location";
@@ -1645,6 +1705,161 @@ document.addEventListener("DOMContentLoaded", function () {
             );
         });
     }
+
+    document.querySelectorAll("[data-location-autocomplete]").forEach(
+        function (wrapper) {
+            const select = wrapper.querySelector(
+                "[data-location-autocomplete-select]"
+            );
+            if (!select || wrapper.dataset.enhanced === "true") {
+                return;
+            }
+
+            wrapper.dataset.enhanced = "true";
+            const options = Array.from(select.options).filter(
+                function (option) { return Boolean(option.value); }
+            );
+            const search = document.createElement("input");
+            const results = document.createElement("div");
+            let activeIndex = -1;
+
+            search.type = "search";
+            search.className = "form-control medintel-location-search";
+            search.placeholder = "Ketik nama kota, kabupaten, provinsi, atau negara";
+            search.autocomplete = "off";
+            search.setAttribute("role", "combobox");
+            search.setAttribute("aria-autocomplete", "list");
+            search.setAttribute("aria-expanded", "false");
+            search.setAttribute("aria-label", "Cari lokasi kejadian utama");
+
+            results.className = "medintel-location-results d-none";
+            results.setAttribute("role", "listbox");
+
+            function normalized(value) {
+                return (value || "")
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase()
+                    .trim();
+            }
+
+            function closeResults() {
+                results.classList.add("d-none");
+                search.setAttribute("aria-expanded", "false");
+                activeIndex = -1;
+            }
+
+            function choose(option) {
+                select.value = option.value;
+                search.value = option.text.trim();
+                select.dispatchEvent(new Event("change", { bubbles: true }));
+                closeResults();
+            }
+
+            function setActive(index) {
+                const rows = Array.from(
+                    results.querySelectorAll("[data-location-result]")
+                );
+                if (!rows.length) {
+                    activeIndex = -1;
+                    return;
+                }
+                activeIndex = Math.max(0, Math.min(index, rows.length - 1));
+                rows.forEach(function (row, rowIndex) {
+                    row.classList.toggle("active", rowIndex === activeIndex);
+                });
+                rows[activeIndex].scrollIntoView({ block: "nearest" });
+            }
+
+            function renderResults() {
+                const query = normalized(search.value);
+                const matches = options
+                    .filter(function (option) {
+                        return !query || normalized(option.text).includes(query);
+                    })
+                    .sort(function (left, right) {
+                        const leftText = normalized(left.text);
+                        const rightText = normalized(right.text);
+                        const leftStarts = query && leftText.startsWith(query) ? 0 : 1;
+                        const rightStarts = query && rightText.startsWith(query) ? 0 : 1;
+                        return leftStarts - rightStarts;
+                    })
+                    .slice(0, 30);
+
+                results.replaceChildren();
+                if (!matches.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "medintel-location-empty";
+                    empty.textContent = "Lokasi tidak ditemukan.";
+                    results.appendChild(empty);
+                } else {
+                    matches.forEach(function (option) {
+                        const row = document.createElement("button");
+                        row.type = "button";
+                        row.className = "medintel-location-result";
+                        row.dataset.locationResult = option.value;
+                        row.setAttribute("role", "option");
+                        row.textContent = option.text.trim();
+                        row.addEventListener("mousedown", function (event) {
+                            event.preventDefault();
+                        });
+                        row.addEventListener("click", function () {
+                            choose(option);
+                        });
+                        results.appendChild(row);
+                    });
+                }
+
+                results.classList.remove("d-none");
+                search.setAttribute("aria-expanded", "true");
+                activeIndex = -1;
+            }
+
+            const selected = select.options[select.selectedIndex];
+            if (selected?.value) {
+                search.value = selected.text.trim();
+            }
+
+            wrapper.insertBefore(search, select);
+            wrapper.appendChild(results);
+            wrapper.classList.add("medintel-location-autocomplete-ready");
+
+            search.addEventListener("focus", renderResults);
+            search.addEventListener("input", function () {
+                select.value = "";
+                renderResults();
+            });
+            search.addEventListener("keydown", function (event) {
+                const rows = results.querySelectorAll(
+                    "[data-location-result]"
+                );
+                if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    if (results.classList.contains("d-none")) {
+                        renderResults();
+                    }
+                    setActive(activeIndex + 1);
+                } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActive(activeIndex - 1);
+                } else if (event.key === "Enter") {
+                    // Enter di kotak pencarian tidak boleh menekan tombol
+                    // submit pertama pada form. Pilih hasil aktif/pertama.
+                    event.preventDefault();
+                    if (activeIndex >= 0) {
+                        rows[activeIndex]?.click();
+                    } else if (rows.length === 1) {
+                        rows[0].click();
+                    }
+                } else if (event.key === "Escape") {
+                    closeResults();
+                }
+            });
+            search.addEventListener("blur", function () {
+                window.setTimeout(closeResults, 120);
+            });
+        }
+    );
 
     function updateAdmiraltyCode() {
         if (!currentAdmiraltyCode) {

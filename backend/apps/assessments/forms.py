@@ -112,6 +112,104 @@ class ArticleValidationAssessmentForm(forms.ModelForm):
         return cleaned_data
 
 
+class ArticleValidationStatusForm(forms.ModelForm):
+    """Form khusus tab Validasi agar field tab lain tidak menghambat submit."""
+
+    class Meta:
+        model = ArticleValidationAssessment
+        fields = [
+            "validation_status",
+            "relevance_notes",
+        ]
+        widgets = {
+            "validation_status": forms.Select(
+                attrs={"class": "form-select"}
+            ),
+            "relevance_notes": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": (
+                        "Tuliskan hasil pemeriksaan relevansi artikel."
+                    ),
+                }
+            ),
+        }
+        labels = {
+            "validation_status": "Status validasi",
+            "relevance_notes": "Catatan validasi",
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            cleaned_data.get("validation_status")
+            == ArticleValidationAssessment.ValidationStatus.REJECTED
+            and not cleaned_data.get("relevance_notes", "").strip()
+        ):
+            self.add_error(
+                "relevance_notes",
+                "Alasan penolakan wajib diisi.",
+            )
+        return cleaned_data
+
+
+class NewCountryLocationForm(forms.Form):
+    country_name = forms.CharField(
+        label="Nama negara",
+        max_length=200,
+        strip=True,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Contoh: Israel",
+                "autocomplete": "country-name",
+            }
+        ),
+    )
+    country_code = forms.CharField(
+        label="Kode negara ISO (2 huruf)",
+        min_length=2,
+        max_length=2,
+        strip=True,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control text-uppercase",
+                "placeholder": "Contoh: IL",
+                "autocomplete": "off",
+                "inputmode": "text",
+                "maxlength": "2",
+            }
+        ),
+    )
+    country_notes = forms.CharField(
+        label="Dasar penetapan lokasi",
+        required=True,
+        strip=True,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": (
+                    "Contoh: Artikel menyebut kejadian dan angka kasus "
+                    "secara tegas terjadi di Israel."
+                ),
+            }
+        ),
+        error_messages={
+            "required": "Dasar penetapan lokasi wajib diisi.",
+        },
+    )
+
+    def clean_country_code(self):
+        code = self.cleaned_data["country_code"].strip().upper()
+        if not code.isalpha() or len(code) != 2:
+            raise forms.ValidationError(
+                "Gunakan kode negara ISO yang terdiri dari 2 huruf."
+            )
+        return code
+
+
 class PrimaryArticleDiseaseForm(forms.Form):
     primary_disease = forms.ModelChoiceField(
         queryset=Disease.objects.none(),
@@ -226,6 +324,7 @@ class PrimaryArticleLocationForm(forms.Form):
             attrs={
                 "class": "form-select",
                 "id": "id_primary_location",
+                "data-location-autocomplete-select": "true",
             }
         ),
         help_text=(

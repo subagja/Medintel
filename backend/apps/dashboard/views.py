@@ -63,6 +63,8 @@ from apps.crawlers.unified import (
 )
 from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
+    ArticleValidationStatusForm,
+    NewCountryLocationForm,
     PrimaryArticleDiseaseForm,
     PrimaryArticleLocationForm,
 )
@@ -1704,8 +1706,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
 
     assessment = None
     form = None
+    validation_status_form = None
     primary_disease_form = None
     primary_location_form = None
+    new_country_form = None
     assessment_history = []
     disease_history = []
     location_history = []
@@ -1826,6 +1830,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             form = ArticleValidationAssessmentForm(
                 instance=assessment,
             )
+            validation_status_form = ArticleValidationStatusForm(
+                instance=assessment,
+            )
             primary_disease_form = PrimaryArticleDiseaseForm(
                 request.POST,
                 article=selected_article,
@@ -1833,6 +1840,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             primary_location_form = PrimaryArticleLocationForm(
                 article=selected_article,
             )
+            new_country_form = NewCountryLocationForm()
 
             if not request.user.is_authenticated:
                 primary_disease_form.add_error(
@@ -1905,6 +1913,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             form = ArticleValidationAssessmentForm(
                 instance=assessment,
             )
+            validation_status_form = ArticleValidationStatusForm(
+                instance=assessment,
+            )
             primary_disease_form = PrimaryArticleDiseaseForm(
                 article=selected_article,
             )
@@ -1912,6 +1923,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                 request.POST,
                 article=selected_article,
             )
+            new_country_form = NewCountryLocationForm()
 
             if not request.user.is_authenticated:
                 primary_location_form.add_error(
@@ -1975,6 +1987,112 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             page=page_obj.number,
                         )
                     )
+        elif (
+            request.method == "POST"
+            and post_action == "create_primary_country"
+        ):
+            active_validation_tab = "location"
+            form = ArticleValidationAssessmentForm(
+                instance=assessment,
+            )
+            validation_status_form = ArticleValidationStatusForm(
+                instance=assessment,
+            )
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                article=selected_article,
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                article=selected_article,
+            )
+            new_country_form = NewCountryLocationForm(request.POST)
+
+            if not request.user.is_authenticated:
+                new_country_form.add_error(
+                    None,
+                    "Pengguna harus login untuk menambahkan negara.",
+                )
+            elif new_country_form.is_valid():
+                country_name = new_country_form.cleaned_data[
+                    "country_name"
+                ]
+                country_code = new_country_form.cleaned_data[
+                    "country_code"
+                ]
+                existing_country = (
+                    Location.objects.filter(
+                        administrative_level=(
+                            Location.AdministrativeLevel.COUNTRY
+                        ),
+                        country_code=country_code,
+                        parent__isnull=True,
+                    )
+                    .order_by("-is_active", "name")
+                    .first()
+                )
+
+                with transaction.atomic():
+                    if existing_country is None:
+                        country = Location.objects.create(
+                            name=country_name,
+                            code=f"ISO-{country_code}",
+                            administrative_level=(
+                                Location.AdministrativeLevel.COUNTRY
+                            ),
+                            country_code=country_code,
+                            is_active=True,
+                        )
+                        country_created = True
+                    else:
+                        country = existing_country
+                        country_created = False
+                        if not country.is_active:
+                            country.is_active = True
+                            country.save(update_fields=["is_active", "updated_at"])
+
+                    correction_result = set_primary_article_location(
+                        article=selected_article,
+                        location=country,
+                        reviewer=request.user,
+                        notes=new_country_form.cleaned_data[
+                            "country_notes"
+                        ],
+                    )
+
+                if country_created:
+                    messages.success(
+                        request,
+                        (
+                            f"Negara {country.name} ({country_code}) "
+                            "ditambahkan dan ditetapkan sebagai lokasi utama."
+                        ),
+                    )
+                else:
+                    messages.info(
+                        request,
+                        (
+                            f"Kode {country_code} sudah terdaftar sebagai "
+                            f"{country.name}; lokasi tersebut ditetapkan "
+                            "sebagai lokasi utama."
+                        ),
+                    )
+
+                if not correction_result.changed:
+                    messages.info(
+                        request,
+                        "Lokasi utama artikel tidak berubah.",
+                    )
+
+                return redirect(
+                    _build_validation_redirect_url(
+                        article_id=selected_article.id,
+                        tab="location",
+                        eligibility=eligibility_filter,
+                        filters=active_filters,
+                        workspace=workspace_mode,
+                        history_status=history_status_filter,
+                        page=page_obj.number,
+                    )
+                )
         else:
             primary_disease_form = PrimaryArticleDiseaseForm(
                 article=selected_article,
@@ -1982,6 +2100,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             primary_location_form = PrimaryArticleLocationForm(
                 article=selected_article,
             )
+            new_country_form = NewCountryLocationForm()
 
             if request.method == "POST":
                 previous_values = {
@@ -1996,14 +2115,36 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     "relevance_notes": assessment.relevance_notes,
                 }
 
-                form = ArticleValidationAssessmentForm(
-                    request.POST,
-                    instance=assessment,
-                )
+                if post_action == "save_validation_status":
+                    active_validation_tab = "validation"
+                    validation_status_form = (
+                        ArticleValidationStatusForm(
+                            request.POST,
+                            instance=assessment,
+                        )
+                    )
+                    processing_form = validation_status_form
+                    # Field Neraca Informasi tetap memakai nilai database
+                    # dan tidak ikut divalidasi saat tombol tab Validasi
+                    # ditekan.
+                    form = ArticleValidationAssessmentForm(
+                        instance=assessment,
+                    )
+                else:
+                    form = ArticleValidationAssessmentForm(
+                        request.POST,
+                        instance=assessment,
+                    )
+                    validation_status_form = (
+                        ArticleValidationStatusForm(
+                            instance=assessment,
+                        )
+                    )
+                    processing_form = form
 
                 if (
-                    form.is_valid()
-                    and form.cleaned_data["validation_status"]
+                    processing_form.is_valid()
+                    and processing_form.cleaned_data["validation_status"]
                     == ArticleValidationAssessment
                     .ValidationStatus
                     .VALIDATED
@@ -2042,14 +2183,14 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                         )
 
                     if readiness_errors:
-                        form.add_error(
+                        processing_form.add_error(
                             None,
                             ValidationError(readiness_errors),
                         )
 
-                if form.is_valid():
+                if processing_form.is_valid():
                     with transaction.atomic():
-                        saved_assessment = form.save(
+                        saved_assessment = processing_form.save(
                             commit=False
                         )
 
@@ -2092,7 +2233,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                                     .information_credibility
                                 ),
                                 change_notes=(
-                                    saved_assessment.assessment_notes
+                                    saved_assessment.relevance_notes
+                                    if post_action
+                                    == "save_validation_status"
+                                    else saved_assessment.assessment_notes
                                 ),
                                 changed_by=(
                                     request.user
@@ -2131,14 +2275,20 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             assessment=saved_assessment,
                         )
 
-                    messages.success(
-                        request,
-                        (
-                            "Validasi artikel berhasil disimpan "
-                            f"dengan nilai "
-                            f"{saved_assessment.admiralty_code}."
-                        ),
-                    )
+                    if post_action == "save_validation_status":
+                        messages.success(
+                            request,
+                            "Status validasi artikel berhasil disimpan.",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            (
+                                "Penilaian artikel berhasil disimpan "
+                                f"dengan nilai "
+                                f"{saved_assessment.admiralty_code}."
+                            ),
+                        )
 
                     if (
                         generation_summary is not None
@@ -2224,6 +2374,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                 form = ArticleValidationAssessmentForm(
                     instance=assessment,
                 )
+                validation_status_form = ArticleValidationStatusForm(
+                    instance=assessment,
+                )
 
         assessment_history = (
             assessment.history
@@ -2294,8 +2447,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "selected_article": selected_article,
         "assessment": assessment,
         "assessment_form": form,
+        "validation_status_form": validation_status_form,
         "primary_disease_form": primary_disease_form,
         "primary_location_form": primary_location_form,
+        "new_country_form": new_country_form,
         "assessment_history": assessment_history,
         "disease_history": disease_history,
         "location_history": location_history,

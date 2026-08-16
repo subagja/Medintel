@@ -2,7 +2,7 @@ import hashlib
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.articles.models import Article
@@ -21,6 +21,18 @@ from apps.sources.models import Source
 User = get_user_model()
 
 
+@override_settings(
+    STORAGES={
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+            ),
+        },
+    }
+)
 class ArticleValidationQueueTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -202,6 +214,109 @@ class ArticleValidationQueueTests(TestCase):
             self._listed_titles(history_response),
         )
 
+    def test_status_button_saves_without_revalidating_information_tab(self):
+        assessment = ArticleValidationAssessment.objects.create(
+            article=self.pending_article,
+            validation_status=(
+                ArticleValidationAssessment.ValidationStatus.PENDING
+            ),
+            source_reliability=(
+                ArticleValidationAssessment.SourceReliability.D
+            ),
+            information_credibility=(
+                ArticleValidationAssessment.InformationCredibility.DOUBTFUL
+            ),
+            assessment_notes="",
+        )
+
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.pending_article.id),
+                "action": "save_validation_status",
+                "workspace": "queue",
+                "eligibility": "all",
+                "history_status": "all",
+                "validation_status": "rejected",
+                "relevance_notes": "Artikel tidak relevan untuk kebutuhan.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        assessment.refresh_from_db()
+        self.assertEqual(
+            assessment.validation_status,
+            ArticleValidationAssessment.ValidationStatus.REJECTED,
+        )
+        self.assertEqual(
+            assessment.source_reliability,
+            ArticleValidationAssessment.SourceReliability.D,
+        )
+        self.assertEqual(
+            assessment.information_credibility,
+            ArticleValidationAssessment.InformationCredibility.DOUBTFUL,
+        )
+
+    def test_primary_location_select_has_autocomplete_enhancement(self):
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {
+                "article": str(self.pending_article.id),
+                "tab": "location",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-location-autocomplete")
+        self.assertContains(
+            response,
+            'data-location-autocomplete-select="true"',
+        )
+        self.assertContains(
+            response,
+            "Ketik nama kota, kabupaten, provinsi, atau negara",
+        )
+
+    def test_validator_can_add_missing_country_as_primary_location(self):
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.pending_article.id),
+                "action": "create_primary_country",
+                "workspace": "queue",
+                "eligibility": "all",
+                "history_status": "all",
+                "country_name": "Israel",
+                "country_code": "il",
+                "country_notes": (
+                    "Artikel menyebut kasus terjadi di Israel."
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("tab=location", response.url)
+        country = Location.objects.get(
+            administrative_level=Location.AdministrativeLevel.COUNTRY,
+            country_code="IL",
+        )
+        relation = ArticleLocation.objects.get(
+            article=self.pending_article,
+            location=country,
+        )
+        self.assertTrue(relation.is_primary)
+        self.assertEqual(country.name, "Israel")
+
+        detail_response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"article": str(self.pending_article.id)},
+        )
+        self.assertContains(
+            detail_response,
+            "Luar negeri · IL",
+            count=1,
+        )
+
     def test_queue_uses_visible_server_side_pagination(self):
         Article.objects.bulk_create(
             [
@@ -346,6 +461,18 @@ class ArticleValidationQueueTests(TestCase):
         )
 
 
+@override_settings(
+    STORAGES={
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+            ),
+        },
+    }
+)
 class DashboardValidationSummaryTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
