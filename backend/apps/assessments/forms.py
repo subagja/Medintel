@@ -155,15 +155,47 @@ class ArticleValidationStatusForm(forms.ModelForm):
 
 
 class NewCountryLocationForm(forms.Form):
-    country_name = forms.CharField(
-        label="Nama negara",
+    location_level = forms.ChoiceField(
+        label="Jenis lokasi",
+        choices=(
+            (Location.AdministrativeLevel.COUNTRY, "Negara"),
+            (Location.AdministrativeLevel.PROVINCE, "Provinsi / negara bagian"),
+            (Location.AdministrativeLevel.CITY, "Kota"),
+            (Location.AdministrativeLevel.REGENCY, "Kabupaten / wilayah setara"),
+        ),
+        initial=Location.AdministrativeLevel.COUNTRY,
+        required=False,
+        widget=forms.Select(
+            attrs={
+                "class": "form-select",
+                "data-new-location-level": "true",
+            }
+        ),
+    )
+    location_name = forms.CharField(
+        label="Nama lokasi",
         max_length=200,
+        required=False,
         strip=True,
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
-                "placeholder": "Contoh: Israel",
+                "placeholder": "Contoh: Israel atau California",
+                "autocomplete": "off",
+            }
+        ),
+    )
+    country_name = forms.CharField(
+        label="Negara induk",
+        max_length=200,
+        required=False,
+        strip=True,
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Contoh: United States",
                 "autocomplete": "country-name",
+                "data-parent-country-name": "true",
             }
         ),
     )
@@ -208,6 +240,33 @@ class NewCountryLocationForm(forms.Form):
                 "Gunakan kode negara ISO yang terdiri dari 2 huruf."
             )
         return code
+
+    def clean(self):
+        cleaned_data = super().clean()
+        level = cleaned_data.get(
+            "location_level",
+            Location.AdministrativeLevel.COUNTRY,
+        )
+        location_name = (cleaned_data.get("location_name") or "").strip()
+        country_name = (cleaned_data.get("country_name") or "").strip()
+
+        # Kompatibilitas payload versi lama: field country_name sebelumnya
+        # sekaligus dipakai sebagai nama lokasi negara.
+        if level == Location.AdministrativeLevel.COUNTRY:
+            location_name = location_name or country_name
+            country_name = location_name
+        elif not country_name:
+            self.add_error(
+                "country_name",
+                "Negara induk wajib diisi untuk wilayah di bawah negara.",
+            )
+
+        if not location_name:
+            self.add_error("location_name", "Nama lokasi wajib diisi.")
+
+        cleaned_data["location_name"] = location_name
+        cleaned_data["country_name"] = country_name
+        return cleaned_data
 
 
 class PrimaryArticleDiseaseForm(forms.Form):

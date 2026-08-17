@@ -1989,7 +1989,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     )
         elif (
             request.method == "POST"
-            and post_action == "create_primary_country"
+            and post_action in {
+                "create_primary_country",
+                "create_primary_location",
+            }
         ):
             active_validation_tab = "location"
             form = ArticleValidationAssessmentForm(
@@ -2012,9 +2015,13 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     "Pengguna harus login untuk menambahkan negara.",
                 )
             elif new_country_form.is_valid():
-                country_name = new_country_form.cleaned_data[
-                    "country_name"
+                location_level = new_country_form.cleaned_data[
+                    "location_level"
                 ]
+                location_name = new_country_form.cleaned_data[
+                    "location_name"
+                ]
+                country_name = new_country_form.cleaned_data["country_name"]
                 country_code = new_country_form.cleaned_data[
                     "country_code"
                 ]
@@ -2049,20 +2056,51 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             country.is_active = True
                             country.save(update_fields=["is_active", "updated_at"])
 
+                    if location_level == Location.AdministrativeLevel.COUNTRY:
+                        location = country
+                        location_created = country_created
+                    else:
+                        location = (
+                            Location.objects.filter(
+                                name__iexact=location_name,
+                                administrative_level=location_level,
+                                parent=country,
+                                country_code=country_code,
+                            )
+                            .order_by("-is_active", "name")
+                            .first()
+                        )
+                        if location is None:
+                            location = Location.objects.create(
+                                name=location_name,
+                                administrative_level=location_level,
+                                parent=country,
+                                country_code=country_code,
+                                is_active=True,
+                            )
+                            location_created = True
+                        else:
+                            location_created = False
+                            if not location.is_active:
+                                location.is_active = True
+                                location.save(
+                                    update_fields=["is_active", "updated_at"]
+                                )
+
                     correction_result = set_primary_article_location(
                         article=selected_article,
-                        location=country,
+                        location=location,
                         reviewer=request.user,
                         notes=new_country_form.cleaned_data[
                             "country_notes"
                         ],
                     )
 
-                if country_created:
+                if location_created:
                     messages.success(
                         request,
                         (
-                            f"Negara {country.name} ({country_code}) "
+                            f"Lokasi {location} ({country_code}) "
                             "ditambahkan dan ditetapkan sebagai lokasi utama."
                         ),
                     )
@@ -2070,8 +2108,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     messages.info(
                         request,
                         (
-                            f"Kode {country_code} sudah terdaftar sebagai "
-                            f"{country.name}; lokasi tersebut ditetapkan "
+                            f"Lokasi {location} sudah terdaftar; "
+                            "lokasi tersebut ditetapkan "
                             "sebagai lokasi utama."
                         ),
                     )

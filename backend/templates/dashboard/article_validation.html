@@ -1133,46 +1133,24 @@ Validasi Artikel | MEDINTEL OSINT
                                     </div>
                                 </div>
 
-                                <div class="card bg-light-lt mt-4">
-                                    <div class="card-body">
-                                        <details class="medintel-new-country" {% if new_country_form.errors %}open{% endif %}>
-                                            <summary class="fw-semibold">
-                                                Negara belum ada dalam daftar? Tambah negara baru
-                                            </summary>
-                                            <div class="text-secondary small mt-2 mb-3">
-                                                Gunakan hanya jika negara benar-benar disebut sebagai
-                                                lokasi kejadian. Negara baru langsung ditambahkan ke
-                                                master lokasi dan ditetapkan sebagai lokasi utama artikel.
-                                            </div>
-                                            {% if new_country_form.non_field_errors %}
-                                                <div class="alert alert-danger">
-                                                    {% for error in new_country_form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
-                                                </div>
-                                            {% endif %}
-                                            <div class="row g-3">
-                                                <div class="col-md-8">
-                                                    <label class="form-label" for="{{ new_country_form.country_name.id_for_label }}">{{ new_country_form.country_name.label }}</label>
-                                                    {{ new_country_form.country_name }}
-                                                    {% for error in new_country_form.country_name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="form-label" for="{{ new_country_form.country_code.id_for_label }}">{{ new_country_form.country_code.label }}</label>
-                                                    {{ new_country_form.country_code }}
-                                                    {% for error in new_country_form.country_code.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-                                                </div>
-                                                <div class="col-12">
-                                                    <label class="form-label" for="{{ new_country_form.country_notes.id_for_label }}">{{ new_country_form.country_notes.label }}</label>
-                                                    {{ new_country_form.country_notes }}
-                                                    {% for error in new_country_form.country_notes.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
-                                                </div>
-                                                <div class="col-12 d-flex justify-content-end">
-                                                    <button type="submit" name="action" value="create_primary_country" class="btn btn-outline-azure" data-medintel-action-submit>
-                                                        Tambah dan Pilih Negara
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </details>
+                                <div class="medintel-add-location-callout mt-4">
+                                    <div class="medintel-add-location-icon" aria-hidden="true">
+                                        <i class="ti ti-map-pin-plus"></i>
                                     </div>
+                                    <div class="flex-fill">
+                                        <div class="fw-semibold">Lokasi belum tersedia?</div>
+                                        <div class="text-secondary small">
+                                            Tambahkan negara atau wilayah luar negeri tanpa meninggalkan artikel ini.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="btn btn-outline-azure flex-shrink-0"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#new-location-modal"
+                                    >
+                                        Tambah Lokasi
+                                    </button>
                                 </div>
                             </div>
 
@@ -1512,6 +1490,104 @@ Validasi Artikel | MEDINTEL OSINT
                 </div>
             </form>
 
+            <div
+                class="modal modal-blur fade"
+                id="new-location-modal"
+                tabindex="-1"
+                aria-labelledby="new-location-modal-title"
+                aria-hidden="true"
+                {% if new_country_form.errors %}data-open-on-error="true"{% endif %}
+            >
+                <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable medintel-location-modal">
+                    <div class="modal-content">
+                        <form method="post" novalidate data-new-location-form>
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="create_primary_location">
+                            <input type="hidden" name="article_id" value="{{ selected_article.id }}">
+                            <input type="hidden" name="page" value="{{ page_obj.number }}">
+                            <input type="hidden" name="workspace" value="{{ workspace_mode }}">
+                            <input type="hidden" name="eligibility" value="{{ eligibility_filter }}">
+                            <input type="hidden" name="history_status" value="{{ history_status_filter }}">
+                            <input type="hidden" name="active_tab" value="location">
+
+                            <div class="modal-header">
+                                <div>
+                                    <h3 class="modal-title" id="new-location-modal-title">
+                                        Tambah Lokasi Kejadian
+                                    </h3>
+                                    <div class="text-secondary small mt-1">
+                                        Lokasi baru akan disimpan ke master lokasi dan langsung dipilih sebagai lokasi utama artikel.
+                                    </div>
+                                </div>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <div class="alert alert-info mb-4">
+                                    Tambahkan hanya lokasi yang secara tegas menjadi tempat kejadian atau angka kasus, bukan lokasi yang sekadar disebut dalam artikel.
+                                </div>
+
+                                {% if new_country_form.non_field_errors %}
+                                    <div class="alert alert-danger">
+                                        {% for error in new_country_form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                <div class="row g-3">
+                                    <div class="col-md-5">
+                                        <label class="form-label" for="{{ new_country_form.location_level.id_for_label }}">
+                                            {{ new_country_form.location_level.label }}
+                                        </label>
+                                        {{ new_country_form.location_level }}
+                                        {% for error in new_country_form.location_level.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                    <div class="col-md-7">
+                                        <label class="form-label" for="{{ new_country_form.location_name.id_for_label }}">
+                                            {{ new_country_form.location_name.label }}
+                                        </label>
+                                        {{ new_country_form.location_name }}
+                                        {% for error in new_country_form.location_name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                    <div class="col-md-8 d-none" data-parent-country-field>
+                                        <label class="form-label" for="{{ new_country_form.country_name.id_for_label }}">
+                                            {{ new_country_form.country_name.label }}
+                                        </label>
+                                        {{ new_country_form.country_name }}
+                                        {% for error in new_country_form.country_name.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="{{ new_country_form.country_code.id_for_label }}">
+                                            {{ new_country_form.country_code.label }}
+                                        </label>
+                                        {{ new_country_form.country_code }}
+                                        {% for error in new_country_form.country_code.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label" for="{{ new_country_form.country_notes.id_for_label }}">
+                                            {{ new_country_form.country_notes.label }}
+                                        </label>
+                                        {{ new_country_form.country_notes }}
+                                        {% for error in new_country_form.country_notes.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+                                        <div class="form-hint">
+                                            Contoh: “Artikel menyebut 3.200 kasus campak terjadi di Israel.”
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">
+                                    Batal
+                                </button>
+                                <button type="submit" class="btn btn-azure" data-new-location-submit>
+                                    Tambah dan Pilih Lokasi
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             {% if selected_article.processing_status == "rejected" and request.user|has_role:"Admin,Analyst" %}
                 <form
                     id="delete-selected-article-form"
@@ -1563,6 +1639,59 @@ document.addEventListener("DOMContentLoaded", function () {
     const currentAdmiraltyCode = document.getElementById("current-admiralty-code");
     const recommendationButton = document.getElementById("apply-information-recommendation");
     const recommendationMessage = document.getElementById("recommendation-applied-message");
+    const newLocationModal = document.getElementById("new-location-modal");
+    const newLocationForm = document.querySelector("[data-new-location-form]");
+    const newLocationLevel = newLocationForm?.querySelector(
+        "[data-new-location-level]"
+    );
+    const parentCountryField = newLocationForm?.querySelector(
+        "[data-parent-country-field]"
+    );
+
+    // Modal dipindahkan ke body agar tidak terpotong oleh overflow panel
+    // detail yang memang dikunci sebagai split-pane pada desktop/tablet.
+    if (newLocationModal && newLocationModal.parentElement !== document.body) {
+        document.body.appendChild(newLocationModal);
+    }
+
+    function syncNewLocationFields() {
+        if (!newLocationLevel || !parentCountryField) {
+            return;
+        }
+        const isCountry = !newLocationLevel.value
+            || newLocationLevel.value === "country";
+        parentCountryField.classList.toggle("d-none", isCountry);
+        const input = parentCountryField.querySelector("input");
+        if (input) {
+            input.required = !isCountry;
+        }
+    }
+
+    newLocationLevel?.addEventListener("change", syncNewLocationFields);
+    syncNewLocationFields();
+
+    newLocationForm?.addEventListener("submit", function () {
+        const submitButton = newLocationForm.querySelector(
+            "[data-new-location-submit]"
+        );
+        if (!submitButton) {
+            return;
+        }
+        submitButton.disabled = true;
+        submitButton.innerHTML = (
+            '<span class="spinner-border spinner-border-sm me-2" '
+            + 'aria-hidden="true"></span>Menyimpan...'
+        );
+    });
+
+    if (newLocationModal?.dataset.openOnError === "true") {
+        const trigger = document.querySelector(
+            '[data-bs-target="#new-location-modal"]'
+        );
+        window.setTimeout(function () {
+            trigger?.click();
+        }, 0);
+    }
 
     function syncWorkspaceHeight() {
         if (!validationWorkspace || window.innerWidth < 992) {

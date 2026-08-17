@@ -14,6 +14,8 @@
 - test regresi ditambahkan untuk penambahan negara luar negeri.
 - test halaman validasi memakai static storage non-manifest khusus pengujian,
   sehingga tidak bergantung pada hasil `collectstatic` production.
+- penambahan lokasi baru memakai dialog responsif yang tidak terpotong panel,
+  serta mendukung negara, provinsi/negara bagian, kota, dan wilayah setara.
 
 ## File yang diperbarui
 

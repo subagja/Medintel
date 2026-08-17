@@ -276,6 +276,9 @@ class ArticleValidationQueueTests(TestCase):
             response,
             "Ketik nama kota, kabupaten, provinsi, atau negara",
         )
+        self.assertContains(response, "Lokasi belum tersedia?")
+        self.assertContains(response, 'data-bs-target="#new-location-modal"')
+        self.assertContains(response, "Tambah Lokasi Kejadian")
 
     def test_validator_can_add_missing_country_as_primary_location(self):
         response = self.client.post(
@@ -316,6 +319,44 @@ class ArticleValidationQueueTests(TestCase):
             "Luar negeri · IL",
             count=1,
         )
+
+    def test_validator_can_add_missing_foreign_region(self):
+        response = self.client.post(
+            reverse("dashboard:article-validation"),
+            {
+                "article_id": str(self.pending_article.id),
+                "action": "create_primary_location",
+                "active_tab": "location",
+                "workspace": "queue",
+                "eligibility": "all",
+                "history_status": "all",
+                "location_level": Location.AdministrativeLevel.PROVINCE,
+                "location_name": "California",
+                "country_name": "United States",
+                "country_code": "us",
+                "country_notes": (
+                    "Artikel menyebut kejadian terjadi di California."
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("tab=location", response.url)
+        country = Location.objects.get(
+            administrative_level=Location.AdministrativeLevel.COUNTRY,
+            country_code="US",
+        )
+        region = Location.objects.get(
+            name="California",
+            administrative_level=Location.AdministrativeLevel.PROVINCE,
+            parent=country,
+            country_code="US",
+        )
+        relation = ArticleLocation.objects.get(
+            article=self.pending_article,
+            location=region,
+        )
+        self.assertTrue(relation.is_primary)
 
     def test_queue_uses_visible_server_side_pagination(self):
         Article.objects.bulk_create(
