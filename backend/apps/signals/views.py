@@ -444,6 +444,8 @@ def _confirm_signal(*, signal: Signal, reviewer, form, notes: str) -> Signal:
         "event_end_date",
         "priority_level",
         "confidence_level",
+        "event_classification",
+        "classification_basis",
         "analyst_judgement",
         "implication",
         "recommended_action",

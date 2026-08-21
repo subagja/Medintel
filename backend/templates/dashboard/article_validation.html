@@ -150,7 +150,7 @@ Validasi Artikel | MEDINTEL OSINT
                     >
                         Antrean Validasi
                         <span class="badge ms-1 {% if workspace_mode == 'queue' %}bg-white text-primary{% else %}bg-primary-lt text-primary{% endif %}">
-                            {{ summary.pending|default:0 }}
+                            {{ workspace_summary.pending|default:0 }}
                         </span>
                     </a>
                     <a
@@ -159,7 +159,7 @@ Validasi Artikel | MEDINTEL OSINT
                     >
                         Riwayat Validasi
                         <span class="badge ms-1 {% if workspace_mode == 'history' %}bg-white text-secondary{% else %}bg-secondary-lt text-secondary{% endif %}">
-                            {{ summary.completed|default:0 }}
+                            {{ workspace_summary.completed|default:0 }}
                         </span>
                     </a>
                 </div>
@@ -284,15 +284,15 @@ Validasi Artikel | MEDINTEL OSINT
 
                 {% if workspace_mode == "history" %}
                     <div class="btn-group w-100" role="group" aria-label="Status riwayat validasi">
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=all{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Semua Selesai</a>
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=validated{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'validated' %}btn-success{% else %}btn-outline-success{% endif %}">Tervalidasi</a>
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=rejected{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'rejected' %}btn-danger{% else %}btn-outline-danger{% endif %}">Tidak Relevan</a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=all{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Semua Selesai <span class="badge ms-1 bg-white text-secondary">{{ workspace_summary.completed|default:0 }}</span></a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=validated{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'validated' %}btn-success{% else %}btn-outline-success{% endif %}">Tervalidasi <span class="badge ms-1 bg-white text-success">{{ workspace_summary.validated|default:0 }}</span></a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=history&history_status=rejected{{ extra_filter_qs }}" class="btn btn-sm {% if history_status_filter == 'rejected' %}btn-danger{% else %}btn-outline-danger{% endif %}">Tidak Relevan <span class="badge ms-1 bg-white text-danger">{{ workspace_summary.rejected|default:0 }}</span></a>
                     </div>
                 {% else %}
                     <div class="btn-group w-100" role="group" aria-label="Kelengkapan antrean validasi">
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=all{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">Semua Antrean</a>
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=eligible{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'eligible' %}btn-success{% else %}btn-outline-success{% endif %}">Eligible</a>
-                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=needs_review{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'needs_review' %}btn-warning{% else %}btn-outline-warning{% endif %}">Data Belum Lengkap</a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=all{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">Semua Antrean <span class="badge ms-1 bg-white text-primary">{{ workspace_summary.pending|default:0 }}</span></a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=eligible{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'eligible' %}btn-success{% else %}btn-outline-success{% endif %}">Eligible <span class="badge ms-1 bg-white text-success">{{ workspace_summary.eligible|default:0 }}</span></a>
+                        <a href="{% url 'dashboard:article-validation' %}?workspace=queue&eligibility=needs_review{{ extra_filter_qs }}" class="btn btn-sm {% if eligibility_filter == 'needs_review' %}btn-warning{% else %}btn-outline-warning{% endif %}">Data Belum Lengkap <span class="badge ms-1 bg-white text-warning">{{ workspace_summary.needs_review|default:0 }}</span></a>
                     </div>
                 {% endif %}
             </form>
@@ -389,18 +389,44 @@ Validasi Artikel | MEDINTEL OSINT
                     <div class="empty py-5">
                         <p class="empty-title">
                             {% if workspace_mode == "history" %}
-                                Riwayat validasi masih kosong
+                                {% if summary.completed == 0 %}
+                                    Riwayat validasi masih kosong
+                                {% else %}
+                                    Tidak ada riwayat yang sesuai filter
+                                {% endif %}
                             {% else %}
-                                Antrean validasi sudah kosong
+                                {% if summary.pending == 0 %}
+                                    Antrean validasi sudah selesai
+                                {% else %}
+                                    Tidak ada artikel yang sesuai filter
+                                {% endif %}
                             {% endif %}
                         </p>
                         <p class="empty-subtitle text-secondary">
                             {% if workspace_mode == "history" %}
-                                Artikel yang selesai divalidasi akan tampil di sini.
+                                {% if summary.completed == 0 %}
+                                    Artikel yang selesai divalidasi akan tampil di sini.
+                                {% else %}
+                                    Ubah kriteria pencarian atau hapus filter untuk menampilkan riwayat lainnya.
+                                {% endif %}
                             {% else %}
-                                Tidak ada artikel yang perlu dianalisis pada filter ini.
+                                {% if summary.pending == 0 %}
+                                    Seluruh artikel telah diperiksa. Artikel baru akan muncul setelah proses pengumpulan dan ekstraksi selesai.
+                                {% else %}
+                                    Ubah kriteria pencarian atau hapus filter untuk menampilkan artikel lainnya.
+                                {% endif %}
                             {% endif %}
                         </p>
+                        {% if has_active_list_filters %}
+                            <div class="empty-action">
+                                <a
+                                    href="{% url 'dashboard:article-validation' %}?workspace={{ workspace_mode }}{% if workspace_mode == 'history' %}&history_status=all{% else %}&eligibility=all{% endif %}"
+                                    class="btn btn-sm btn-outline-primary"
+                                >
+                                    Reset Semua Filter
+                                </a>
+                            </div>
+                        {% endif %}
                     </div>
                 {% endfor %}
             </div>

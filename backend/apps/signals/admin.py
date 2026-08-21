@@ -21,6 +21,7 @@ class SignalAdmin(admin.ModelAdmin):
         "status",
         "priority_level",
         "confidence_level",
+        "event_classification",
         "system_score",
         "updated_at",
         "assigned_to",
@@ -35,6 +36,7 @@ class SignalAdmin(admin.ModelAdmin):
         "status",
         "priority_level",
         "confidence_level",
+        "event_classification",
         "primary_disease",
         "primary_location",
     )
@@ -59,6 +61,8 @@ class SignalAdmin(admin.ModelAdmin):
                     "primary_location",
                     "event_start_date",
                     "event_end_date",
+                    "event_classification",
+                    "classification_basis",
                 )
             },
         ),

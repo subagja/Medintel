@@ -84,6 +84,8 @@ class SignalReviewForm(forms.ModelForm):
             "event_end_date",
             "priority_level",
             "confidence_level",
+            "event_classification",
+            "classification_basis",
             "analyst_judgement",
             "implication",
             "recommended_action",
@@ -96,6 +98,8 @@ class SignalReviewForm(forms.ModelForm):
             "event_end_date": "Tanggal akhir kejadian",
             "priority_level": "Prioritas",
             "confidence_level": "Tingkat keyakinan",
+            "event_classification": "Klasifikasi kejadian",
+            "classification_basis": "Dasar klasifikasi kejadian",
             "analyst_judgement": "Judgement analis",
             "implication": "Implikasi awal",
             "recommended_action": "Rekomendasi tindak lanjut",
@@ -114,6 +118,20 @@ class SignalReviewForm(forms.ModelForm):
             ),
             "priority_level": forms.Select(attrs={"class": "form-select"}),
             "confidence_level": forms.Select(attrs={"class": "form-select"}),
+            "event_classification": forms.Select(
+                attrs={"class": "form-select"}
+            ),
+            "classification_basis": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": (
+                        "Contoh: kasus muncul di wilayah non-endemik, "
+                        "meningkat kembali setelah lama terkendali, atau "
+                        "etiologinya belum diketahui."
+                    ),
+                }
+            ),
             "analyst_judgement": forms.Textarea(
                 attrs={"class": "form-control", "rows": 4}
             ),
@@ -137,6 +155,18 @@ class SignalReviewForm(forms.ModelForm):
             self.add_error(
                 "event_end_date",
                 "Tanggal akhir tidak boleh mendahului tanggal mulai.",
+            )
+
+        classification = cleaned_data.get("event_classification")
+        basis = (cleaned_data.get("classification_basis") or "").strip()
+        if classification in {
+            Signal.EventClassification.EMERGING,
+            Signal.EventClassification.RE_EMERGING,
+            Signal.EventClassification.UNKNOWN_CLUSTER,
+        } and not basis:
+            self.add_error(
+                "classification_basis",
+                "Dasar klasifikasi wajib diisi untuk kejadian non-rutin.",
             )
 
         return cleaned_data

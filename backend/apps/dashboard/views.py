@@ -2477,6 +2477,99 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         .count()
     )
 
+    # Badge pada tab workspace harus mengikuti filter lanjutan dan pencarian
+    # yang dipakai daftar artikel. Ringkasan kartu di bagian atas tetap
+    # bersifat global, sedangkan workspace_summary menjelaskan jumlah hasil
+    # dalam konteks filter saat ini. Tanpa pemisahan ini badge dapat tetap
+    # menampilkan ratusan artikel ketika daftar sebenarnya kosong karena
+    # filter aktif.
+    filtered_summary_articles, _unused_filters = apply_article_filters(
+        base_articles,
+        request.GET,
+    )
+    if search_query:
+        filtered_summary_articles = filtered_summary_articles.filter(
+            Q(title__icontains=search_query)
+            | Q(source__name__icontains=search_query)
+        )
+
+    filtered_queue_articles = filtered_summary_articles.filter(
+        Q(validation_assessment__isnull=True)
+        | Q(
+            validation_assessment__validation_status=(
+                ArticleValidationAssessment
+                .ValidationStatus
+                .PENDING
+            )
+        )
+    )
+    filtered_history_articles = filtered_summary_articles.filter(
+        validation_assessment__validation_status__in=(
+            completed_statuses
+        )
+    )
+
+    workspace_summary = {
+        "pending": filtered_queue_articles.count(),
+        "completed": filtered_history_articles.count(),
+        "validated": filtered_history_articles.filter(
+            validation_assessment__validation_status=(
+                ArticleValidationAssessment
+                .ValidationStatus
+                .VALIDATED
+            )
+        ).count(),
+        "rejected": filtered_history_articles.filter(
+            validation_assessment__validation_status=(
+                ArticleValidationAssessment
+                .ValidationStatus
+                .REJECTED
+            )
+        ).count(),
+        "eligible": filtered_queue_articles.filter(
+            has_extracted_disease=True,
+            has_extracted_location=True,
+            has_numeric_fact=True,
+        ).count(),
+        "needs_review": filtered_queue_articles.filter(
+            Q(has_extracted_disease=False)
+            | Q(has_extracted_location=False)
+            | Q(has_numeric_fact=False)
+        ).count(),
+        # Hasil daftar setelah workspace/status/eligibility ikut diterapkan.
+        "visible": paginator.count,
+    }
+
+    meaningful_filter_keys = {
+        "source",
+        "disease",
+        "location",
+        "processing_status",
+        "trend",
+        "date_from",
+        "date_to",
+        "q",
+    }
+    has_active_article_filters = any(
+        active_filters.get(key)
+        for key in meaningful_filter_keys
+    ) or active_filters.get("date_field") not in {
+        "",
+        "published_at",
+        None,
+    }
+    has_active_list_filters = (
+        has_active_article_filters
+        or (
+            workspace_mode == "queue"
+            and eligibility_filter != "all"
+        )
+        or (
+            workspace_mode == "history"
+            and history_status_filter != "all"
+        )
+    )
+
     context = {
         "page_title": "Validasi Artikel",
         "active_menu": "article_validation",
@@ -2506,6 +2599,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "search_query": search_query,
         "active_filters": active_filters,
         "extra_filter_qs": _extra_filter_querystring(active_filters),
+        "workspace_summary": workspace_summary,
+        "has_active_list_filters": has_active_list_filters,
         **build_article_filter_options(),
         "summary": {
             "total": pending_count,

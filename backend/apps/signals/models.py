@@ -37,6 +37,13 @@ class Signal(models.Model):
         HIGH = "high", "Tinggi"
         UNASSESSED = "unassessed", "Belum Dinilai"
 
+    class EventClassification(models.TextChoices):
+        UNDETERMINED = "undetermined", "Belum ditentukan"
+        ROUTINE = "routine", "Endemik / rutin"
+        EMERGING = "emerging", "Emerging"
+        RE_EMERGING = "re_emerging", "Re-emerging"
+        UNKNOWN_CLUSTER = "unknown_cluster", "Klaster belum diketahui"
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -107,6 +114,22 @@ class Signal(models.Model):
         choices=ConfidenceLevel.choices,
         default=ConfidenceLevel.UNASSESSED,
         db_index=True,
+    )
+
+    event_classification = models.CharField(
+        max_length=30,
+        choices=EventClassification.choices,
+        default=EventClassification.UNDETERMINED,
+        db_index=True,
+        help_text=(
+            "Klasifikasi kejadian pada lokasi dan periode sinyal; "
+            "bukan atribut permanen penyakit."
+        ),
+    )
+
+    classification_basis = models.TextField(
+        blank=True,
+        help_text="Bukti epidemiologis yang mendasari klasifikasi kejadian.",
     )
 
     system_score = models.FloatField(

@@ -243,10 +243,15 @@ class NewCountryLocationForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        level = cleaned_data.get(
-            "location_level",
-            Location.AdministrativeLevel.COUNTRY,
+        # Pada POST dari UI/payload versi lama field opsional yang tidak
+        # dikirim dibersihkan menjadi string kosong, sehingga argumen default
+        # pada dict.get() tidak pernah dipakai. Perlakukan nilai kosong sebagai
+        # level negara agar country_name tetap kompatibel sebagai nama lokasi.
+        level = (
+            cleaned_data.get("location_level")
+            or Location.AdministrativeLevel.COUNTRY
         )
+        cleaned_data["location_level"] = level
         location_name = (cleaned_data.get("location_name") or "").strip()
         country_name = (cleaned_data.get("country_name") or "").strip()
 

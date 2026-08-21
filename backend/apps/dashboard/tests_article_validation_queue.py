@@ -113,6 +113,60 @@ class ArticleValidationQueueTests(TestCase):
         self.assertContains(response, "Antrean Validasi")
         self.assertContains(response, "Riwayat Validasi")
 
+    def test_workspace_badges_follow_active_search_filter(self):
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"workspace": "queue", "q": "tidak ditemukan"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["pending"], 1)
+        self.assertEqual(
+            response.context["workspace_summary"]["pending"],
+            0,
+        )
+        self.assertEqual(
+            response.context["workspace_summary"]["visible"],
+            0,
+        )
+        self.assertContains(
+            response,
+            "Tidak ada artikel yang sesuai filter",
+        )
+        self.assertContains(response, "Reset Semua Filter")
+        self.assertNotContains(
+            response,
+            "Antrean validasi sudah selesai",
+        )
+
+    def test_workspace_summary_keeps_global_cards_separate(self):
+        response = self.client.get(
+            reverse("dashboard:article-validation"),
+            {
+                "workspace": "queue",
+                "eligibility": "eligible",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["pending"], 1)
+        self.assertEqual(
+            response.context["workspace_summary"]["pending"],
+            1,
+        )
+        self.assertEqual(
+            response.context["workspace_summary"]["eligible"],
+            0,
+        )
+        self.assertEqual(
+            response.context["workspace_summary"]["visible"],
+            0,
+        )
+        self.assertContains(
+            response,
+            "Tidak ada artikel yang sesuai filter",
+        )
+
     def test_history_contains_only_completed_articles(self):
         response = self.client.get(
             reverse("dashboard:article-validation"),

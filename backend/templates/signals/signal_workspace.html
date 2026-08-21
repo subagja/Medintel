@@ -201,6 +201,9 @@
                         </div>
                         <div class="mt-1">{{ signal.title }}</div>
                         <div class="small opacity-75 mt-1">{{ signal.primary_disease }} · {{ signal.primary_location }}</div>
+                        <div class="mt-2">
+                            <span class="badge bg-purple-lt">{{ signal.get_event_classification_display }}</span>
+                        </div>
                     </a>
                 {% empty %}
                     <div class="empty py-5"><p class="empty-title">Belum ada sinyal</p></div>
@@ -224,6 +227,9 @@
                         <span class="badge {% if selected_signal.status == 'validated' %}bg-success-lt{% elif selected_signal.status == 'rejected' %}bg-danger-lt{% else %}bg-warning-lt{% endif %}">
                             {{ selected_signal.get_status_display }}
                         </span>
+                        <span class="badge bg-purple-lt ms-1">
+                            {{ selected_signal.get_event_classification_display }}
+                        </span>
                     </div>
                 </div>
                 <div class="card-body">
@@ -239,7 +245,7 @@
 
                     <div class="row g-3">
                         {% for field in review_form %}
-                            <div class="{% if field.name == 'title' or field.name == 'summary' or field.name == 'analyst_judgement' or field.name == 'implication' or field.name == 'recommended_action' or field.name == 'information_gaps' or field.name == 'review_notes' %}col-12{% else %}col-md-6{% endif %}">
+                            <div class="{% if field.name == 'title' or field.name == 'summary' or field.name == 'classification_basis' or field.name == 'analyst_judgement' or field.name == 'implication' or field.name == 'recommended_action' or field.name == 'information_gaps' or field.name == 'review_notes' %}col-12{% else %}col-md-6{% endif %}">
                                 <label class="form-label">{{ field.label }}</label>
                                 {{ field }}
                                 {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}

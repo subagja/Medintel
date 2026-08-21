@@ -2,7 +2,7 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.articles.models import Article
@@ -32,6 +32,18 @@ from apps.sources.models import Source
 User = get_user_model()
 
 
+@override_settings(
+    STORAGES={
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.StaticFilesStorage"
+            ),
+        },
+    }
+)
 class ArticleSignalFormationTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -258,6 +270,12 @@ class ArticleSignalFormationTests(TestCase):
                 "event_end_date": signal.event_end_date.isoformat(),
                 "priority_level": signal.priority_level,
                 "confidence_level": signal.confidence_level,
+                "event_classification": (
+                    Signal.EventClassification.EMERGING
+                ),
+                "classification_basis": (
+                    "Kejadian terdeteksi pada wilayah non-endemik."
+                ),
                 "analyst_judgement": (
                     "Pelaporan kasus TBC memerlukan pemantauan lanjutan."
                 ),
@@ -272,4 +290,8 @@ class ArticleSignalFormationTests(TestCase):
         signal.refresh_from_db()
         self.assertEqual(signal.status, Signal.Status.VALIDATED)
         self.assertEqual(signal.validated_by, self.user)
+        self.assertEqual(
+            signal.event_classification,
+            Signal.EventClassification.EMERGING,
+        )
         self.assertGreaterEqual(signal.histories.count(), 3)

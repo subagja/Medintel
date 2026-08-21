@@ -49,6 +49,8 @@ SIGNAL_CORRECTION_FIELDS = {
     "event_end_date",
     "priority_level",
     "confidence_level",
+    "event_classification",
+    "classification_basis",
     "analyst_judgement",
     "implication",
     "recommended_action",
@@ -97,6 +99,8 @@ def signal_snapshot(signal: Signal) -> dict[str, Any]:
         "status": signal.status,
         "priority_level": signal.priority_level,
         "confidence_level": signal.confidence_level,
+        "event_classification": signal.event_classification,
+        "classification_basis": signal.classification_basis,
         "system_score": signal.system_score,
         "assigned_to_id": (
             str(signal.assigned_to_id)
