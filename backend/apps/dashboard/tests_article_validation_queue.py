@@ -11,6 +11,7 @@ from apps.entities.models import (
     ArticleDisease,
     ArticleLocation,
     Disease,
+    DiseaseCandidate,
     ValidationStatus,
 )
 from apps.indicators.models import Indicator
@@ -112,6 +113,85 @@ class ArticleValidationQueueTests(TestCase):
         self.assertEqual(response.context["summary"]["rejected"], 1)
         self.assertContains(response, "Antrean Validasi")
         self.assertContains(response, "Riwayat Validasi")
+
+    def test_wrong_detected_disease_can_be_replaced_by_candidate(self):
+        detected_disease = Disease.objects.create(
+            name="Tuberkulosis Salah Deteksi",
+            code="tuberkulosis-salah-deteksi",
+        )
+        detected_relation = ArticleDisease.objects.create(
+            article=self.pending_article,
+            disease=detected_disease,
+            is_primary=True,
+        )
+        url = reverse("dashboard:article-validation")
+
+        detail = self.client.get(
+            url,
+            {
+                "article": str(self.pending_article.pk),
+                "tab": "disease",
+            },
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(
+            detail,
+            "Ajukan kandidat penyakit",
+        )
+        self.assertContains(detail, 'name="proposed_name"')
+
+        response = self.client.post(
+            url,
+            {
+                "action": "submit_disease_candidate",
+                "article_id": str(self.pending_article.pk),
+                "active_tab": "disease",
+                "proposed_name": "Coccidioidomycosis Test",
+                "canonical_name": "Coccidioidomycosis",
+                "agent_type": DiseaseCandidate.AgentType.FUNGUS,
+                "justification": (
+                    "Diagnosis dan isi artikel membahas coccidioidomycosis, "
+                    "bukan tuberkulosis."
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        candidate = DiseaseCandidate.objects.get(
+            article=self.pending_article
+        )
+        self.assertEqual(candidate.status, DiseaseCandidate.Status.PENDING)
+        self.assertFalse(
+            Disease.objects.filter(name="Coccidioidomycosis Test").exists()
+        )
+        detected_relation.refresh_from_db()
+        self.assertFalse(detected_relation.is_primary)
+        self.assertEqual(
+            detected_relation.validation_status,
+            ValidationStatus.REJECTED,
+        )
+
+        response = self.client.post(
+            url,
+            {
+                "action": "approve_disease_candidate",
+                "article_id": str(self.pending_article.pk),
+                "active_tab": "disease",
+                "disease_candidate_id": str(candidate.pk),
+                "candidate_review_notes": (
+                    "Nama dan diagnosis sesuai bukti artikel."
+                ),
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.status, DiseaseCandidate.Status.APPROVED)
+        self.assertIsNotNone(candidate.approved_disease_id)
+        relation = ArticleDisease.objects.get(
+            article=self.pending_article,
+            disease=candidate.approved_disease,
+        )
+        self.assertTrue(relation.is_primary)
+        self.assertEqual(relation.validation_status, ValidationStatus.CORRECTED)
 
     def test_workspace_badges_follow_active_search_filter(self):
         response = self.client.get(

@@ -11,6 +11,7 @@ from django.urls import reverse
 from urllib.parse import urlencode
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
 
@@ -64,6 +65,7 @@ from apps.crawlers.unified import (
 from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
     ArticleValidationStatusForm,
+    DiseaseCandidateForm,
     NewCountryLocationForm,
     PrimaryArticleDiseaseForm,
     PrimaryArticleLocationForm,
@@ -80,6 +82,7 @@ from apps.entities.models import (
     ArticleFact,
     ArticleLocation,
     Disease,
+    DiseaseCandidate,
     ExtractionReviewLog,
     ValidationStatus,
 )
@@ -88,6 +91,7 @@ from apps.entities.services.review import (
     validate_article_disease,
     validate_article_fact,
     validate_article_location,
+    reject_article_disease,
     set_primary_article_disease,
     set_primary_article_location,
 )
@@ -106,6 +110,16 @@ from apps.collection.services.worker import active_worker_cutoff
 
 
 logger = logging.getLogger(__name__)
+
+
+def _available_disease_code(name: str) -> str:
+    base = slugify(name)[:90] or "penyakit-kandidat"
+    code = base
+    suffix = 2
+    while Disease.objects.filter(code=code).exists():
+        code = f"{base[:85]}-{suffix}"
+        suffix += 1
+    return code
 
 
 @require_role(*Roles.ALL)
@@ -1708,6 +1722,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     form = None
     validation_status_form = None
     primary_disease_form = None
+    disease_candidate_form = None
+    disease_candidates = []
+    pending_disease_candidate = None
     primary_location_form = None
     new_country_form = None
     assessment_history = []
@@ -1737,6 +1754,25 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     )
 
     if selected_article is not None:
+        disease_candidates = list(
+            DiseaseCandidate.objects.filter(article=selected_article)
+            .select_related(
+                "submitted_by",
+                "reviewed_by",
+                "approved_disease",
+            )
+            .order_by("-created_at")
+        )
+        pending_disease_candidate = next(
+            (
+                candidate
+                for candidate in disease_candidates
+                if candidate.status == DiseaseCandidate.Status.PENDING
+            ),
+            None,
+        )
+        disease_candidate_form = DiseaseCandidateForm()
+
         selected_diseases = list(
             ArticleDisease.objects.filter(
                 article=selected_article,
@@ -1905,6 +1941,232 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                             page=page_obj.number,
                         )
                     )
+        elif (
+            request.method == "POST"
+            and post_action == "submit_disease_candidate"
+        ):
+            active_validation_tab = "disease"
+            form = ArticleValidationAssessmentForm(instance=assessment)
+            validation_status_form = ArticleValidationStatusForm(
+                instance=assessment
+            )
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                article=selected_article
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                article=selected_article
+            )
+            new_country_form = NewCountryLocationForm()
+            disease_candidate_form = DiseaseCandidateForm(request.POST)
+
+            if disease_candidate_form.is_valid():
+                proposed_name = disease_candidate_form.cleaned_data[
+                    "proposed_name"
+                ]
+                duplicate = DiseaseCandidate.objects.filter(
+                    article=selected_article,
+                    proposed_name__iexact=proposed_name,
+                    status=DiseaseCandidate.Status.PENDING,
+                ).first()
+                if duplicate is not None:
+                    disease_candidate_form.add_error(
+                        "proposed_name",
+                        "Kandidat yang sama masih menunggu persetujuan.",
+                    )
+                else:
+                    with transaction.atomic():
+                        candidate = disease_candidate_form.save(commit=False)
+                        candidate.article = selected_article
+                        candidate.submitted_by = request.user
+                        candidate.save()
+
+                        # Hasil ekstraksi yang salah tidak boleh tetap menjadi
+                        # penyakit utama saat kandidat koreksi masih ditinjau.
+                        for relation in selected_diseases:
+                            if (
+                                relation.is_primary
+                                and relation.validation_status
+                                != ValidationStatus.REJECTED
+                            ):
+                                reject_article_disease(
+                                    relation=relation,
+                                    reviewer=request.user,
+                                    notes=(
+                                        "Penyakit utama hasil ekstraksi "
+                                        "ditangguhkan karena kandidat "
+                                        f"{proposed_name} diajukan."
+                                    ),
+                                )
+                                relation.is_primary = False
+                                relation.save(
+                                    update_fields=["is_primary", "updated_at"]
+                                )
+
+                    messages.success(
+                        request,
+                        (
+                            f"Kandidat penyakit {proposed_name} dikirim. "
+                            "Artikel belum dapat membentuk sinyal sampai "
+                            "kandidat disetujui Reviewer/Admin."
+                        ),
+                    )
+                    return redirect(
+                        _build_validation_redirect_url(
+                            article_id=selected_article.id,
+                            tab="disease",
+                            eligibility=eligibility_filter,
+                            filters=active_filters,
+                            workspace=workspace_mode,
+                            history_status=history_status_filter,
+                            page=page_obj.number,
+                        )
+                    )
+        elif (
+            request.method == "POST"
+            and post_action in {
+                "approve_disease_candidate",
+                "reject_disease_candidate",
+            }
+        ):
+            active_validation_tab = "disease"
+            form = ArticleValidationAssessmentForm(instance=assessment)
+            validation_status_form = ArticleValidationStatusForm(
+                instance=assessment
+            )
+            primary_disease_form = PrimaryArticleDiseaseForm(
+                article=selected_article
+            )
+            primary_location_form = PrimaryArticleLocationForm(
+                article=selected_article
+            )
+            new_country_form = NewCountryLocationForm()
+            candidate = get_object_or_404(
+                DiseaseCandidate,
+                pk=request.POST.get("disease_candidate_id"),
+                article=selected_article,
+                status=DiseaseCandidate.Status.PENDING,
+            )
+            review_notes = request.POST.get(
+                "candidate_review_notes", ""
+            ).strip()
+
+            if not has_role(request.user, *Roles.APPROVERS):
+                disease_candidate_form.add_error(
+                    None,
+                    "Persetujuan kandidat memerlukan Reviewer atau Admin.",
+                )
+            elif not review_notes:
+                disease_candidate_form.add_error(
+                    None,
+                    "Catatan keputusan kandidat wajib diisi.",
+                )
+            elif post_action == "reject_disease_candidate":
+                candidate.status = DiseaseCandidate.Status.REJECTED
+                candidate.reviewed_by = request.user
+                candidate.reviewed_at = timezone.now()
+                candidate.review_notes = review_notes
+                candidate.save(
+                    update_fields=[
+                        "status",
+                        "reviewed_by",
+                        "reviewed_at",
+                        "review_notes",
+                        "updated_at",
+                    ]
+                )
+                messages.success(
+                    request,
+                    f"Kandidat {candidate.proposed_name} ditolak.",
+                )
+                return redirect(
+                    _build_validation_redirect_url(
+                        article_id=selected_article.id,
+                        tab="disease",
+                        eligibility=eligibility_filter,
+                        filters=active_filters,
+                        workspace=workspace_mode,
+                        history_status=history_status_filter,
+                        page=page_obj.number,
+                    )
+                )
+            else:
+                with transaction.atomic():
+                    disease = Disease.objects.filter(
+                        name__iexact=candidate.proposed_name
+                    ).first()
+                    if disease is None and candidate.canonical_name:
+                        disease = Disease.objects.filter(
+                            canonical_name__iexact=candidate.canonical_name
+                        ).first()
+                    if disease is None:
+                        disease = Disease.objects.create(
+                            name=candidate.proposed_name,
+                            canonical_name=candidate.canonical_name,
+                            code=_available_disease_code(
+                                candidate.proposed_name
+                            ),
+                            category=candidate.get_agent_type_display(),
+                            description=(
+                                "Ditambahkan melalui persetujuan kandidat "
+                                "penyakit pada Validasi Artikel."
+                            ),
+                            is_active=True,
+                        )
+                    elif not disease.is_active:
+                        disease.is_active = True
+                        disease.save(
+                            update_fields=["is_active", "updated_at"]
+                        )
+
+                    set_primary_article_disease(
+                        article=selected_article,
+                        disease=disease,
+                        reviewer=request.user,
+                        notes=review_notes,
+                    )
+                    rejected_disease_ids = ArticleDisease.objects.filter(
+                        article=selected_article,
+                        validation_status=ValidationStatus.REJECTED,
+                    ).values_list("disease_id", flat=True)
+                    ArticleFact.objects.filter(
+                        article=selected_article,
+                        disease_id__in=rejected_disease_ids,
+                    ).update(disease=disease)
+                    candidate.status = DiseaseCandidate.Status.APPROVED
+                    candidate.approved_disease = disease
+                    candidate.reviewed_by = request.user
+                    candidate.reviewed_at = timezone.now()
+                    candidate.review_notes = review_notes
+                    candidate.save(
+                        update_fields=[
+                            "status",
+                            "approved_disease",
+                            "reviewed_by",
+                            "reviewed_at",
+                            "review_notes",
+                            "updated_at",
+                        ]
+                    )
+
+                messages.success(
+                    request,
+                    (
+                        f"Kandidat {candidate.proposed_name} disetujui, "
+                        "ditambahkan ke master, dan ditetapkan sebagai "
+                        "penyakit utama."
+                    ),
+                )
+                return redirect(
+                    _build_validation_redirect_url(
+                        article_id=selected_article.id,
+                        tab="disease",
+                        eligibility=eligibility_filter,
+                        filters=active_filters,
+                        workspace=workspace_mode,
+                        history_status=history_status_filter,
+                        page=page_obj.number,
+                    )
+                )
         elif (
             request.method == "POST"
             and post_action == "correct_primary_location"
@@ -2188,6 +2450,14 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                     .VALIDATED
                 ):
                     readiness_errors = []
+                    if DiseaseCandidate.objects.filter(
+                        article=selected_article,
+                        status=DiseaseCandidate.Status.PENDING,
+                    ).exists():
+                        readiness_errors.append(
+                            "Kandidat penyakit masih menunggu persetujuan "
+                            "Reviewer/Admin."
+                        )
                     if not selected_diseases:
                         readiness_errors.append(
                             "Artikel belum memiliki hasil ekstraksi penyakit."
@@ -2580,6 +2850,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "assessment_form": form,
         "validation_status_form": validation_status_form,
         "primary_disease_form": primary_disease_form,
+        "disease_candidate_form": disease_candidate_form,
+        "disease_candidates": disease_candidates,
+        "pending_disease_candidate": pending_disease_candidate,
         "primary_location_form": primary_location_form,
         "new_country_form": new_country_form,
         "assessment_history": assessment_history,

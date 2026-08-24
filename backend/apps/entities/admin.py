@@ -6,6 +6,7 @@ from .models import (
     ArticleLocation,
     Disease,
     DiseaseAlias,
+    DiseaseCandidate,
     Location,
     LocationAlias,
 )
@@ -86,6 +87,50 @@ class DiseaseAliasAdmin(admin.ModelAdmin):
     list_select_related = (
         "disease",
     )
+
+
+@admin.register(DiseaseCandidate)
+class DiseaseCandidateAdmin(admin.ModelAdmin):
+    list_display = (
+        "proposed_name",
+        "article",
+        "agent_type",
+        "status",
+        "submitted_by",
+        "reviewed_by",
+        "created_at",
+    )
+    list_filter = ("status", "agent_type", "created_at")
+    search_fields = (
+        "proposed_name",
+        "canonical_name",
+        "article__title",
+        "justification",
+    )
+    list_select_related = (
+        "article",
+        "submitted_by",
+        "reviewed_by",
+        "approved_disease",
+    )
+    readonly_fields = (
+        "article",
+        "proposed_name",
+        "canonical_name",
+        "agent_type",
+        "justification",
+        "submitted_by",
+        "status",
+        "reviewed_by",
+        "reviewed_at",
+        "approved_disease",
+        "review_notes",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(Location)

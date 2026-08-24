@@ -123,6 +123,82 @@ class DiseaseAlias(models.Model):
         return f"{self.alias} → {self.disease.name}"
 
 
+class DiseaseCandidate(models.Model):
+    """Usulan koreksi penyakit sebelum masuk ke master data."""
+
+    class AgentType(models.TextChoices):
+        VIRUS = "virus", "Virus"
+        BACTERIUM = "bacterium", "Bakteri"
+        FUNGUS = "fungus", "Jamur"
+        PARASITE = "parasite", "Parasit"
+        PRION = "prion", "Prion"
+        OTHER = "other", "Lainnya"
+        UNKNOWN = "unknown", "Belum diketahui"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Menunggu persetujuan"
+        APPROVED = "approved", "Disetujui"
+        REJECTED = "rejected", "Ditolak"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="disease_candidates",
+    )
+    proposed_name = models.CharField(max_length=200)
+    canonical_name = models.CharField(max_length=200, blank=True)
+    agent_type = models.CharField(
+        max_length=20,
+        choices=AgentType.choices,
+        default=AgentType.UNKNOWN,
+    )
+    justification = models.TextField()
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="submitted_disease_candidates",
+        null=True,
+        blank=True,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_disease_candidates",
+        null=True,
+        blank=True,
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_disease = models.ForeignKey(
+        Disease,
+        on_delete=models.SET_NULL,
+        related_name="approved_candidates",
+        null=True,
+        blank=True,
+    )
+    review_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["article", "status"],
+                name="discan_article_status_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.proposed_name} ({self.get_status_display()})"
+
+
 class ArticleDisease(models.Model):
     id = models.UUIDField(
         primary_key=True,

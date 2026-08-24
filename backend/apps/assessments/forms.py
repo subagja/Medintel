@@ -6,6 +6,7 @@ from apps.entities.models import (
     ArticleDisease,
     ArticleLocation,
     Disease,
+    DiseaseCandidate,
 )
 from apps.locations.models import Location
 
@@ -154,6 +155,55 @@ class ArticleValidationStatusForm(forms.ModelForm):
         return cleaned_data
 
 
+class DiseaseCandidateForm(forms.ModelForm):
+    class Meta:
+        model = DiseaseCandidate
+        fields = [
+            "proposed_name",
+            "canonical_name",
+            "agent_type",
+            "justification",
+        ]
+        labels = {
+            "proposed_name": "Nama penyakit yang benar",
+            "canonical_name": "Nama baku / internasional",
+            "agent_type": "Jenis agen",
+            "justification": "Dasar pengajuan",
+        }
+        widgets = {
+            "proposed_name": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Contoh: Coccidioidomycosis",
+                    "autocomplete": "off",
+                }
+            ),
+            "canonical_name": forms.TextInput(
+                attrs={
+                    "class": "form-control",
+                    "placeholder": "Opsional jika sama dengan nama di atas",
+                    "autocomplete": "off",
+                }
+            ),
+            "agent_type": forms.Select(attrs={"class": "form-select"}),
+            "justification": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "Tuliskan bukti singkat dari artikel.",
+                }
+            ),
+        }
+
+    def clean_proposed_name(self):
+        name = self.cleaned_data["proposed_name"].strip()
+        if Disease.objects.filter(name__iexact=name, is_active=True).exists():
+            raise forms.ValidationError(
+                "Penyakit ini sudah tersedia. Pilih dari daftar penyakit utama."
+            )
+        return name
+
+
 class NewCountryLocationForm(forms.Form):
     location_level = forms.ChoiceField(
         label="Jenis lokasi",
@@ -285,10 +335,6 @@ class PrimaryArticleDiseaseForm(forms.Form):
                 "id": "id_primary_disease",
             }
         ),
-        help_text=(
-            "Penyakit yang terdeteksi pada artikel ditampilkan paling "
-            "atas. Penyakit lain tetap disimpan sebagai konteks."
-        ),
     )
 
     disease_correction_notes = forms.CharField(
@@ -299,10 +345,7 @@ class PrimaryArticleDiseaseForm(forms.Form):
             attrs={
                 "class": "form-control",
                 "rows": 3,
-                "placeholder": (
-                    "Contoh: Judul, isi artikel, dan fakta 5.101 "
-                    "kasus secara tegas merujuk Tuberkulosis."
-                ),
+                "placeholder": "Tuliskan alasan pemilihan penyakit utama.",
             }
         ),
         error_messages={
