@@ -44,6 +44,10 @@ class Signal(models.Model):
         RE_EMERGING = "re_emerging", "Re-emerging"
         UNKNOWN_CLUSTER = "unknown_cluster", "Klaster belum diketahui"
 
+    class EvidenceMode(models.TextChoices):
+        QUANTITATIVE = "quantitative", "Kuantitatif"
+        QUALITATIVE = "qualitative", "Kualitatif"
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -114,6 +118,17 @@ class Signal(models.Model):
         choices=ConfidenceLevel.choices,
         default=ConfidenceLevel.UNASSESSED,
         db_index=True,
+    )
+
+    evidence_mode = models.CharField(
+        max_length=20,
+        choices=EvidenceMode.choices,
+        default=EvidenceMode.QUANTITATIVE,
+        db_index=True,
+        help_text=(
+            "Jalur bukti awal pembentukan sinyal. Sinyal kualitatif "
+            "tetap memerlukan konfirmasi analis."
+        ),
     )
 
     event_classification = models.CharField(

@@ -161,6 +161,63 @@ class ArticleSignalFormationTests(TestCase):
         self.assertEqual(candidate.admiralty_code, "B2")
         self.assertEqual(candidate.fact, self.fact)
         self.assertEqual(candidate.primary_location, self.location)
+        self.assertEqual(
+            candidate.evidence_mode,
+            Signal.EvidenceMode.QUANTITATIVE,
+        )
+
+    def test_valid_article_without_numeric_fact_is_qualitative_candidate(self):
+        self.fact.delete()
+
+        candidate = evaluate_article_signal_candidate(self.article)
+
+        self.assertTrue(candidate.is_ready)
+        self.assertIsNone(candidate.fact)
+        self.assertTrue(candidate.is_qualitative)
+        self.assertEqual(candidate.numeric_fact_label, "Bukti kualitatif")
+
+    def test_qualitative_candidate_forms_low_priority_review_signal(self):
+        self.fact.delete()
+
+        result = form_signal_from_article(
+            article=self.article,
+            analyst=self.user,
+            title="Indikasi kualitatif TBC di Kabupaten Tangerang",
+            summary=(
+                "Artikel melaporkan indikasi TBC di Kabupaten Tangerang "
+                "tanpa angka kasus yang dapat divalidasi."
+            ),
+            notes="Penyakit dan lokasi jelas; perlu verifikasi lapangan.",
+        )
+
+        self.assertTrue(result.created)
+        self.assertEqual(result.indicators_used, 0)
+        self.assertEqual(
+            result.signal.evidence_mode,
+            Signal.EvidenceMode.QUALITATIVE,
+        )
+        self.assertEqual(result.signal.status, Signal.Status.NEEDS_REVIEW)
+        self.assertEqual(
+            result.signal.priority_level,
+            Signal.PriorityLevel.LOW,
+        )
+        self.assertEqual(result.signal.signal_indicators.count(), 0)
+        self.assertEqual(result.signal.signal_articles.count(), 1)
+        self.assertEqual(
+            result.signal.histories.get().metadata["evidence_mode"],
+            Signal.EvidenceMode.QUALITATIVE,
+        )
+
+    def test_workspace_shows_qualitative_candidate_mode(self):
+        self.fact.delete()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard:signal-workspace"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.article.title)
+        self.assertContains(response, "Kualitatif")
+        self.assertContains(response, "Dasar judgement analis")
 
     def test_forms_signal_and_records_traceable_evidence(self):
         result = self.form_signal()

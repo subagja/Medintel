@@ -21,7 +21,7 @@ class SignalFormationForm(forms.Form):
                 "class": "form-control",
                 "rows": 5,
                 "placeholder": (
-                    "Ringkas penyakit, lokasi, jumlah, waktu, dan sumber."
+                    "Ringkas indikasi, penyakit, lokasi, waktu, dan sumber."
                 ),
             }
         ),
@@ -50,6 +50,8 @@ class SignalFormationForm(forms.Form):
             default_title = candidate.suggested_title
             default_summary = candidate.suggested_summary
             default_notes = candidate.suggested_notes
+            if candidate.is_qualitative:
+                self.fields["formation_notes"].label = "Dasar judgement analis"
         else:
             default_title = article.title
             default_summary = article.excerpt or article.content_text[:700]

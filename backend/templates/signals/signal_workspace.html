@@ -94,7 +94,10 @@
                     >
                         <div class="d-flex justify-content-between gap-2">
                             <div class="fw-semibold">{{ candidate.article.title }}</div>
-                            <span class="badge bg-success-lt">{{ candidate.admiralty_code }}</span>
+                            <div class="d-flex gap-1 align-items-start">
+                                <span class="badge {% if candidate.is_qualitative %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ candidate.evidence_mode_label }}</span>
+                                <span class="badge bg-success-lt">{{ candidate.admiralty_code }}</span>
+                            </div>
                         </div>
                         <div class="small opacity-75 mt-1">
                             {{ candidate.primary_disease }} · {{ candidate.primary_location }}
@@ -129,7 +132,7 @@
                     <div class="card-actions d-flex gap-1">
                         <span class="badge bg-success-lt">Valid</span>
                         <span class="badge bg-blue-lt">{{ selected_candidate.admiralty_code }}</span>
-                        <span class="badge bg-azure-lt">Eligible</span>
+                        <span class="badge {% if selected_candidate.is_qualitative %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ selected_candidate.evidence_mode_label }}</span>
                     </div>
                 </div>
 
@@ -148,14 +151,16 @@
                             <div class="fw-semibold">{{ selected_candidate.primary_location }}</div>
                         </div>
                         <div class="col-md-4">
-                            <div class="text-secondary small">Fakta numerik</div>
+                            <div class="text-secondary small">Jalur bukti</div>
                             <div class="fw-semibold">{{ selected_candidate.numeric_fact_label }}</div>
                         </div>
                     </div>
 
-                    <div class="alert alert-info">
-                        Pembentukan sinyal tidak menyatakan KLB. Sistem hanya membawa bukti tervalidasi ke tahap konfirmasi analis.
-                    </div>
+                    {% if selected_candidate.is_qualitative %}
+                        <div class="alert alert-warning py-2">
+                            Tanpa angka kasus. Dasar judgement analis wajib diisi dan sinyal tetap masuk tahap review.
+                        </div>
+                    {% endif %}
 
                     {% for field in formation_form %}
                         <div class="mb-3">
@@ -202,6 +207,7 @@
                         <div class="mt-1">{{ signal.title }}</div>
                         <div class="small opacity-75 mt-1">{{ signal.primary_disease }} · {{ signal.primary_location }}</div>
                         <div class="mt-2">
+                            <span class="badge {% if signal.evidence_mode == 'qualitative' %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ signal.get_evidence_mode_display }}</span>
                             <span class="badge bg-purple-lt">{{ signal.get_event_classification_display }}</span>
                         </div>
                     </a>

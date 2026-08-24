@@ -1,0 +1,600 @@
+diff --git a/apps/signals/admin.py b/apps/signals/admin.py
+index 01cdd5e..138645d 100644
+--- a/apps/signals/admin.py
++++ b/apps/signals/admin.py
+@@ -21,6 +21,7 @@ class SignalAdmin(admin.ModelAdmin):
+         "status",
+         "priority_level",
+         "confidence_level",
++        "evidence_mode",
+         "event_classification",
+         "system_score",
+         "updated_at",
+@@ -36,6 +37,7 @@ class SignalAdmin(admin.ModelAdmin):
+         "status",
+         "priority_level",
+         "confidence_level",
++        "evidence_mode",
+         "event_classification",
+         "primary_disease",
+         "primary_location",
+@@ -73,6 +75,7 @@ class SignalAdmin(admin.ModelAdmin):
+                     "system_score",
+                     "priority_level",
+                     "confidence_level",
++                    "evidence_mode",
+                     "created_by_system",
+                 )
+             },
+diff --git a/apps/signals/forms.py b/apps/signals/forms.py
+index 4f0210c..f4784c8 100644
+--- a/apps/signals/forms.py
++++ b/apps/signals/forms.py
+@@ -21,7 +21,7 @@ class SignalFormationForm(forms.Form):
+                 "class": "form-control",
+                 "rows": 5,
+                 "placeholder": (
+-                    "Ringkas penyakit, lokasi, jumlah, waktu, dan sumber."
++                    "Ringkas indikasi, penyakit, lokasi, waktu, dan sumber."
+                 ),
+             }
+         ),
+@@ -50,6 +50,8 @@ class SignalFormationForm(forms.Form):
+             default_title = candidate.suggested_title
+             default_summary = candidate.suggested_summary
+             default_notes = candidate.suggested_notes
++            if candidate.is_qualitative:
++                self.fields["formation_notes"].label = "Dasar judgement analis"
+         else:
+             default_title = article.title
+             default_summary = article.excerpt or article.content_text[:700]
+diff --git a/apps/signals/migrations/0005_signal_evidence_mode.py b/apps/signals/migrations/0005_signal_evidence_mode.py
+new file mode 100644
+index 0000000..af2a0b4
+--- /dev/null
++++ b/apps/signals/migrations/0005_signal_evidence_mode.py
+@@ -0,0 +1,28 @@
++from django.db import migrations, models
++
++
++class Migration(migrations.Migration):
++
++    dependencies = [
++        ("signals", "0004_signal_event_classification"),
++    ]
++
++    operations = [
++        migrations.AddField(
++            model_name="signal",
++            name="evidence_mode",
++            field=models.CharField(
++                choices=[
++                    ("quantitative", "Kuantitatif"),
++                    ("qualitative", "Kualitatif"),
++                ],
++                db_index=True,
++                default="quantitative",
++                help_text=(
++                    "Jalur bukti awal pembentukan sinyal. Sinyal "
++                    "kualitatif tetap memerlukan konfirmasi analis."
++                ),
++                max_length=20,
++            ),
++        ),
++    ]
+diff --git a/apps/signals/models.py b/apps/signals/models.py
+index 98e2bf1..ce0ab26 100644
+--- a/apps/signals/models.py
++++ b/apps/signals/models.py
+@@ -44,6 +44,10 @@ class Signal(models.Model):
+         RE_EMERGING = "re_emerging", "Re-emerging"
+         UNKNOWN_CLUSTER = "unknown_cluster", "Klaster belum diketahui"
+ 
++    class EvidenceMode(models.TextChoices):
++        QUANTITATIVE = "quantitative", "Kuantitatif"
++        QUALITATIVE = "qualitative", "Kualitatif"
++
+     id = models.UUIDField(
+         primary_key=True,
+         default=uuid.uuid4,
+@@ -116,6 +120,17 @@ class Signal(models.Model):
+         db_index=True,
+     )
+ 
++    evidence_mode = models.CharField(
++        max_length=20,
++        choices=EvidenceMode.choices,
++        default=EvidenceMode.QUANTITATIVE,
++        db_index=True,
++        help_text=(
++            "Jalur bukti awal pembentukan sinyal. Sinyal kualitatif "
++            "tetap memerlukan konfirmasi analis."
++        ),
++    )
++
+     event_classification = models.CharField(
+         max_length=30,
+         choices=EventClassification.choices,
+diff --git a/apps/signals/services/formation.py b/apps/signals/services/formation.py
+index 6e5b4a7..c366c3d 100644
+--- a/apps/signals/services/formation.py
++++ b/apps/signals/services/formation.py
+@@ -1,7 +1,10 @@
+ from dataclasses import dataclass, field
++from datetime import timedelta
+ 
+ from django.core.exceptions import ValidationError
+ from django.db import transaction
++from django.db.models import Q
++from django.utils import timezone
+ 
+ from apps.articles.models import Article
+ from apps.assessments.models import ArticleValidationAssessment
+@@ -17,9 +20,17 @@ from apps.indicators.services import (
+     validate_indicator,
+ )
+ from apps.requirements.services import match_indicator_to_requirements
+-
+-from ..models import Signal, SignalArticle, SignalHistory
+-from .generation import generate_signal_from_indicator
++from apps.requirements.models import IntelligenceRequirement
++
++from ..models import (
++    Signal,
++    SignalArticle,
++    SignalDisease,
++    SignalHistory,
++    SignalLocation,
++    SignalRequirement,
++)
++from .generation import generate_signal_code, generate_signal_from_indicator
+ 
+ 
+ REVIEWED_ENTITY_STATUSES = {
+@@ -59,7 +70,7 @@ class ArticleSignalCandidate:
+     @property
+     def numeric_fact_label(self) -> str:
+         if self.fact is None:
+-            return "Fakta numerik belum tersedia"
++            return "Bukti kualitatif"
+ 
+         parts = []
+         if self.fact.case_count is not None:
+@@ -68,7 +79,21 @@ class ArticleSignalCandidate:
+             parts.append(
+                 f"{self.fact.death_count:,} kematian".replace(",", ".")
+             )
+-        return ", ".join(parts) or "Fakta numerik belum tersedia"
++        return ", ".join(parts) or "Bukti kualitatif"
++
++    @property
++    def evidence_mode(self) -> str:
++        if self.fact is not None:
++            return Signal.EvidenceMode.QUANTITATIVE
++        return Signal.EvidenceMode.QUALITATIVE
++
++    @property
++    def evidence_mode_label(self) -> str:
++        return Signal.EvidenceMode(self.evidence_mode).label
++
++    @property
++    def is_qualitative(self) -> bool:
++        return self.evidence_mode == Signal.EvidenceMode.QUALITATIVE
+ 
+     @property
+     def suggested_title(self) -> str:
+@@ -97,6 +122,12 @@ class ArticleSignalCandidate:
+ 
+     @property
+     def suggested_notes(self) -> str:
++        if self.is_qualitative:
++            return (
++                "Artikel berstatus Valid dengan penyakit dan lokasi utama "
++                "tervalidasi. Indikasi kualitatif ini perlu dikonfirmasi "
++                f"analis; neraca informasi {self.admiralty_code}."
++            )
+         return (
+             "Artikel berstatus Valid, memenuhi kriteria penyakit-lokasi-"
+             f"fakta numerik, dan memiliki neraca informasi {self.admiralty_code}."
+@@ -183,11 +214,6 @@ def evaluate_article_signal_candidate(article: Article) -> ArticleSignalCandidat
+         .order_by("-confidence_score", "-event_date", "-created_at")
+         .first()
+     )
+-    if fact is None:
+-        blockers.append(
+-            "Fakta numerik tervalidasi belum sesuai dengan penyakit utama."
+-        )
+-
+     return ArticleSignalCandidate(
+         article=article,
+         assessment=assessment,
+@@ -218,6 +244,118 @@ def _article_indicators(
+     )
+ 
+ 
++def _article_reference_date(article: Article):
++    timestamp = article.published_at or article.crawled_at
++    if timestamp is not None:
++        return timezone.localdate(timestamp)
++    return timezone.localdate()
++
++
++def _find_existing_qualitative_signal(candidate: ArticleSignalCandidate):
++    reference_date = _article_reference_date(candidate.article)
++    start_date = reference_date - timedelta(days=14)
++    end_date = reference_date + timedelta(days=14)
++    return (
++        Signal.objects.filter(
++            primary_disease=candidate.primary_disease,
++            primary_location=candidate.primary_location,
++            event_start_date__range=(start_date, end_date),
++        )
++        .exclude(status__in=[Signal.Status.REJECTED, Signal.Status.CLOSED])
++        .order_by("-last_updated_at")
++        .first()
++    )
++
++
++def _link_qualitative_requirements(*, signal, candidate) -> int:
++    requirements = (
++        IntelligenceRequirement.objects.filter(
++            Q(articles=candidate.article)
++            | Q(diseases=candidate.primary_disease)
++            | Q(locations=candidate.primary_location),
++            is_active=True,
++            status=IntelligenceRequirement.Status.ACTIVE,
++        )
++        .distinct()
++        .order_by("code")
++    )
++    direct_ids = set(
++        candidate.article.intelligence_requirements.filter(
++            is_active=True,
++            status=IntelligenceRequirement.Status.ACTIVE,
++        ).values_list("id", flat=True)
++    )
++    matched = 0
++    for requirement in requirements:
++        _, created = SignalRequirement.objects.get_or_create(
++            signal=signal,
++            requirement=requirement,
++            defaults={
++                "relevance_score": 0.8 if requirement.id in direct_ids else 0.65,
++                "relevance_reason": (
++                    "Kesesuaian artikel, penyakit, atau lokasi pada "
++                    "pembentukan sinyal kualitatif."
++                ),
++                "is_primary": not signal.signal_requirements.exists(),
++            },
++        )
++        matched += int(created)
++    return matched
++
++
++def _form_qualitative_signal(*, candidate, analyst, title, summary):
++    signal = _find_existing_qualitative_signal(candidate)
++    created = signal is None
++    reference_date = _article_reference_date(candidate.article)
++
++    if created:
++        signal = Signal.objects.create(
++            code=generate_signal_code(),
++            title=title.strip(),
++            summary=summary.strip(),
++            primary_disease=candidate.primary_disease,
++            primary_location=candidate.primary_location,
++            event_start_date=reference_date,
++            event_end_date=reference_date,
++            status=Signal.Status.NEEDS_REVIEW,
++            priority_level=Signal.PriorityLevel.LOW,
++            confidence_level=Signal.ConfidenceLevel.UNASSESSED,
++            evidence_mode=Signal.EvidenceMode.QUALITATIVE,
++            created_by_system=False,
++            created_by=analyst,
++            assigned_to=analyst,
++        )
++        SignalDisease.objects.create(
++            signal=signal,
++            disease=candidate.primary_disease,
++            is_primary=True,
++        )
++        SignalLocation.objects.create(
++            signal=signal,
++            location=candidate.primary_location,
++            is_primary=True,
++        )
++
++    SignalArticle.objects.get_or_create(
++        signal=signal,
++        article=candidate.article,
++        defaults={
++            "support_type": (
++                SignalArticle.SupportType.PRIMARY
++                if created
++                else SignalArticle.SupportType.CORROBORATING
++            ),
++            "is_primary_source": created,
++            "added_by": analyst,
++        },
++    )
++    requirements_matched = _link_qualitative_requirements(
++        signal=signal,
++        candidate=candidate,
++    )
++    return signal, created, requirements_matched
++
++
+ @transaction.atomic
+ def form_signal_from_article(
+     *,
+@@ -256,69 +394,84 @@ def form_signal_from_article(
+     if not candidate.is_ready:
+         raise ValidationError(" ".join(candidate.blockers))
+ 
+-    generation = generate_indicators_from_fact(
+-        candidate.fact,
+-        disease=candidate.primary_disease,
+-        location=candidate.primary_location,
+-    )
+-    indicators = list(
+-        _article_indicators(
+-            article,
++    if candidate.is_qualitative:
++        signal, created, requirements_matched = _form_qualitative_signal(
++            candidate=candidate,
++            analyst=analyst,
++            title=title,
++            summary=summary,
++        )
++        merged = not created
++        indicators_reviewed = 0
++        indicators_used = 0
++        skipped_notes = []
++    else:
++        generation = generate_indicators_from_fact(
+             candidate.fact,
+             disease=candidate.primary_disease,
+             location=candidate.primary_location,
+         )
+-    )
+-    if not indicators:
+-        reason = generation.skipped_reason or (
+-            "Tidak ada indikator yang dapat dibentuk dari fakta artikel."
+-        )
+-        raise ValidationError(reason)
+-
+-    signals = []
+-    indicators_reviewed = 0
+-    requirements_matched = 0
+-    indicators_used = 0
+-    skipped_notes = []
+-
+-    for indicator in indicators:
+-        if indicator.status == Indicator.Status.REJECTED:
+-            continue
+-        if indicator.status in {
+-            Indicator.Status.DETECTED,
+-            Indicator.Status.NEEDS_REVIEW,
+-        }:
+-            validate_indicator(
+-                indicator=indicator,
+-                reviewer=analyst,
+-                notes=notes,
++        indicators = list(
++            _article_indicators(
++                article,
++                candidate.fact,
++                disease=candidate.primary_disease,
++                location=candidate.primary_location,
+             )
+-            indicators_reviewed += 1
+-
+-        matching = match_indicator_to_requirements(indicator)
+-        requirements_matched += (
+-            len(matching.matches_created) + len(matching.matches_updated)
+-        )
+-        if matching.skipped_reason:
+-            skipped_notes.append(matching.skipped_reason)
+-            continue
+-
+-        generation_result = generate_signal_from_indicator(indicator)
+-        if generation_result.signal is None:
+-            if generation_result.skipped_reason:
+-                skipped_notes.append(generation_result.skipped_reason)
+-            continue
+-        signals.append((generation_result.signal, generation_result.created))
+-        indicators_used += 1
+-
+-    if not signals:
+-        raise ValidationError(
+-            "Sinyal belum dapat dibentuk. "
+-            + (" ".join(dict.fromkeys(skipped_notes)) or "Tidak ada indikator siap pakai.")
+         )
++        if not indicators:
++            reason = generation.skipped_reason or (
++                "Tidak ada indikator yang dapat dibentuk dari fakta artikel."
++            )
++            raise ValidationError(reason)
++
++        signals = []
++        indicators_reviewed = 0
++        requirements_matched = 0
++        indicators_used = 0
++        skipped_notes = []
++
++        for indicator in indicators:
++            if indicator.status == Indicator.Status.REJECTED:
++                continue
++            if indicator.status in {
++                Indicator.Status.DETECTED,
++                Indicator.Status.NEEDS_REVIEW,
++            }:
++                validate_indicator(
++                    indicator=indicator,
++                    reviewer=analyst,
++                    notes=notes,
++                )
++                indicators_reviewed += 1
++
++            matching = match_indicator_to_requirements(indicator)
++            requirements_matched += (
++                len(matching.matches_created) + len(matching.matches_updated)
++            )
++            if matching.skipped_reason:
++                skipped_notes.append(matching.skipped_reason)
++                continue
++
++            generation_result = generate_signal_from_indicator(indicator)
++            if generation_result.signal is None:
++                if generation_result.skipped_reason:
++                    skipped_notes.append(generation_result.skipped_reason)
++                continue
++            signals.append((generation_result.signal, generation_result.created))
++            indicators_used += 1
++
++        if not signals:
++            raise ValidationError(
++                "Sinyal belum dapat dibentuk. "
++                + (
++                    " ".join(dict.fromkeys(skipped_notes))
++                    or "Tidak ada indikator siap pakai."
++                )
++            )
+ 
+-    signal, created = signals[0]
+-    merged = not created
++        signal, created = signals[0]
++        merged = not created
+ 
+     if created:
+         signal.title = title.strip()
+@@ -346,6 +499,7 @@ def form_signal_from_article(
+             "action": "formation" if created else "evidence_merged",
+             "article_id": str(article.pk),
+             "admiralty_code": candidate.admiralty_code,
++            "evidence_mode": candidate.evidence_mode,
+             "indicators_used": indicators_used,
+             "requirements_matched": requirements_matched,
+         },
+diff --git a/apps/signals/tests/test_article_formation.py b/apps/signals/tests/test_article_formation.py
+index ffbf397..80eb17d 100644
+--- a/apps/signals/tests/test_article_formation.py
++++ b/apps/signals/tests/test_article_formation.py
+@@ -161,6 +161,63 @@ class ArticleSignalFormationTests(TestCase):
+         self.assertEqual(candidate.admiralty_code, "B2")
+         self.assertEqual(candidate.fact, self.fact)
+         self.assertEqual(candidate.primary_location, self.location)
++        self.assertEqual(
++            candidate.evidence_mode,
++            Signal.EvidenceMode.QUANTITATIVE,
++        )
++
++    def test_valid_article_without_numeric_fact_is_qualitative_candidate(self):
++        self.fact.delete()
++
++        candidate = evaluate_article_signal_candidate(self.article)
++
++        self.assertTrue(candidate.is_ready)
++        self.assertIsNone(candidate.fact)
++        self.assertTrue(candidate.is_qualitative)
++        self.assertEqual(candidate.numeric_fact_label, "Bukti kualitatif")
++
++    def test_qualitative_candidate_forms_low_priority_review_signal(self):
++        self.fact.delete()
++
++        result = form_signal_from_article(
++            article=self.article,
++            analyst=self.user,
++            title="Indikasi kualitatif TBC di Kabupaten Tangerang",
++            summary=(
++                "Artikel melaporkan indikasi TBC di Kabupaten Tangerang "
++                "tanpa angka kasus yang dapat divalidasi."
++            ),
++            notes="Penyakit dan lokasi jelas; perlu verifikasi lapangan.",
++        )
++
++        self.assertTrue(result.created)
++        self.assertEqual(result.indicators_used, 0)
++        self.assertEqual(
++            result.signal.evidence_mode,
++            Signal.EvidenceMode.QUALITATIVE,
++        )
++        self.assertEqual(result.signal.status, Signal.Status.NEEDS_REVIEW)
++        self.assertEqual(
++            result.signal.priority_level,
++            Signal.PriorityLevel.LOW,
++        )
++        self.assertEqual(result.signal.signal_indicators.count(), 0)
++        self.assertEqual(result.signal.signal_articles.count(), 1)
++        self.assertEqual(
++            result.signal.histories.get().metadata["evidence_mode"],
++            Signal.EvidenceMode.QUALITATIVE,
++        )
++
++    def test_workspace_shows_qualitative_candidate_mode(self):
++        self.fact.delete()
++        self.client.force_login(self.user)
++
++        response = self.client.get(reverse("dashboard:signal-workspace"))
++
++        self.assertEqual(response.status_code, 200)
++        self.assertContains(response, self.article.title)
++        self.assertContains(response, "Kualitatif")
++        self.assertContains(response, "Dasar judgement analis")
+ 
+     def test_forms_signal_and_records_traceable_evidence(self):
+         result = self.form_signal()
+diff --git a/templates/signals/signal_workspace.html b/templates/signals/signal_workspace.html
+index cba746f..a9cff1e 100644
+--- a/templates/signals/signal_workspace.html
++++ b/templates/signals/signal_workspace.html
+@@ -94,7 +94,10 @@
+                     >
+                         <div class="d-flex justify-content-between gap-2">
+                             <div class="fw-semibold">{{ candidate.article.title }}</div>
+-                            <span class="badge bg-success-lt">{{ candidate.admiralty_code }}</span>
++                            <div class="d-flex gap-1 align-items-start">
++                                <span class="badge {% if candidate.is_qualitative %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ candidate.evidence_mode_label }}</span>
++                                <span class="badge bg-success-lt">{{ candidate.admiralty_code }}</span>
++                            </div>
+                         </div>
+                         <div class="small opacity-75 mt-1">
+                             {{ candidate.primary_disease }} · {{ candidate.primary_location }}
+@@ -129,7 +132,7 @@
+                     <div class="card-actions d-flex gap-1">
+                         <span class="badge bg-success-lt">Valid</span>
+                         <span class="badge bg-blue-lt">{{ selected_candidate.admiralty_code }}</span>
+-                        <span class="badge bg-azure-lt">Eligible</span>
++                        <span class="badge {% if selected_candidate.is_qualitative %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ selected_candidate.evidence_mode_label }}</span>
+                     </div>
+                 </div>
+ 
+@@ -148,14 +151,16 @@
+                             <div class="fw-semibold">{{ selected_candidate.primary_location }}</div>
+                         </div>
+                         <div class="col-md-4">
+-                            <div class="text-secondary small">Fakta numerik</div>
++                            <div class="text-secondary small">Jalur bukti</div>
+                             <div class="fw-semibold">{{ selected_candidate.numeric_fact_label }}</div>
+                         </div>
+                     </div>
+ 
+-                    <div class="alert alert-info">
+-                        Pembentukan sinyal tidak menyatakan KLB. Sistem hanya membawa bukti tervalidasi ke tahap konfirmasi analis.
+-                    </div>
++                    {% if selected_candidate.is_qualitative %}
++                        <div class="alert alert-warning py-2">
++                            Tanpa angka kasus. Dasar judgement analis wajib diisi dan sinyal tetap masuk tahap review.
++                        </div>
++                    {% endif %}
+ 
+                     {% for field in formation_form %}
+                         <div class="mb-3">
+@@ -202,6 +207,7 @@
+                         <div class="mt-1">{{ signal.title }}</div>
+                         <div class="small opacity-75 mt-1">{{ signal.primary_disease }} · {{ signal.primary_location }}</div>
+                         <div class="mt-2">
++                            <span class="badge {% if signal.evidence_mode == 'qualitative' %}bg-purple-lt{% else %}bg-green-lt{% endif %}">{{ signal.get_evidence_mode_display }}</span>
+                             <span class="badge bg-purple-lt">{{ signal.get_event_classification_display }}</span>
+                         </div>
+                     </a>
