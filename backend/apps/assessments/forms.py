@@ -204,6 +204,21 @@ class DiseaseCandidateForm(forms.ModelForm):
         return name
 
 
+class DiseaseCandidateReviewForm(forms.Form):
+    disease_candidate_id = forms.UUIDField(widget=forms.HiddenInput())
+    candidate_review_notes = forms.CharField(
+        label="Catatan keputusan",
+        strip=True,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 2,
+                "placeholder": "Jelaskan dasar persetujuan atau penolakan.",
+            }
+        ),
+    )
+
+
 class NewCountryLocationForm(forms.Form):
     location_level = forms.ChoiceField(
         label="Jenis lokasi",

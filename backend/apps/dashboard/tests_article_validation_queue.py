@@ -193,6 +193,45 @@ class ArticleValidationQueueTests(TestCase):
         self.assertTrue(relation.is_primary)
         self.assertEqual(relation.validation_status, ValidationStatus.CORRECTED)
 
+    def test_candidate_review_requires_notes_without_server_error(self):
+        detected_disease = Disease.objects.create(
+            name="Tuberkulosis Review Test",
+            code="tuberkulosis-review-test",
+        )
+        detected_relation = ArticleDisease.objects.create(
+            article=self.pending_article,
+            disease=detected_disease,
+            confidence_score=0.91,
+            is_primary=True,
+        )
+        candidate = DiseaseCandidate.objects.create(
+            article=self.pending_article,
+            proposed_name="Coccidioidomycosis Review Test",
+            canonical_name="Coccidioidomycosis",
+            agent_type=DiseaseCandidate.AgentType.FUNGUS,
+            justification="Isi artikel membahas infeksi jamur.",
+            submitted_by=self.user,
+        )
+        url = reverse("dashboard:article-validation")
+
+        response = self.client.post(
+            url,
+            {
+                "action": "approve_disease_candidate",
+                "article_id": str(self.pending_article.pk),
+                "active_tab": "disease",
+                "disease_candidate_id": str(candidate.pk),
+                "candidate_review_notes": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required.")
+        candidate.refresh_from_db()
+        detected_relation.refresh_from_db()
+        self.assertEqual(candidate.status, DiseaseCandidate.Status.PENDING)
+        self.assertTrue(detected_relation.is_primary)
+
     def test_workspace_badges_follow_active_search_filter(self):
         response = self.client.get(
             reverse("dashboard:article-validation"),

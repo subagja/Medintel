@@ -1090,6 +1090,14 @@ Validasi Artikel | MEDINTEL OSINT
                                         </div>
                                     {% endif %}
 
+                                    {% if disease_candidate_review_form.non_field_errors %}
+                                        <div class="alert alert-danger">
+                                            {% for error in disease_candidate_review_form.non_field_errors %}
+                                                <div>{{ error }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+
                                     {% if pending_disease_candidate %}
                                         <div class="card card-sm border-warning mb-3">
                                             <div class="card-body">
@@ -1103,9 +1111,12 @@ Validasi Artikel | MEDINTEL OSINT
                                                 <div class="mt-2">{{ pending_disease_candidate.justification }}</div>
 
                                                 {% if request.user|has_role:"approvers" %}
-                                                    <input type="hidden" name="disease_candidate_id" value="{{ pending_disease_candidate.id }}">
-                                                    <label class="form-label mt-3" for="candidate-review-notes">Catatan keputusan</label>
-                                                    <textarea id="candidate-review-notes" name="candidate_review_notes" class="form-control" rows="2" placeholder="Jelaskan dasar persetujuan atau penolakan."></textarea>
+                                                    {{ disease_candidate_review_form.disease_candidate_id }}
+                                                    <label class="form-label mt-3" for="{{ disease_candidate_review_form.candidate_review_notes.id_for_label }}">{{ disease_candidate_review_form.candidate_review_notes.label }}</label>
+                                                    {{ disease_candidate_review_form.candidate_review_notes }}
+                                                    {% for error in disease_candidate_review_form.candidate_review_notes.errors %}
+                                                        <div class="invalid-feedback d-block">{{ error }}</div>
+                                                    {% endfor %}
                                                     <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
                                                         <button type="submit" name="action" value="reject_disease_candidate" class="btn btn-outline-danger" data-medintel-action-submit>Tolak Kandidat</button>
                                                         <button type="submit" name="action" value="approve_disease_candidate" class="btn btn-success" data-medintel-action-submit>Setujui &amp; Jadikan Penyakit Utama</button>

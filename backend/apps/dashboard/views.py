@@ -66,6 +66,7 @@ from apps.assessments.forms import (
     ArticleValidationAssessmentForm,
     ArticleValidationStatusForm,
     DiseaseCandidateForm,
+    DiseaseCandidateReviewForm,
     NewCountryLocationForm,
     PrimaryArticleDiseaseForm,
     PrimaryArticleLocationForm,
@@ -1723,6 +1724,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     validation_status_form = None
     primary_disease_form = None
     disease_candidate_form = None
+    disease_candidate_review_form = None
     disease_candidates = []
     pending_disease_candidate = None
     primary_location_form = None
@@ -1772,6 +1774,12 @@ def article_validation(request: HttpRequest) -> HttpResponse:
             None,
         )
         disease_candidate_form = DiseaseCandidateForm()
+        if pending_disease_candidate is not None:
+            disease_candidate_review_form = DiseaseCandidateReviewForm(
+                initial={
+                    "disease_candidate_id": pending_disease_candidate.id,
+                }
+            )
 
         selected_diseases = list(
             ArticleDisease.objects.filter(
@@ -2040,27 +2048,34 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                 article=selected_article
             )
             new_country_form = NewCountryLocationForm()
-            candidate = get_object_or_404(
-                DiseaseCandidate,
-                pk=request.POST.get("disease_candidate_id"),
-                article=selected_article,
-                status=DiseaseCandidate.Status.PENDING,
+            disease_candidate_review_form = DiseaseCandidateReviewForm(
+                request.POST
             )
-            review_notes = request.POST.get(
-                "candidate_review_notes", ""
-            ).strip()
+            review_is_valid = disease_candidate_review_form.is_valid()
 
             if not has_role(request.user, *Roles.APPROVERS):
-                disease_candidate_form.add_error(
+                disease_candidate_review_form.add_error(
                     None,
                     "Persetujuan kandidat memerlukan Reviewer atau Admin.",
                 )
-            elif not review_notes:
-                disease_candidate_form.add_error(
-                    None,
-                    "Catatan keputusan kandidat wajib diisi.",
+            elif review_is_valid:
+                candidate = get_object_or_404(
+                    DiseaseCandidate,
+                    pk=disease_candidate_review_form.cleaned_data[
+                        "disease_candidate_id"
+                    ],
+                    article=selected_article,
+                    status=DiseaseCandidate.Status.PENDING,
                 )
-            elif post_action == "reject_disease_candidate":
+                review_notes = disease_candidate_review_form.cleaned_data[
+                    "candidate_review_notes"
+                ]
+
+            if (
+                has_role(request.user, *Roles.APPROVERS)
+                and review_is_valid
+                and post_action == "reject_disease_candidate"
+            ):
                 candidate.status = DiseaseCandidate.Status.REJECTED
                 candidate.reviewed_by = request.user
                 candidate.reviewed_at = timezone.now()
@@ -2089,7 +2104,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
                         page=page_obj.number,
                     )
                 )
-            else:
+            elif has_role(request.user, *Roles.APPROVERS) and review_is_valid:
                 with transaction.atomic():
                     disease = Disease.objects.filter(
                         name__iexact=candidate.proposed_name
@@ -2851,6 +2866,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "validation_status_form": validation_status_form,
         "primary_disease_form": primary_disease_form,
         "disease_candidate_form": disease_candidate_form,
+        "disease_candidate_review_form": disease_candidate_review_form,
         "disease_candidates": disease_candidates,
         "pending_disease_candidate": pending_disease_candidate,
         "primary_location_form": primary_location_form,
