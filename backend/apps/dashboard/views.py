@@ -74,6 +74,7 @@ from apps.assessments.forms import (
 from apps.assessments.models import (
     ArticleValidationAssessment,
     ArticleValidationHistory,
+    BulkArticleValidationJob,
 )
 from apps.assessments.services.information_balance import (
     recommend_information_balance,
@@ -111,6 +112,45 @@ from apps.collection.services.worker import active_worker_cutoff
 
 
 logger = logging.getLogger(__name__)
+
+BULK_VALIDATION_BATCH_SIZE = 50
+
+
+def _run_bulk_article_validation_job(job_id) -> None:
+    """Jalankan command pada thread terpisah dan persist status kegagalan."""
+    from django.core.management import call_command
+    from django.db import close_old_connections
+
+    close_old_connections()
+    try:
+        job = BulkArticleValidationJob.objects.get(pk=job_id)
+        call_command(
+            "bulk_validate_articles",
+            limit=job.batch_size,
+            job_id=str(job.id),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Bulk validation gagal untuk job=%s", job_id)
+        BulkArticleValidationJob.objects.filter(pk=job_id).update(
+            status=BulkArticleValidationJob.Status.FAILED,
+            error_message=str(exc)[:2000],
+            completed_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+    finally:
+        close_old_connections()
+
+
+def _launch_bulk_article_validation_job(job_id) -> None:
+    import threading
+
+    thread = threading.Thread(
+        target=_run_bulk_article_validation_job,
+        args=(job_id,),
+        name=f"bulk-article-validation-{job_id}",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _available_disease_code(name: str) -> str:
@@ -2855,6 +2895,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         )
     )
 
+    bulk_validation_job = None
+    if has_role(request.user, *Roles.APPROVERS):
+        bulk_validation_job = BulkArticleValidationJob.objects.first()
+
     context = {
         "page_title": "Validasi Artikel",
         "active_menu": "article_validation",
@@ -2890,6 +2934,8 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "extra_filter_qs": _extra_filter_querystring(active_filters),
         "workspace_summary": workspace_summary,
         "has_active_list_filters": has_active_list_filters,
+        "bulk_validation_job": bulk_validation_job,
+        "bulk_validation_batch_size": BULK_VALIDATION_BATCH_SIZE,
         **build_article_filter_options(),
         "summary": {
             "total": pending_count,
@@ -2907,6 +2953,74 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         request,
         "dashboard/article_validation.html",
         context,
+    )
+
+
+@require_role(*Roles.APPROVERS)
+@require_POST
+def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
+    """Antrekan satu batch validasi dan segera kembalikan respons halaman."""
+    from datetime import timedelta
+    from django.db import IntegrityError
+
+    now = timezone.now()
+    stale_before = now - timedelta(hours=2)
+    BulkArticleValidationJob.objects.filter(
+        status__in=[
+            BulkArticleValidationJob.Status.QUEUED,
+            BulkArticleValidationJob.Status.RUNNING,
+        ],
+        updated_at__lt=stale_before,
+    ).update(
+        status=BulkArticleValidationJob.Status.FAILED,
+        error_message=(
+            "Proses sebelumnya dihentikan karena tidak memperbarui status "
+            "selama lebih dari dua jam."
+        ),
+        completed_at=now,
+        updated_at=now,
+    )
+
+    try:
+        with transaction.atomic():
+            job = BulkArticleValidationJob.objects.create(
+                batch_size=BULK_VALIDATION_BATCH_SIZE,
+                requested_by=request.user,
+            )
+    except IntegrityError:
+        messages.info(
+            request,
+            "Bulk validation masih berjalan. Tunggu batch aktif selesai.",
+        )
+        return redirect("dashboard:article-validation")
+
+    _launch_bulk_article_validation_job(job.id)
+    messages.success(
+        request,
+        "Validasi otomatis untuk maksimal 50 artikel mulai diproses.",
+    )
+    return redirect("dashboard:article-validation")
+
+
+@require_role(*Roles.APPROVERS)
+def bulk_article_validation_status(
+    request: HttpRequest,
+    job_id,
+) -> JsonResponse:
+    job = get_object_or_404(BulkArticleValidationJob, pk=job_id)
+    return JsonResponse(
+        {
+            "id": str(job.id),
+            "status": job.status,
+            "status_label": job.get_status_display(),
+            "active": job.is_active,
+            "total": job.total_items,
+            "processed": job.processed_items,
+            "errors": job.error_count,
+            "progress": job.progress_percent,
+            "summary": job.summary,
+            "error_message": job.error_message,
+        }
     )
 
 

@@ -48,6 +48,24 @@ class ArticleValidationAssessment(models.Model):
         VALIDATED = "validated", "Tervalidasi"
         REJECTED = "rejected", "Tidak Relevan"
 
+    class AutoRecommendation(models.TextChoices):
+        RECOMMEND_VALIDATE = (
+            "recommend_validate",
+            "Direkomendasikan valid",
+        )
+        NEEDS_REVIEW = (
+            "needs_review",
+            "Perlu pemeriksaan analis",
+        )
+        RECOMMEND_REJECT = (
+            "recommend_reject",
+            "Direkomendasikan tidak relevan",
+        )
+
+    class AutoAssessmentMethod(models.TextChoices):
+        RULE_BASED = "rule_based", "Rule-based"
+        AI_ASSISTED = "ai_assisted", "AI-assisted"
+
     class SourceReliability(models.TextChoices):
         A = "A", "Sepenuhnya dapat dipercaya"
         B = "B", "Biasanya dapat dipercaya"
@@ -114,6 +132,30 @@ class ArticleValidationAssessment(models.Model):
         blank=True,
     )
 
+    auto_recommendation = models.CharField(
+        max_length=30,
+        choices=AutoRecommendation.choices,
+        blank=True,
+        db_index=True,
+    )
+
+    auto_assessment_method = models.CharField(
+        max_length=20,
+        choices=AutoAssessmentMethod.choices,
+        blank=True,
+    )
+
+    auto_assessment_version = models.CharField(
+        max_length=20,
+        blank=True,
+    )
+
+    auto_assessed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
     evaluated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -162,6 +204,79 @@ class ArticleValidationAssessment(models.Model):
             f"{self.article.title} — "
             f"{self.admiralty_code}"
         )
+
+
+class BulkArticleValidationJob(models.Model):
+    """Status eksekusi bulk validation yang dipicu dari dashboard."""
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Menunggu"
+        RUNNING = "running", "Diproses"
+        COMPLETED = "completed", "Selesai"
+        FAILED = "failed", "Gagal"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    singleton_key = models.CharField(
+        max_length=40,
+        default="article_bulk_validation",
+        editable=False,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.QUEUED,
+        db_index=True,
+    )
+    batch_size = models.PositiveSmallIntegerField(default=50)
+    total_items = models.PositiveIntegerField(default=0)
+    processed_items = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    summary = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="bulk_article_validation_jobs",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["singleton_key"],
+                condition=Q(status__in=["queued", "running"]),
+                name="uniq_active_article_bulk_job",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "created_at"],
+                name="bulk_article_job_status_idx",
+            ),
+        ]
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in {self.Status.QUEUED, self.Status.RUNNING}
+
+    @property
+    def progress_percent(self) -> int:
+        if not self.total_items:
+            return 0
+        return min(100, int(self.processed_items * 100 / self.total_items))
+
+    def __str__(self) -> str:
+        return f"Bulk validasi {self.id} — {self.get_status_display()}"
 
 
 class ArticleValidationHistory(models.Model):

@@ -21,6 +21,47 @@ Validasi Artikel | MEDINTEL OSINT
                 informasi artikel OSINT.
             </div>
         </div>
+
+        {% if request.user|has_role:"approvers" %}
+            <div class="col-auto ms-auto">
+                <form
+                    method="post"
+                    action="{% url 'dashboard:bulk-article-validation-start' %}"
+                    onsubmit="return confirm('Jalankan validasi otomatis untuk maksimal 50 artikel?');"
+                >
+                    {% csrf_token %}
+                    <button
+                        type="submit"
+                        class="btn btn-outline-primary"
+                        {% if bulk_validation_job.is_active %}disabled{% endif %}
+                    >
+                        {% if bulk_validation_job.is_active %}
+                            Memproses {{ bulk_validation_job.processed_items }}/{{ bulk_validation_job.total_items|default:bulk_validation_batch_size }}
+                        {% else %}
+                            Validasi Otomatis 50
+                        {% endif %}
+                    </button>
+                </form>
+
+                {% if bulk_validation_job %}
+                    <div
+                        id="bulk-validation-status"
+                        class="small text-secondary mt-1 text-end"
+                        data-active="{% if bulk_validation_job.is_active %}1{% else %}0{% endif %}"
+                        data-status-url="{% url 'dashboard:bulk-article-validation-status' bulk_validation_job.id %}"
+                    >
+                        {{ bulk_validation_job.get_status_display }}
+                        {% if bulk_validation_job.status == "completed" %}
+                            · {{ bulk_validation_job.summary.validated|default:0 }} valid
+                            · {{ bulk_validation_job.summary.rejected|default:0 }} ditolak
+                            · {{ bulk_validation_job.summary.pending|default:0 }} ditinjau
+                        {% elif bulk_validation_job.error_count %}
+                            · {{ bulk_validation_job.error_count }} gagal
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        {% endif %}
     </div>
 </div>
 
@@ -942,6 +983,15 @@ Validasi Artikel | MEDINTEL OSINT
                                 id="tab-validation"
                                 role="tabpanel"
                             >
+                                {% if assessment.auto_assessed_at %}
+                                    <div class="alert alert-azure py-2 mb-3">
+                                        <strong>Pra-assessment otomatis:</strong>
+                                        {{ assessment.get_auto_recommendation_display }}
+                                        · {{ assessment.get_auto_assessment_method_display }}
+                                        · {{ assessment.auto_assessed_at|date:"d M Y H:i" }}
+                                    </div>
+                                {% endif %}
+
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label
@@ -2128,6 +2178,40 @@ document.addEventListener("DOMContentLoaded", function () {
         updateAdmiraltyCode();
         recommendationMessage?.classList.remove("d-none");
     });
+
+    const bulkStatus = document.getElementById("bulk-validation-status");
+    if (bulkStatus?.dataset.active === "1") {
+        const pollBulkStatus = function () {
+            window.fetch(bulkStatus.dataset.statusUrl, {
+                credentials: "same-origin",
+                headers: {"X-Requested-With": "XMLHttpRequest"},
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error("Status bulk validation tidak tersedia.");
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    bulkStatus.textContent = (
+                        data.status_label
+                        + " · "
+                        + data.processed
+                        + "/"
+                        + (data.total || {{ bulk_validation_batch_size|default:50 }})
+                    );
+                    if (data.active) {
+                        window.setTimeout(pollBulkStatus, 4000);
+                    } else {
+                        window.location.reload();
+                    }
+                })
+                .catch(function () {
+                    window.setTimeout(pollBulkStatus, 8000);
+                });
+        };
+        window.setTimeout(pollBulkStatus, 1500);
+    }
 
     updateAdmiraltyCode();
 });

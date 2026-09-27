@@ -48,6 +48,16 @@ urlpatterns = [
         name="article-validation",
     ),
     path(
+        "validasi-artikel/bulk/jalankan/",
+        views.bulk_article_validation_start,
+        name="bulk-article-validation-start",
+    ),
+    path(
+        "validasi-artikel/bulk/<uuid:job_id>/status/",
+        views.bulk_article_validation_status,
+        name="bulk-article-validation-status",
+    ),
+    path(
         "artikel/<uuid:article_id>/hapus/",
         views.article_delete,
         name="article-delete",

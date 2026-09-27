@@ -1,4 +1,5 @@
 import hashlib
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
@@ -6,7 +7,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.articles.models import Article
-from apps.assessments.models import ArticleValidationAssessment
+from apps.assessments.models import (
+    ArticleValidationAssessment,
+    BulkArticleValidationJob,
+)
 from apps.entities.models import (
     ArticleDisease,
     ArticleLocation,
@@ -113,6 +117,66 @@ class ArticleValidationQueueTests(TestCase):
         self.assertEqual(response.context["summary"]["rejected"], 1)
         self.assertContains(response, "Antrean Validasi")
         self.assertContains(response, "Riwayat Validasi")
+
+    def test_approver_can_queue_bulk_validation_for_fifty_articles(self):
+        with patch(
+            "apps.dashboard.views._launch_bulk_article_validation_job"
+        ) as launch:
+            response = self.client.post(
+                reverse("dashboard:bulk-article-validation-start")
+            )
+
+        self.assertRedirects(
+            response,
+            reverse("dashboard:article-validation"),
+        )
+        job = BulkArticleValidationJob.objects.get()
+        self.assertEqual(job.status, BulkArticleValidationJob.Status.QUEUED)
+        self.assertEqual(job.batch_size, 50)
+        self.assertEqual(job.requested_by, self.user)
+        launch.assert_called_once_with(job.id)
+
+    def test_second_bulk_validation_is_not_started_while_one_is_active(self):
+        BulkArticleValidationJob.objects.create(
+            batch_size=50,
+            requested_by=self.user,
+        )
+
+        with patch(
+            "apps.dashboard.views._launch_bulk_article_validation_job"
+        ) as launch:
+            response = self.client.post(
+                reverse("dashboard:bulk-article-validation-start")
+            )
+
+        self.assertRedirects(
+            response,
+            reverse("dashboard:article-validation"),
+        )
+        self.assertEqual(BulkArticleValidationJob.objects.count(), 1)
+        launch.assert_not_called()
+
+    def test_bulk_validation_status_returns_persisted_progress(self):
+        job = BulkArticleValidationJob.objects.create(
+            status=BulkArticleValidationJob.Status.RUNNING,
+            batch_size=50,
+            total_items=50,
+            processed_items=12,
+            error_count=1,
+            requested_by=self.user,
+        )
+
+        response = self.client.get(
+            reverse(
+                "dashboard:bulk-article-validation-status",
+                args=[job.id],
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "running")
+        self.assertEqual(response.json()["processed"], 12)
+        self.assertEqual(response.json()["progress"], 24)
 
     def test_wrong_detected_disease_can_be_replaced_by_candidate(self):
         detected_disease = Disease.objects.create(
