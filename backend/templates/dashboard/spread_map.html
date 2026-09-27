@@ -214,7 +214,8 @@
     "use strict";
 
     var map = L.map("spread-map-canvas").setView([-2.5, 118], 5);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    referrerPolicy: "strict-origin-when-cross-origin",
         attribution: "&copy; OpenStreetMap contributors",
         maxZoom: 12,
     }).addTo(map);
