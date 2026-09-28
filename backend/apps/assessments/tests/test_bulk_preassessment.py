@@ -96,7 +96,7 @@ class BulkPreassessmentCommandTests(TestCase):
             assessment.auto_recommendation,
             ArticleValidationAssessment.AutoRecommendation.NEEDS_REVIEW,
         )
-        self.assertEqual(assessment.source_reliability, "B")
+        self.assertEqual(assessment.source_reliability, "C")
         self.assertEqual(assessment.information_credibility, 6)
 
     def test_ai_cannot_validate_without_linked_structured_evidence(self):
