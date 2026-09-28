@@ -342,6 +342,11 @@ def _collect_article_evidence(
     )
 
 
+def has_complete_structured_evidence(article: Article) -> bool:
+    """Require a numeric fact linked to a disease and one primary location."""
+    return _collect_article_evidence(article).structured_evidence_complete
+
+
 def _find_corroborating_sources(
     *,
     article: Article,

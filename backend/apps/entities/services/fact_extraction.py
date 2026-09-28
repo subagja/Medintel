@@ -437,6 +437,7 @@ def get_primary_disease(
         ArticleDisease.objects.filter(
             article=article,
         )
+        .exclude(validation_status=ValidationStatus.REJECTED)
         .select_related("disease")
         .order_by(
             "-is_primary",
@@ -455,7 +456,9 @@ def get_primary_location(
     relation = (
         ArticleLocation.objects.filter(
             article=article,
+            is_primary=True,
         )
+        .exclude(validation_status=ValidationStatus.REJECTED)
         .select_related("location")
         .order_by(
             "-is_primary",

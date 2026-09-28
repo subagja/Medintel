@@ -47,7 +47,7 @@ class BulkPreassessmentCommandTests(TestCase):
             longitude=106.63,
         )
 
-    def test_rule_based_result_stays_pending_and_is_idempotent(self):
+    def test_rule_based_result_validates_and_is_idempotent(self):
         article = self._article("complete")
         self._complete_evidence(article)
 
@@ -58,7 +58,7 @@ class BulkPreassessmentCommandTests(TestCase):
 
         self.assertEqual(
             assessment.validation_status,
-            ArticleValidationAssessment.ValidationStatus.PENDING,
+            ArticleValidationAssessment.ValidationStatus.VALIDATED,
         )
         self.assertEqual(
             assessment.auto_recommendation,
@@ -75,7 +75,7 @@ class BulkPreassessmentCommandTests(TestCase):
         self.assertIsNotNone(assessment.auto_assessed_at)
         self.assertEqual(
             article.processing_status,
-            Article.ProcessingStatus.PROCESSED,
+            Article.ProcessingStatus.VALIDATED,
         )
         self.assertEqual(assessment.history.count(), 1)
 
@@ -99,7 +99,63 @@ class BulkPreassessmentCommandTests(TestCase):
         self.assertEqual(assessment.source_reliability, "B")
         self.assertEqual(assessment.information_credibility, 6)
 
-    def test_ai_result_is_recommendation_not_final_rejection(self):
+    def test_ai_cannot_validate_without_linked_structured_evidence(self):
+        article = self._article("ai-incomplete")
+        ai_result = {
+            "auto_recommendation": "recommend_validate",
+            "source_reliability": "C",
+            "information_credibility": 3,
+            "relevance_notes": "Relevan.",
+            "assessment_notes": "AI yakin.",
+        }
+        with patch(
+            "apps.assessments.management.commands.bulk_validate_articles."
+            "Command._call_ai_assessment",
+            return_value=ai_result,
+        ):
+            call_command("bulk_validate_articles", limit=20)
+
+        assessment = ArticleValidationAssessment.objects.get(article=article)
+        article.refresh_from_db()
+        self.assertEqual(assessment.validation_status, "pending")
+        self.assertEqual(assessment.auto_recommendation, "needs_review")
+        self.assertEqual(assessment.information_credibility, 6)
+        self.assertEqual(article.processing_status, Article.ProcessingStatus.PROCESSED)
+
+    def test_bulk_extracts_missing_fact_before_rule_assessment(self):
+        article = self._article("extract-fact")
+        ArticleDisease.objects.create(
+            article=article, disease=self.disease, is_primary=True,
+        )
+        ArticleLocation.objects.create(
+            article=article, location=self.location, is_primary=True,
+        )
+        article.content_text = "Dinas Kesehatan mencatat 42 kasus tuberkulosis."
+        article.save(update_fields=["content_text"])
+
+        call_command("bulk_validate_articles", limit=20, skip_ai=True)
+
+        assessment = ArticleValidationAssessment.objects.get(article=article)
+        self.assertTrue(ArticleFact.objects.filter(article=article, case_count=42).exists())
+        self.assertEqual(assessment.auto_recommendation, "recommend_validate")
+
+    def test_dry_run_rolls_back_reextracted_fact(self):
+        article = self._article("dry-extraction")
+        ArticleDisease.objects.create(
+            article=article, disease=self.disease, is_primary=True,
+        )
+        ArticleLocation.objects.create(
+            article=article, location=self.location, is_primary=True,
+        )
+        article.content_text = "Dinas Kesehatan mencatat 42 kasus tuberkulosis."
+        article.save(update_fields=["content_text"])
+
+        call_command("bulk_validate_articles", limit=20, dry_run=True, skip_ai=True)
+
+        self.assertFalse(ArticleFact.objects.filter(article=article).exists())
+        self.assertFalse(ArticleValidationAssessment.objects.filter(article=article).exists())
+
+    def test_ai_rejects_irrelevant_article(self):
         self.source.is_verified = False
         self.source.save(update_fields=["is_verified"])
         article = self._article("ai")
@@ -127,7 +183,7 @@ class BulkPreassessmentCommandTests(TestCase):
         article.refresh_from_db()
         self.assertEqual(
             assessment.validation_status,
-            ArticleValidationAssessment.ValidationStatus.PENDING,
+            ArticleValidationAssessment.ValidationStatus.REJECTED,
         )
         self.assertEqual(
             assessment.auto_recommendation,
@@ -143,7 +199,7 @@ class BulkPreassessmentCommandTests(TestCase):
         )
         self.assertEqual(
             article.processing_status,
-            Article.ProcessingStatus.PROCESSED,
+            Article.ProcessingStatus.REJECTED,
         )
 
     def test_dry_run_does_not_create_assessment_or_history(self):

@@ -25,12 +25,19 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.articles.models import Article
+from apps.entities.models import ArticleDisease, ValidationStatus
+from apps.entities.services import (
+    extract_article_entities,
+    extract_article_facts,
+    extract_article_locations,
+)
 from apps.assessments.models import (
     ArticleValidationAssessment,
     ArticleValidationHistory,
     BulkArticleValidationJob,
 )
 from apps.assessments.services.information_balance import (
+    has_complete_structured_evidence,
     recommend_information_balance,
 )
 
@@ -41,7 +48,7 @@ CONFIDENT_SOURCE = {"A", "B", "C"}
 AI_MODEL = os.environ.get("OPENAI_ASSESSMENT_MODEL", "gpt-6-luna")
 AI_MAX_RETRIES = 3
 AI_SLEEP_BETWEEN_CALLS = 0.5
-AUTO_ASSESSMENT_VERSION = "1.2"
+AUTO_ASSESSMENT_VERSION = "1.3"
 
 # Artikel hasil crawling merupakan informasi open source. Dalam standar
 # penilaian aplikasi, kualitas tertingginya dibatasi pada C3: A/B menjadi C
@@ -300,14 +307,32 @@ class Command(BaseCommand):
         stats: dict,
     ) -> None:
         article = candidate.article
-        recommendation = recommend_information_balance(article)
+        # Re-extract missing data before assigning a final status. A dry run
+        # evaluates the same data while rolling back all extraction writes.
+        if not has_complete_structured_evidence(article):
+            with transaction.atomic():
+                reviewed_disease_exists = ArticleDisease.objects.filter(
+                    article=article,
+                ).exclude(validation_status=ValidationStatus.UNREVIEWED).exists()
+                if not reviewed_disease_exists:
+                    extract_article_entities(article)
+                else:
+                    extract_article_locations(article)
+                extract_article_facts(article)
+                if dry_run:
+                    recommendation = recommend_information_balance(article)
+                    evidence_complete = has_complete_structured_evidence(article)
+                    transaction.set_rollback(True)
+        if not dry_run or has_complete_structured_evidence(article):
+            recommendation = recommend_information_balance(article)
+            evidence_complete = has_complete_structured_evidence(article)
         confident = (
             recommendation.information_credibility
             in CONFIDENT_CREDIBILITY
             and recommendation.source_reliability in CONFIDENT_SOURCE
         )
 
-        if confident:
+        if confident and evidence_complete:
             auto_recommendation = (
                 ArticleValidationAssessment
                 .AutoRecommendation
@@ -374,6 +399,22 @@ class Command(BaseCommand):
                 stats["needs_review"] += 1
 
             time.sleep(AI_SLEEP_BETWEEN_CALLS)
+
+        if (
+            not evidence_complete
+            and auto_recommendation
+            == ArticleValidationAssessment.AutoRecommendation.RECOMMEND_VALIDATE
+        ):
+            if method == ArticleValidationAssessment.AutoAssessmentMethod.AI_ASSISTED:
+                stats["ai_recommend_validate"] -= 1
+            auto_recommendation = ArticleValidationAssessment.AutoRecommendation.NEEDS_REVIEW
+            information_credibility = 6
+            assessment_notes += (
+                " Bukti terstruktur belum lengkap: diperlukan penyakit, "
+                "tepat satu lokasi utama, serta fakta angka yang terkait "
+                "dengan keduanya dan memiliki kutipan isi artikel."
+            )
+            stats["needs_review"] += 1
 
         source_reliability, information_credibility = (
             self._enforce_open_source_ceiling(
