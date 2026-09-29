@@ -116,6 +116,29 @@ logger = logging.getLogger(__name__)
 BULK_VALIDATION_BATCH_SIZE = 50
 
 
+def _fail_stale_bulk_article_validation_jobs() -> None:
+    """Release jobs whose web process stopped without updating its status."""
+    from datetime import timedelta
+
+    now = timezone.now()
+    BulkArticleValidationJob.objects.filter(
+        status__in=[
+            BulkArticleValidationJob.Status.QUEUED,
+            BulkArticleValidationJob.Status.RUNNING,
+        ],
+        updated_at__lt=now - timedelta(hours=2),
+    ).update(
+        status=BulkArticleValidationJob.Status.FAILED,
+        error_message=(
+            "Job berhenti tanpa memperbarui progres selama lebih dari "
+            "dua jam. Artikel yang sudah selesai tetap tersimpan; "
+            "jalankan batch baru untuk melanjutkan."
+        ),
+        completed_at=now,
+        updated_at=now,
+    )
+
+
 def _run_bulk_article_validation_job(job_id) -> None:
     """Jalankan command pada thread terpisah dan persist status kegagalan."""
     from django.core.management import call_command
@@ -2897,6 +2920,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
 
     bulk_validation_job = None
     if has_role(request.user, *Roles.APPROVERS):
+        _fail_stale_bulk_article_validation_jobs()
         bulk_validation_job = BulkArticleValidationJob.objects.first()
 
     context = {
@@ -2960,26 +2984,9 @@ def article_validation(request: HttpRequest) -> HttpResponse:
 @require_POST
 def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
     """Antrekan satu batch validasi dan segera kembalikan respons halaman."""
-    from datetime import timedelta
     from django.db import IntegrityError
 
-    now = timezone.now()
-    stale_before = now - timedelta(hours=2)
-    BulkArticleValidationJob.objects.filter(
-        status__in=[
-            BulkArticleValidationJob.Status.QUEUED,
-            BulkArticleValidationJob.Status.RUNNING,
-        ],
-        updated_at__lt=stale_before,
-    ).update(
-        status=BulkArticleValidationJob.Status.FAILED,
-        error_message=(
-            "Proses sebelumnya dihentikan karena tidak memperbarui status "
-            "selama lebih dari dua jam."
-        ),
-        completed_at=now,
-        updated_at=now,
-    )
+    _fail_stale_bulk_article_validation_jobs()
 
     try:
         with transaction.atomic():
@@ -3007,6 +3014,7 @@ def bulk_article_validation_status(
     request: HttpRequest,
     job_id,
 ) -> JsonResponse:
+    _fail_stale_bulk_article_validation_jobs()
     job = get_object_or_404(BulkArticleValidationJob, pk=job_id)
     return JsonResponse(
         {

@@ -1,10 +1,12 @@
 import hashlib
+from datetime import timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.articles.models import Article
 from apps.assessments.models import (
@@ -177,6 +179,48 @@ class ArticleValidationQueueTests(TestCase):
         self.assertEqual(response.json()["status"], "running")
         self.assertEqual(response.json()["processed"], 12)
         self.assertEqual(response.json()["progress"], 24)
+
+    def test_stale_bulk_job_is_released_by_status_poll(self):
+        job = BulkArticleValidationJob.objects.create(
+            status=BulkArticleValidationJob.Status.RUNNING,
+            batch_size=50,
+            total_items=50,
+            processed_items=9,
+            requested_by=self.user,
+        )
+        BulkArticleValidationJob.objects.filter(pk=job.pk).update(
+            updated_at=timezone.now() - timedelta(hours=3),
+        )
+
+        response = self.client.get(
+            reverse("dashboard:bulk-article-validation-status", args=[job.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "failed")
+        self.assertFalse(response.json()["active"])
+        self.assertEqual(response.json()["processed"], 9)
+        job.refresh_from_db()
+        self.assertIsNotNone(job.completed_at)
+
+        page = self.client.get(reverse("dashboard:article-validation"))
+        self.assertContains(page, "Validasi Otomatis 50")
+
+    def test_recent_bulk_job_stays_active(self):
+        job = BulkArticleValidationJob.objects.create(
+            status=BulkArticleValidationJob.Status.RUNNING,
+            batch_size=50,
+            total_items=50,
+            processed_items=9,
+            requested_by=self.user,
+        )
+
+        response = self.client.get(
+            reverse("dashboard:bulk-article-validation-status", args=[job.pk])
+        )
+
+        self.assertEqual(response.json()["status"], "running")
+        self.assertTrue(response.json()["active"])
 
     def test_wrong_detected_disease_can_be_replaced_by_candidate(self):
         detected_disease = Disease.objects.create(
