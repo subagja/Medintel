@@ -25,12 +25,6 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.articles.models import Article
-from apps.entities.models import ArticleDisease, ValidationStatus
-from apps.entities.services import (
-    extract_article_entities,
-    extract_article_facts,
-    extract_article_locations,
-)
 from apps.assessments.models import (
     ArticleValidationAssessment,
     ArticleValidationHistory,
@@ -40,6 +34,8 @@ from apps.assessments.services.information_balance import (
     has_complete_structured_evidence,
     recommend_information_balance,
 )
+from apps.assessments.services.article_data_review import reextract_article_data
+from apps.assessments.services.ai_evidence import apply_ai_evidence
 
 
 CONFIDENT_CREDIBILITY = {1, 2, 3}
@@ -48,7 +44,7 @@ CONFIDENT_SOURCE = {"A", "B", "C"}
 AI_MODEL = os.environ.get("OPENAI_ASSESSMENT_MODEL", "gpt-6-luna")
 AI_MAX_RETRIES = 3
 AI_SLEEP_BETWEEN_CALLS = 0.5
-AUTO_ASSESSMENT_VERSION = "1.3"
+AUTO_ASSESSMENT_VERSION = "1.4"
 
 # Artikel hasil crawling merupakan informasi open source. Dalam standar
 # penilaian aplikasi, kualitas tertingginya dibatasi pada C3: A/B menjadi C
@@ -311,14 +307,7 @@ class Command(BaseCommand):
         # evaluates the same data while rolling back all extraction writes.
         if not has_complete_structured_evidence(article):
             with transaction.atomic():
-                reviewed_disease_exists = ArticleDisease.objects.filter(
-                    article=article,
-                ).exclude(validation_status=ValidationStatus.UNREVIEWED).exists()
-                if not reviewed_disease_exists:
-                    extract_article_entities(article)
-                else:
-                    extract_article_locations(article)
-                extract_article_facts(article)
+                reextract_article_data(article)
                 if dry_run:
                     recommendation = recommend_information_balance(article)
                     evidence_complete = has_complete_structured_evidence(article)
@@ -372,6 +361,24 @@ class Command(BaseCommand):
             stats["needs_review"] += 1
         else:
             ai_result = self._call_ai_assessment(article, recommendation)
+            if (
+                not evidence_complete
+                and ai_result.get("evidence")
+                and ai_result["auto_recommendation"] != "recommend_reject"
+            ):
+                with transaction.atomic():
+                    evidence_saved = apply_ai_evidence(
+                        article, ai_result["evidence"],
+                    )
+                    evidence_complete = has_complete_structured_evidence(article)
+                    if dry_run:
+                        transaction.set_rollback(True)
+                if evidence_saved:
+                    assessment_notes_extra = " Bukti AI dicocokkan dengan teks artikel."
+                else:
+                    assessment_notes_extra = " Usulan bukti AI tidak lolos verifikasi."
+            else:
+                assessment_notes_extra = ""
             auto_recommendation = ai_result["auto_recommendation"]
             method = (
                 ArticleValidationAssessment
@@ -381,7 +388,10 @@ class Command(BaseCommand):
             source_reliability = ai_result["source_reliability"]
             information_credibility = ai_result["information_credibility"]
             relevance_notes = ai_result["relevance_notes"]
-            assessment_notes = "[AI-assisted] " + ai_result["assessment_notes"]
+            assessment_notes = (
+                "[AI-assisted] " + ai_result["assessment_notes"]
+                + assessment_notes_extra
+            )
 
             if auto_recommendation == (
                 ArticleValidationAssessment
@@ -546,6 +556,13 @@ class Command(BaseCommand):
         from openai import OpenAI
         from pydantic import BaseModel
 
+        class ExtractedEvidence(BaseModel):
+            disease_name: str | None
+            location_name: str | None
+            case_count: int | None
+            death_count: int | None
+            evidence_quote: str | None
+
         class AIAssessmentResult(BaseModel):
             auto_recommendation: Literal[
                 "recommend_validate",
@@ -556,12 +573,13 @@ class Command(BaseCommand):
             information_credibility: int
             relevance_notes: str
             assessment_notes: str
+            evidence: ExtractedEvidence | None
 
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY belum tersedia.")
 
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, timeout=45.0, max_retries=0)
         content_excerpt = (article.content_text or "")[:6000]
         prompt = f"""Kamu membantu validasi otomatis artikel OSINT penyakit menular.
 Hasil yang yakin akan diterapkan otomatis. Gunakan needs_review apabila bukti
@@ -591,7 +609,14 @@ boleh diberikan adalah C3. Jangan gunakan reliabilitas A/B atau kredibilitas
   "source_reliability": "C", "D", "E", atau "F",
   "information_credibility": angka 3 sampai 6,
   "relevance_notes": "alasan singkat rekomendasi",
-  "assessment_notes": "dasar singkat Admiralty Code"
+  "assessment_notes": "dasar singkat Admiralty Code",
+  "evidence": {{
+    "disease_name": "nama penyakit dalam teks atau null",
+    "location_name": "satu lokasi kejadian dalam teks atau null",
+    "case_count": "angka kasus pasti atau null",
+    "death_count": "angka kematian pasti atau null",
+    "evidence_quote": "kutipan pendek PERSIS dari satu bagian teks di atas yang memuat penyakit, lokasi, dan angka, atau null"
+  }} atau null
 }}"""
 
         last_error = None

@@ -39,6 +39,13 @@ NUMBER_WORDS = {
     "ribuan": 1000,
 }
 
+# Nilai pasti saja: "puluhan"/"ratusan" tidak boleh berubah menjadi angka
+# kasus eksak di peta atau penilaian.
+EXACT_COUNT = (
+    r"(?:\d[\d.]*|seorang|satu|dua|tiga|empat|lima|enam|tujuh|"
+    r"delapan|sembilan|sepuluh|sebelas)"
+)
+
 
 MONTHS_ID = {
     "januari": 1,
@@ -57,6 +64,16 @@ MONTHS_ID = {
 
 
 CASE_PATTERNS = [
+    re.compile(
+        rf"\b(?P<count>{EXACT_COUNT})\s+"
+        r"(?:warga|orang|pasien|penderita)\s+"
+        r"(?:dilaporkan\s+)?(?:terjangkit|terinfeksi|positif|menderita)\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b(?P<count>{EXACT_COUNT})\s+kasus\b",
+        flags=re.IGNORECASE,
+    ),
     re.compile(
         r"\b(?P<count>\d[\d.]*)\s+kasus\b",
         flags=re.IGNORECASE,
@@ -238,6 +255,7 @@ def find_first_numeric_mention(
     text: str,
     patterns: list[re.Pattern],
 ) -> NumericMention | None:
+    first: NumericMention | None = None
     for pattern in patterns:
         match = pattern.search(text)
 
@@ -251,14 +269,17 @@ def find_first_numeric_mention(
         if value is None:
             continue
 
-        return NumericMention(
+        mention = NumericMention(
             value=value,
             matched_text=match.group(0),
             start=match.start(),
             end=match.end(),
         )
 
-    return None
+        if first is None or mention.start < first.start:
+            first = mention
+
+    return first
 
 
 def has_negation_near_match(

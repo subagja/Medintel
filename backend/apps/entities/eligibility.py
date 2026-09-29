@@ -42,6 +42,18 @@ COUNT_METRIC_PATTERN = (
 COUNT_PATTERNS = (
     re.compile(
         rf"\b{SCALED_NUMBER_PATTERN}\s+"
+        r"(?P<metric>(?:orang|pasien|warga|korban)?\s*"
+        r"(?:meninggal|tewas))\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b{SCALED_NUMBER_PATTERN}\s+"
+        r"(?P<metric>(?:warga|orang|pasien|penderita)\s+"
+        r"(?:dilaporkan\s+)?(?:terjangkit|terinfeksi|positif))\b",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b{SCALED_NUMBER_PATTERN}\s+"
         rf"{COUNT_METRIC_PATTERN}\b",
         flags=re.IGNORECASE,
     ),
@@ -518,6 +530,7 @@ def classify_count_metric(raw_metric: str) -> str:
         for term in (
             "kematian",
             "meninggal",
+            "tewas",
         )
     ):
         return "death"
@@ -536,6 +549,7 @@ def classify_count_metric(raw_metric: str) -> str:
         for term in (
             "kasus",
             "terinfeksi",
+            "terjangkit",
             "positif",
         )
     ):
