@@ -1,4 +1,5 @@
 import hashlib
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -69,12 +70,14 @@ class EntityExtractionLiveStatusTests(TestCase):
         ArticleLocation.objects.create(
             article=complete,
             location=self.location,
+            is_primary=True,
         )
         ArticleFact.objects.create(
             article=complete,
             disease=self.disease,
             location=self.location,
             case_count=10,
+            fact_text="Sepuluh kasus ditemukan di lokasi uji.",
         )
 
         response = self.client.get(
@@ -117,3 +120,115 @@ class EntityExtractionLiveStatusTests(TestCase):
                 "failed": 1,
             },
         )
+
+
+    def test_empty_fact_does_not_count_as_numeric(self):
+        article = self._create_article("empty-fact")
+        ArticleFact.objects.create(article=article, fact_text="Tanpa angka kasus")
+        payload = self.client.get(reverse("dashboard:entity-extraction-status")).json()
+        self.assertEqual(payload["summary"]["with_fact"], 0)
+        self.assertEqual(payload["summary"]["pending_count"], 1)
+
+    def test_unlinked_numeric_fact_still_needs_completion(self):
+        article = self._create_article("unlinked-fact")
+        ArticleDisease.objects.create(article=article, disease=self.disease)
+        ArticleLocation.objects.create(article=article, location=self.location, is_primary=True)
+        ArticleFact.objects.create(article=article, case_count=0, fact_text="Tidak ada kasus")
+        payload = self.client.get(reverse("dashboard:entity-extraction-status")).json()
+        self.assertEqual(payload["summary"]["with_fact"], 1)
+        self.assertEqual(payload["summary"]["complete_count"], 0)
+        self.assertEqual(payload["summary"]["pending_count"], 1)
+
+    def test_rejected_evidence_is_not_counted(self):
+        article = self._create_article("rejected-fact")
+        ArticleFact.objects.create(article=article, case_count=10, validation_status="rejected")
+        payload = self.client.get(reverse("dashboard:entity-extraction-status")).json()
+        self.assertEqual(payload["summary"]["with_fact"], 0)
+
+    def test_batch_moves_to_unattempted_article(self):
+        from apps.assessments.services.extraction_dashboard import select_batch_ids, review_for_extraction
+        first = self._create_article("first-attempt")
+        second = self._create_article("next-attempt")
+        self.assertEqual(select_batch_ids(1), [first.pk])
+        with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False):
+            result = review_for_extraction(first.pk)
+        self.assertFalse(result["complete"])
+        self.assertEqual(select_batch_ids(1), [second.pk])
+
+    def test_review_preserves_validated_status_and_assessment(self):
+        from apps.assessments.models import ArticleValidationAssessment
+        from apps.assessments.services.extraction_dashboard import review_for_extraction
+        article = self._create_article("validated-incomplete")
+        article.processing_status = Article.ProcessingStatus.VALIDATED
+        article.save()
+        assessment = ArticleValidationAssessment.objects.create(article=article, validation_status="validated")
+        with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False):
+            review_for_extraction(article.pk)
+        article.refresh_from_db()
+        assessment.refresh_from_db()
+        self.assertEqual(article.processing_status, Article.ProcessingStatus.VALIDATED)
+        self.assertEqual(assessment.validation_status, "validated")
+
+    def test_force_does_not_select_rejected_articles(self):
+        from apps.assessments.services.extraction_dashboard import select_batch_ids
+        article = self._create_article("rejected-article")
+        article.processing_status = Article.ProcessingStatus.REJECTED
+        article.save()
+        self.assertEqual(select_batch_ids(50, force=True), [])
+
+    def test_review_reports_becoming_complete(self):
+        from apps.assessments.services.extraction_dashboard import review_for_extraction
+        article = self._create_article("becoming-complete")
+        def extract(obj, **kwargs):
+            ArticleDisease.objects.create(article=obj, disease=self.disease)
+            ArticleLocation.objects.create(article=obj, location=self.location, is_primary=True)
+            ArticleFact.objects.create(article=obj, disease=self.disease, location=self.location,
+                                       case_count=10, fact_text="Sepuluh pasien di lokasi uji")
+            return True
+        with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", side_effect=extract):
+            result = review_for_extraction(article.pk)
+        self.assertTrue(result["changed"])
+        self.assertTrue(result["became_complete"])
+        self.assertEqual(result["missing"], [])
+
+    def test_ai_failure_keeps_rule_results_and_reports_failure(self):
+        from apps.assessments.services.extraction_dashboard import review_for_extraction
+        article = self._create_article("ai-failed")
+        with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False), \
+             patch("apps.assessments.management.commands.bulk_validate_articles.Command._call_ai_assessment",
+                   side_effect=RuntimeError("Mock timeout")):
+            result = review_for_extraction(article.pk, with_ai=True)
+        self.assertTrue(result["ai_failed"])
+        self.assertFalse(result["complete"])
+        article.refresh_from_db()
+        self.assertIn("extraction_review_attempt_at", article.raw_metadata)
+
+    def test_multiple_primary_locations_remain_incomplete(self):
+        article = self._create_article("ambiguous-primary")
+        other = Location.objects.create(name="Lokasi Kedua", code="99.98",
+                                         administrative_level=Location.AdministrativeLevel.CITY)
+        ArticleDisease.objects.create(article=article, disease=self.disease)
+        for loc in (self.location, other):
+            ArticleLocation.objects.create(article=article, location=loc, is_primary=True)
+        ArticleFact.objects.create(article=article, disease=self.disease, location=self.location,
+                                   case_count=10, fact_text="Sepuluh kasus")
+        payload = self.client.get(reverse("dashboard:entity-extraction-status")).json()
+        self.assertEqual(payload["summary"]["complete_count"], 0)
+        self.assertEqual(payload["summary"]["pending_count"], 1)
+
+    def test_ai_evidence_is_applied_without_changing_validation(self):
+        from apps.assessments.services.extraction_dashboard import review_for_extraction
+        article = self._create_article("ai-completion")
+        def persist(obj, evidence):
+            ArticleDisease.objects.create(article=obj, disease=self.disease)
+            ArticleLocation.objects.create(article=obj, location=self.location, is_primary=True)
+            ArticleFact.objects.create(article=obj, disease=self.disease, location=self.location,
+                                       case_count=10, fact_text="Sepuluh kasus")
+        with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False), \
+             patch("apps.assessments.management.commands.bulk_validate_articles.Command._call_ai_assessment",
+                   return_value={"auto_recommendation": "recommend_reject", "evidence": {"case_count": 10}}), \
+             patch("apps.assessments.services.extraction_dashboard.apply_ai_evidence", side_effect=persist):
+            result = review_for_extraction(article.pk, with_ai=True)
+        article.refresh_from_db()
+        self.assertEqual(article.processing_status, Article.ProcessingStatus.PROCESSED)
+        self.assertTrue(result["became_complete"])

@@ -45,7 +45,7 @@
         <div class="card"><div class="card-body medintel-stat-card">
             <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 3"></path><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path></svg></div>
             <div class="medintel-stat-body">
-                <div class="text-secondary">Data Belum Lengkap</div>
+                <div class="text-secondary">Perlu Pelengkapan (selain Ditolak)</div>
                 <div class="h1 mb-0 {% if summary.pending_count %}text-warning{% endif %}" data-extraction-summary="pending_count">{{ summary.pending_count }}</div>
             </div>
         </div></div>
@@ -63,7 +63,7 @@
         <div class="card"><div class="card-body medintel-stat-card">
             <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
             <div class="medintel-stat-body">
-                <div class="text-secondary">Ada Lokasi</div>
+                <div class="text-secondary">Ada Lokasi Utama</div>
                 <div class="h1 mb-0 text-blue" data-extraction-summary="with_location">{{ summary.with_location }}</div>
             </div>
         </div></div>
@@ -77,7 +77,18 @@
             </div>
         </div></div>
     </div>
+    <div class="col-sm-6 col-xl-2"><div class="card"><div class="card-body">
+        <div class="text-secondary">Bukti Terstruktur Lengkap</div>
+        <div class="h1 mb-0 text-success" data-extraction-summary="complete_count">{{ summary.complete_count }}</div>
+    </div></div></div>
 </div>
+<div class="text-secondary small mb-3">Cakupan dihitung di seluruh artikel, mengabaikan entitas yang ditolak. Perlu pelengkapan mencakup artikel tervalidasi yang buktinya belum lengkap, selain artikel ditolak.</div>
+<div id="extraction-batch-detail" class="card mb-3 d-none"><div class="card-body">
+    <h3 class="card-title">Hasil Batch Ekstraksi</h3>
+    <p id="extraction-batch-counts"></p>
+    <p id="extraction-batch-delta" class="text-secondary"></p>
+    <ul id="extraction-batch-results" class="mb-0"></ul>
+</div></div>
 
 {% if request.user|has_role:"Admin,Analyst" %}
 <div class="card mb-3">
@@ -87,22 +98,26 @@
             {% csrf_token %}
             <div class="col-md-3">
                 <label class="form-label small">Maks. artikel diproses</label>
-                <input type="number" name="limit" value="200" min="1" max="2000" class="form-control">
+                <input type="number" name="limit" value="50" min="1" max="2000" class="form-control">
             </div>
             <div class="col-md-4">
                 <div class="form-check mt-4">
                     <input class="form-check-input" type="checkbox" name="force" value="1" id="force-check">
                     <label class="form-check-label" for="force-check">
-                        Paksa proses ulang semua (termasuk yang sudah Tervalidasi/Ditolak)
+                        Proses ulang juga artikel lengkap (artikel ditolak tetap dikecualikan)
                     </label>
                 </div>
             </div>
+            <div class="col-md-4"><div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" name="with_ai" value="1" id="extraction-ai" checked>
+                <label class="form-check-label" for="extraction-ai">Lengkapi dengan AI jika aturan belum cukup (maks. 50 artikel)</label>
+            </div></div>
             <div class="col-md-3">
                 <button type="submit" class="btn btn-primary w-100" id="entity-extraction-submit">Proses Sekarang</button>
             </div>
         </form>
         <div class="text-secondary small mt-2">
-            Berjalan di latar belakang. Progres dan status diperbarui otomatis.
+            Artikel dicoba bergiliran, mendahulukan yang belum pernah atau paling lama dicoba. AI menggunakan isi artikel dan dapat menambah biaya API. Status validasi tetap dijaga.
         </div>
     </div>
 </div>
@@ -276,6 +291,27 @@
         });
     };
 
+    const renderBatch = (batch) => {
+        document.getElementById("extraction-batch-detail").classList.remove("d-none");
+        document.getElementById("extraction-batch-counts").textContent =
+            `Bertambah/perbaikan data: ${batch.changed || 0}; menjadi lengkap: ${batch.became_complete || 0}; ` +
+            `masih belum lengkap: ${batch.still_incomplete || 0}; gagal: ${batch.failed || 0}; ` +
+            `AI gagal: ${batch.ai_failed || 0}; dilewati: ${batch.skipped || 0}.`;
+        if (batch.before && batch.after) {
+            const labels = {with_disease: "Penyakit", with_location: "Lokasi utama", with_fact: "Fakta numerik", complete_count: "Lengkap", pending_count: "Perlu pelengkapan"};
+            document.getElementById("extraction-batch-delta").textContent = Object.entries(labels)
+                .map(([key, label]) => `${label}: ${batch.before[key]} → ${batch.after[key]}`).join(" · ");
+        }
+        const target = document.getElementById("extraction-batch-results");
+        target.replaceChildren();
+        (batch.results || []).forEach(row => {
+            const li = document.createElement("li");
+            const outcome = row.failed ? "Gagal ekstraksi" : row.skipped ? "Dilewati: ditolak" : row.complete ? "Bukti lengkap" : `Belum lengkap: ${(row.missing || []).join(", ")}`;
+            li.textContent = `${row.title}: ${outcome}` + (row.changed ? " (data berubah)" : "") + (row.ai_failed ? " (AI gagal; hasil aturan tersimpan)" : "");
+            target.append(li);
+        });
+    };
+
     const poll = async () => {
         const url = new URL(statusUrl, window.location.origin);
         if (batchId) url.searchParams.set("batch", batchId);
@@ -298,15 +334,24 @@
                     "warning"
                 );
                 if (submitButton) submitButton.disabled = false;
+                window.clearInterval(pollTimer);
                 return;
             }
 
+            renderBatch(data.batch);
+            if (data.batch.state === "running" && data.batch.updated_at &&
+                Date.now() - Date.parse(data.batch.updated_at) > 180000) {
+                showAlert("Progres tidak berubah selama lebih dari 3 menit. Proses mungkin terputus. Periksa log sebelum memulai batch baru.", "warning");
+                if (submitButton) submitButton.disabled = false;
+                window.clearInterval(pollTimer);
+                return;
+            }
             const {state, processed, total, failed} = data.batch;
             if (state === "completed") {
                 showAlert(
                     `Ekstraksi selesai: ${processed}/${total} artikel diproses` +
-                    (failed ? `, ${failed} gagal.` : "."),
-                    failed ? "warning" : "success"
+                    ` · ${data.batch.became_complete || 0} menjadi lengkap · ${data.batch.still_incomplete || 0} masih belum lengkap.`,
+                    (failed || data.batch.ai_failed) ? "warning" : "success"
                 );
                 if (submitButton) submitButton.disabled = false;
                 window.clearInterval(pollTimer);

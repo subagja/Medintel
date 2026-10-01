@@ -14,13 +14,13 @@ from .information_balance import has_complete_structured_evidence
 
 
 @transaction.atomic
-def reextract_article_data(article: Article) -> bool:
+def reextract_article_data(article: Article, *, force: bool = False) -> bool:
     """Tambahkan bukti dari isi artikel, menjaga keputusan entitas analis.
 
     Return True jika bukti terstruktur menjadi lengkap. Tidak mengubah
     processing_status, assessment, atau entitas yang telah ditinjau analis.
     """
-    if has_complete_structured_evidence(article):
+    if not force and has_complete_structured_evidence(article):
         return True
 
     reviewed_disease_exists = ArticleDisease.objects.filter(

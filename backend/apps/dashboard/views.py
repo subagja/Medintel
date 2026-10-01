@@ -5356,53 +5356,22 @@ def periodic_summary(request: HttpRequest) -> HttpResponse:
 
 
 def _entity_extraction_incomplete_queryset():
-    """Artikel yang masih kekurangan penyakit, lokasi, atau fakta numerik."""
-    disease_exists = ArticleDisease.objects.filter(
-        article_id=OuterRef("pk"),
-    )
-    location_exists = ArticleLocation.objects.filter(
-        article_id=OuterRef("pk"),
-    )
-    numeric_fact_exists = ArticleFact.objects.filter(
-        article_id=OuterRef("pk"),
-    ).filter(
-        Q(case_count__isnull=False)
-        | Q(death_count__isnull=False)
-    )
-
-    return (
-        Article.objects.exclude(
-            processing_status__in=[
-                Article.ProcessingStatus.VALIDATED,
-                Article.ProcessingStatus.REJECTED,
-            ],
-        )
-        .annotate(
-            extraction_has_disease=Exists(disease_exists),
-            extraction_has_location=Exists(location_exists),
-            extraction_has_numeric_fact=Exists(numeric_fact_exists),
-        )
-        .filter(
-            Q(extraction_has_disease=False)
-            | Q(extraction_has_location=False)
-            | Q(extraction_has_numeric_fact=False)
-        )
-    )
+    from apps.assessments.services.extraction_dashboard import incomplete_queryset
+    return incomplete_queryset()
 
 
 def _entity_extraction_summary() -> dict:
+    from apps.assessments.services.extraction_dashboard import evidence_queryset
+    qs = evidence_queryset()
+    complete = qs.filter(extraction_has_linked_fact=True, extraction_primary_count=1)
     return {
-        "total_articles": Article.objects.count(),
-        "pending_count": _entity_extraction_incomplete_queryset().count(),
-        "with_disease": Article.objects.filter(
-            diseases__isnull=False,
-        ).distinct().count(),
-        "with_location": Article.objects.filter(
-            locations__isnull=False,
-        ).distinct().count(),
-        "with_fact": Article.objects.filter(
-            facts__isnull=False,
-        ).distinct().count(),
+        "total_articles": qs.count(),
+        "pending_count": qs.exclude(processing_status=Article.ProcessingStatus.REJECTED)
+            .exclude(extraction_has_linked_fact=True, extraction_primary_count=1).count(),
+        "complete_count": complete.count(),
+        "with_disease": qs.filter(extraction_has_disease=True).count(),
+        "with_location": qs.filter(extraction_has_location=True).count(),
+        "with_fact": qs.filter(extraction_has_numeric_fact=True).count(),
     }
 
 
@@ -5482,25 +5451,23 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
     from django.core.cache import cache
     from django.db import close_old_connections
 
-    force = request.POST.get("force") == "1"
-    limit_raw = request.POST.get("limit", "").strip()
+    from apps.assessments.services.extraction_dashboard import select_batch_ids
+    import importlib.util
+    import os
 
+    force = request.POST.get("force") == "1"
+    with_ai = request.POST.get("with_ai") == "1"
+    if with_ai and (not os.environ.get("OPENAI_API_KEY")
+                    or importlib.util.find_spec("openai") is None
+                    or importlib.util.find_spec("pydantic") is None):
+        messages.error(request, "Pelengkapan AI belum siap. Periksa OPENAI_API_KEY dan instalasi openai/pydantic.")
+        return redirect("dashboard:entity-extraction")
     try:
-        limit = int(limit_raw) if limit_raw else 200
+        limit = int(request.POST.get("limit", "200"))
     except ValueError:
         limit = 200
-    limit = max(1, min(limit, 2000))
-
-    if force:
-        articles_qs = Article.objects.all()
-    else:
-        articles_qs = _entity_extraction_incomplete_queryset()
-
-    article_ids = list(
-        articles_qs.order_by("-created_at").values_list(
-            "id", flat=True
-        )[:limit]
-    )
+    limit = max(1, min(limit, 50 if with_ai else 2000))
+    article_ids = select_batch_ids(limit, force=force)
 
     if not article_ids:
         messages.warning(
@@ -5516,31 +5483,45 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
         "total": len(article_ids),
         "processed": 0,
         "failed": 0,
+        "changed": 0,
+        "became_complete": 0,
+        "still_incomplete": 0,
+        "ai_failed": 0,
+        "skipped": 0,
+        "before": _entity_extraction_summary(),
+        "updated_at": timezone.now().isoformat(),
+        "results": [],
     }
-    cache.set(cache_key, batch_status, timeout=3600)
+    cache.set(cache_key, batch_status, timeout=86400)
 
     def _run() -> None:
         close_old_connections()
-
-        from apps.entities.services import process_article_full
-
-        for article_id in article_ids:
-            try:
-                article = Article.objects.get(id=article_id)
-                process_article_full(article)
-            except Exception:
-                batch_status["failed"] += 1
-                logger.exception(
-                    "Ekstraksi manual gagal untuk artikel=%s",
-                    article_id,
-                )
-            finally:
-                batch_status["processed"] += 1
-                cache.set(cache_key, dict(batch_status), timeout=3600)
-
-        batch_status["state"] = "completed"
-        cache.set(cache_key, dict(batch_status), timeout=3600)
-        close_old_connections()
+        from apps.assessments.services.extraction_dashboard import review_for_extraction
+        try:
+            for article_id in article_ids:
+                title = "Artikel"
+                try:
+                    title = Article.objects.values_list("title", flat=True).get(pk=article_id)
+                    result = review_for_extraction(article_id, with_ai=with_ai, force=force)
+                    for key in ("changed", "became_complete", "ai_failed", "skipped"):
+                        batch_status[key] += int(result[key])
+                    batch_status["still_incomplete"] += int(not result["complete"] and not result["skipped"])
+                    batch_status["results"].append({"title": title, **result})
+                except Exception:
+                    batch_status["failed"] += 1
+                    batch_status["results"].append({"title": title, "failed": True})
+                    logger.exception("Ekstraksi manual gagal untuk artikel=%s", article_id)
+                finally:
+                    batch_status["results"] = batch_status["results"][-20:]
+                    batch_status["processed"] += 1
+                    batch_status["updated_at"] = timezone.now().isoformat()
+                    cache.set(cache_key, dict(batch_status), timeout=86400)
+            batch_status["state"] = "completed"
+            batch_status["after"] = _entity_extraction_summary()
+            batch_status["updated_at"] = timezone.now().isoformat()
+            cache.set(cache_key, dict(batch_status), timeout=86400)
+        finally:
+            close_old_connections()
 
     thread = threading.Thread(
         target=_run,
