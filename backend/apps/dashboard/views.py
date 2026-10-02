@@ -151,6 +151,7 @@ def _run_bulk_article_validation_job(job_id) -> None:
             "bulk_validate_articles",
             limit=job.batch_size,
             job_id=str(job.id),
+            force=True,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Bulk validation gagal untuk job=%s", job_id)
