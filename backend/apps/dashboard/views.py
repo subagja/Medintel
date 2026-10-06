@@ -2995,7 +2995,7 @@ def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
     _fail_stale_bulk_article_validation_jobs()
     from apps.assessments.services.process_flags import validation_candidates
     mode = request.POST.get("process_mode", "new")
-    if mode not in ("new", "done", "failed"): mode = "new"
+    if mode not in ("new", "updated", "done", "failed"): mode = "new"
     if not validation_candidates(mode):
         messages.info(request, "Tidak ada kandidat pada pilihan ini. Artikel yang sudah dinilai dikecualikan dari batch pertama.")
         return redirect("dashboard:article-validation")

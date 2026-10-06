@@ -4,7 +4,7 @@ from django.utils import timezone
 from apps.articles.models import Article
 from apps.assessments.models import ArticleValidationAssessment
 
-LABELS = {"new": "Belum dinilai", "running": "Sedang dinilai", "done": "Sudah dinilai", "failed": "Gagal / terputus"}
+LABELS = {"new": "Belum dinilai", "running": "Sedang dinilai", "done": "Sudah dinilai", "failed": "Gagal / terputus", "updated": "Bukti diperbarui · perlu validasi ulang"}
 
 def validation_state(article, assessment=None):
     if assessment is None:
@@ -23,7 +23,21 @@ def validation_state(article, assessment=None):
                     return "failed"
             except (ValueError, TypeError): return "failed"
         return flag
-    if flag == "done" or (assessment and assessment.auto_assessed_at): return "done"
+    if flag == "done" or (assessment and assessment.auto_assessed_at):
+        from datetime import datetime
+        changed_at = metadata.get("extraction_evidence_changed_at")
+        if not changed_at and (metadata.get("extraction_review_result") or {}).get("changed"):
+            changed_at = metadata.get("extraction_review_finished_at")
+        assessed_at = metadata.get("validation_process_finished_at")
+        try:
+            assessed_at = datetime.fromisoformat(assessed_at) if assessed_at else None
+            if assessment and assessment.auto_assessed_at:
+                assessed_at = max(assessed_at, assessment.auto_assessed_at) if assessed_at else assessment.auto_assessed_at
+            if changed_at and assessed_at and datetime.fromisoformat(changed_at) > assessed_at:
+                return "updated"
+        except (TypeError, ValueError):
+            pass
+        return "done"
     return "new"
 
 def validation_candidates(mode="new"):
@@ -40,7 +54,7 @@ def validation_candidates(mode="new"):
     return result
 
 def validation_counts():
-    return {mode: len(validation_candidates(mode)) for mode in ("new", "done", "failed", "running")}
+    return {mode: len(validation_candidates(mode)) for mode in ("new", "updated", "done", "failed", "running")}
 
 def mark_validation(article_id, state):
     with transaction.atomic():

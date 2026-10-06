@@ -137,6 +137,8 @@ def review_for_extraction(article_id, with_ai=False, force=False):
         current = Article.objects.select_for_update().get(pk=article_id)
         metadata = dict(current.raw_metadata or {})
         metadata["extraction_review_result"] = result
+        if result["changed"]:
+            metadata["extraction_evidence_changed_at"] = timezone.now().isoformat()
         metadata["extraction_review_state"] = "completed"
         metadata["extraction_review_finished_at"] = timezone.now().isoformat()
         current.raw_metadata = metadata
