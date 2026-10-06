@@ -116,6 +116,7 @@ class Command(BaseCommand):
         recommend_only = options["recommend_only"]
         force = options["force"]
         job = self._start_job(options.get("job_id"))
+        self.validation_job = job
         self.batch_mode = (job.summary or {}).get("mode", "new") if job else ("done" if force else "new")
 
         if limit is not None and limit < 1:
@@ -139,7 +140,7 @@ class Command(BaseCommand):
         )
 
         if job is not None:
-            job.total_items = len(candidates)
+            job.total_items = len((job.summary or {}).get("candidate_ids", [])) or len(candidates)
             job.save(update_fields=["total_items", "updated_at"])
 
         stats = {
@@ -154,6 +155,9 @@ class Command(BaseCommand):
             "skipped": 0,
         }
 
+        if job:
+            previous_stats = (job.summary or {}).get("stats", {})
+            stats.update({key: previous_stats.get(key, 0) for key in stats})
         from apps.assessments.services.process_flags import claim_validation, mark_validation
         for candidate in candidates:
             claimed = False
@@ -163,6 +167,9 @@ class Command(BaseCommand):
                     if not claimed:
                         stats["skipped"] += 1
                         continue
+                if claimed and job:
+                    from apps.assessments.services.validation_recovery import tag_article_job
+                    tag_article_job(candidate.article.pk, str(job.pk))
                 self._process_one(
                     candidate=candidate,
                     dry_run=dry_run,
@@ -182,10 +189,18 @@ class Command(BaseCommand):
                 )
             finally:
                 if job is not None:
-                    job.processed_items += 1
+                    summary = dict(job.summary or {})
+                    finished = list(summary.get("finished_ids", []))
+                    if str(candidate.article.pk) not in finished:
+                        finished.append(str(candidate.article.pk))
+                    summary["finished_ids"] = finished
+                    summary["stats"] = dict(stats)
+                    job.summary = summary
+                    job.processed_items = len(finished)
                     job.error_count = stats["errors"]
                     job.save(
                         update_fields=[
+                            "summary",
                             "processed_items",
                             "error_count",
                             "updated_at",
@@ -196,7 +211,7 @@ class Command(BaseCommand):
 
         if job is not None:
             job.status = BulkArticleValidationJob.Status.COMPLETED
-            job.summary = {**stats, "mode": self.batch_mode}
+            job.summary = {**(job.summary or {}), **stats, "mode": self.batch_mode}
             job.completed_at = timezone.now()
             job.save(
                 update_fields=[
@@ -212,26 +227,27 @@ class Command(BaseCommand):
         if not job_id:
             return None
 
-        try:
-            job = BulkArticleValidationJob.objects.get(pk=job_id)
-        except (BulkArticleValidationJob.DoesNotExist, ValueError) as exc:
-            raise CommandError("Job bulk validation tidak ditemukan.") from exc
+        with transaction.atomic():
+            try:
+                job = BulkArticleValidationJob.objects.select_for_update().get(pk=job_id)
+            except (BulkArticleValidationJob.DoesNotExist, ValueError) as exc:
+                raise CommandError("Job bulk validation tidak ditemukan.") from exc
 
-        if job.status != BulkArticleValidationJob.Status.QUEUED:
-            raise CommandError("Job bulk validation tidak lagi menunggu.")
+            if job.status != BulkArticleValidationJob.Status.QUEUED:
+                raise CommandError("Job bulk validation tidak lagi menunggu.")
 
-        job.status = BulkArticleValidationJob.Status.RUNNING
-        job.started_at = timezone.now()
-        job.error_message = ""
-        job.save(
-            update_fields=[
-                "status",
-                "started_at",
-                "error_message",
-                "updated_at",
-            ]
-        )
-        return job
+            job.status = BulkArticleValidationJob.Status.RUNNING
+            job.started_at = timezone.now()
+            job.error_message = ""
+            job.save(
+                update_fields=[
+                    "status",
+                    "started_at",
+                    "error_message",
+                    "updated_at",
+                ]
+            )
+            return job
 
     def _collect_candidates(
         self,
@@ -243,7 +259,20 @@ class Command(BaseCommand):
     ) -> list[Candidate]:
         from apps.assessments.services.process_flags import validation_candidates
         mode = getattr(self, "batch_mode", "done" if force else "new")
-        rows = validation_candidates(mode)
+        job = getattr(self, "validation_job", None)
+        if job and (job.summary or {}).get("candidate_ids"):
+            finished = set((job.summary or {}).get("finished_ids", []))
+            ids = [pk for pk in job.summary["candidate_ids"] if pk not in finished]
+            articles = {str(a.pk): a for a in Article.objects.filter(pk__in=ids).select_related("source", "validation_assessment")}
+            rows = []
+            for pk in ids:
+                article = articles.get(pk)
+                if article is None: continue
+                try: assessment = article.validation_assessment
+                except ArticleValidationAssessment.DoesNotExist: assessment = None
+                rows.append((article, assessment))
+        else:
+            rows = validation_candidates(mode)
         if limit is not None: rows = rows[:limit]
         return [Candidate(article=article, assessment=assessment) for article, assessment in rows]
 

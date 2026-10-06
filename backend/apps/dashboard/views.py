@@ -132,7 +132,7 @@ def _fail_stale_bulk_article_validation_jobs() -> None:
         error_message=(
             "Job berhenti tanpa memperbarui progres selama lebih dari "
             "dua jam. Artikel yang sudah selesai tetap tersimpan; "
-            "jalankan batch baru untuk melanjutkan."
+            "gunakan pemulihan job untuk melanjutkan kandidat tersisa."
         ),
         completed_at=now,
         updated_at=now,
@@ -2996,13 +2996,14 @@ def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
     from apps.assessments.services.process_flags import validation_candidates
     mode = request.POST.get("process_mode", "new")
     if mode not in ("new", "updated", "done", "failed"): mode = "new"
-    if not validation_candidates(mode):
+    selected_candidates = validation_candidates(mode)[:BULK_VALIDATION_BATCH_SIZE]
+    if not selected_candidates:
         messages.info(request, "Tidak ada kandidat pada pilihan ini. Artikel yang sudah dinilai dikecualikan dari batch pertama.")
         return redirect("dashboard:article-validation")
     try:
         with transaction.atomic():
             job = BulkArticleValidationJob.objects.create(
-                summary={"mode": mode},
+                summary={"mode": mode, "candidate_ids": [str(article.pk) for article, assessment in selected_candidates], "finished_ids": []},
                 batch_size=BULK_VALIDATION_BATCH_SIZE,
                 requested_by=request.user,
             )
@@ -3040,6 +3041,7 @@ def bulk_article_validation_status(
             "progress": job.progress_percent,
             "summary": job.summary,
             "error_message": job.error_message,
+            "updated_at": job.updated_at.isoformat(),
         }
     )
 

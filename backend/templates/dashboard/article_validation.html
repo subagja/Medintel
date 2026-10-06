@@ -6,6 +6,12 @@ Validasi Artikel | MEDINTEL OSINT
 {% endblock %}
 
 {% block content %}
+<style>
+.validation-batch-controls{width:350px;max-width:100%;margin-top:12px}
+.validation-batch-controls form{width:100%}
+.validation-batch-controls #validation-candidate-hint{line-height:1.5;min-height:36px}
+@media(max-width:767px){.validation-batch-controls{width:100%}}
+</style>
 
 <div class="page-header d-print-none mb-3">
     <div class="row align-items-center">
@@ -23,7 +29,7 @@ Validasi Artikel | MEDINTEL OSINT
         </div>
 
         {% if request.user|has_role:"approvers" %}
-            <div class="col-auto ms-auto">
+            <div class="col-12 col-md-auto ms-md-auto validation-batch-controls">
                 <form
                     method="post"
                     action="{% url 'dashboard:bulk-article-validation-start' %}"
@@ -31,10 +37,10 @@ Validasi Artikel | MEDINTEL OSINT
                 >
                     {% csrf_token %}
                     <select name="process_mode" id="validation-process-mode" class="form-select mb-2" {% if bulk_validation_job.is_active %}disabled{% endif %}>
-                        <option value="new">Batch pertama: belum dinilai ({{ validation_process_counts.new }})</option>
-                        <option value="updated">Validasi ulang: bukti diperbarui ({{ validation_process_counts.updated }})</option>
-                        <option value="done">Proses ulang: Pending sudah dinilai ({{ validation_process_counts.done }})</option>
-                        <option value="failed">Coba ulang yang gagal ({{ validation_process_counts.failed }})</option>
+                        <option value="new">Belum dinilai ({{ validation_process_counts.new }})</option>
+                        <option value="updated">Bukti diperbarui ({{ validation_process_counts.updated }})</option>
+                        <option value="done">Pending ({{ validation_process_counts.done }})</option>
+                        <option value="failed">Gagal ({{ validation_process_counts.failed }})</option>
                     </select>
                     <div id="validation-candidate-hint" class="small text-secondary mb-2" aria-live="polite"></div>
                     <button id="validation-start-button"
@@ -2231,7 +2237,11 @@ const mode=document.getElementById("validation-process-mode"), button=document.g
 if(!mode || !button) return;
 const counts={updated: {{ validation_process_counts.updated }}, new: {{ validation_process_counts.new }}, done: {{ validation_process_counts.done }}, failed: {{ validation_process_counts.failed }}};
 const active={% if bulk_validation_job.is_active %}true{% else %}false{% endif %};
-const refresh=()=>{const count=counts[mode.value] || 0;hint.textContent=`${count} kandidat · maksimal ${Math.min(count,50)} artikel. Bukti lengkap belum berarti valid. Artikel perlu ditinjau tetap memerlukan keputusan; keputusan final tidak diproses ulang.`;button.disabled=active || count===0;};
+const key="medintel.validation.mode";
+const jobMode="{{ bulk_validation_job.summary.mode|default:''|escapejs }}";
+try {const saved=sessionStorage.getItem(key); if(active && Object.hasOwn(counts,jobMode)) mode.value=jobMode; else if(Object.hasOwn(counts,saved)) mode.value=saved;}catch(_){}
+const refresh=()=>{const count=counts[mode.value] || 0;hint.textContent=active ? "Batch berjalan · pilihan dikunci." : `${count} kandidat · maksimal ${Math.min(count,50)} artikel.`;button.disabled=active || count===0;};
+mode.addEventListener("change",()=>{try{sessionStorage.setItem(key,mode.value);}catch(_){}});
 mode.addEventListener("change",refresh);refresh();
 })();
 </script>
