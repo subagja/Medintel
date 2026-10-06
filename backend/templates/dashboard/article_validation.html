@@ -30,7 +30,13 @@ Validasi Artikel | MEDINTEL OSINT
                     onsubmit="return confirm('Jalankan validasi otomatis untuk maksimal 50 artikel?');"
                 >
                     {% csrf_token %}
-                    <button
+                    <select name="process_mode" id="validation-process-mode" class="form-select mb-2" {% if bulk_validation_job.is_active %}disabled{% endif %}>
+                        <option value="new">Batch pertama: belum dinilai ({{ validation_process_counts.new }})</option>
+                        <option value="done">Proses ulang: Pending sudah dinilai ({{ validation_process_counts.done }})</option>
+                        <option value="failed">Coba ulang yang gagal ({{ validation_process_counts.failed }})</option>
+                    </select>
+                    <div id="validation-candidate-hint" class="small text-secondary mb-2" aria-live="polite"></div>
+                    <button id="validation-start-button"
                         type="submit"
                         class="btn btn-outline-primary"
                         {% if bulk_validation_job.is_active %}disabled{% endif %}
@@ -361,7 +367,7 @@ Validasi Artikel | MEDINTEL OSINT
                             <div class="d-flex align-items-start gap-2">
                                 <div class="flex-fill">
                                     <div class="fw-semibold mb-1">
-                                        {{ article.title }}
+                                        {{ article.title }}<span class="d-block small text-secondary mt-1">Proses validasi: {{ article.validation_process_label }}</span>
                                     </div>
 
                                     <div class="small opacity-75">
@@ -2215,6 +2221,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     updateAdmiraltyCode();
 });
+</script>
+
+
+<script>
+(() => {
+const mode=document.getElementById("validation-process-mode"), button=document.getElementById("validation-start-button"), hint=document.getElementById("validation-candidate-hint");
+if(!mode || !button) return;
+const counts={new: {{ validation_process_counts.new }}, done: {{ validation_process_counts.done }}, failed: {{ validation_process_counts.failed }}};
+const active={% if bulk_validation_job.is_active %}true{% else %}false{% endif %};
+const refresh=()=>{const count=counts[mode.value] || 0;hint.textContent=`${count} kandidat · maksimal ${Math.min(count,50)} artikel. Keputusan final tidak diproses ulang.`;button.disabled=active || count===0;};
+mode.addEventListener("change",refresh);refresh();
+})();
 </script>
 
 {% endblock %}

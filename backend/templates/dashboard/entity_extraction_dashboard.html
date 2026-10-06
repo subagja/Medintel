@@ -4,6 +4,10 @@
 {% block title %}Ekstraksi Entitas | MEDINTEL OSINT{% endblock %}
 
 {% block content %}
+<style>
+.extraction-ui{--ex-blue:#124b91;--ex-line:#e2e8f0;color:#24364b}.extraction-ui .page-title{font-size:26px;font-weight:700}.extraction-ui .card{box-shadow:none;border:1px solid var(--ex-line);border-radius:12px;overflow:hidden}.extraction-ui .card-header{padding:18px 22px;background:#fff}.extraction-ui .card-body{padding:22px}.extraction-ui .card-title{font-size:16px;font-weight:600}.extraction-ui .ex-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.extraction-ui .ex-stat{background:#fff;border:1px solid var(--ex-line);border-radius:12px;padding:20px;text-decoration:none;color:inherit}.extraction-ui .ex-stat.primary{background:#103d73;color:white;border-color:#103d73}.extraction-ui .ex-stat .ex-value{font-size:32px;font-weight:700;line-height:1.2;margin:9px 0}.extraction-ui .ex-stat .ex-note{font-size:12px;opacity:.75}.extraction-ui .ex-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.extraction-ui .ex-tab{padding:8px 13px;background:white;border:1px solid var(--ex-line);border-radius:8px;color:#52657a;text-decoration:none;font-size:13px}.extraction-ui .ex-tab.active{background:#eaf2ff;border-color:#90b7ec;color:#124b91;font-weight:600}.extraction-ui .ex-run-grid{display:grid;grid-template-columns:2fr 1fr auto;gap:16px;align-items:end}.extraction-ui .ex-options{display:flex;gap:24px;flex-wrap:wrap;padding-top:18px;margin-top:18px;border-top:1px solid var(--ex-line)}.extraction-ui .ex-options label{font-size:13px}.extraction-ui .ex-search{display:flex;gap:10px;align-items:center}.extraction-ui .ex-table-wrap{max-height:620px;overflow:auto}.extraction-ui table{table-layout:fixed;min-width:850px}.extraction-ui thead th{position:sticky;top:0;background:#f5f8fc;z-index:1;padding:13px 18px;font-size:11px;letter-spacing:.04em}.extraction-ui tbody td{padding:16px 18px;vertical-align:top;font-size:13px;border-bottom:1px solid #edf1f6}.extraction-ui tbody tr:hover{background:#f8faff}.extraction-ui .ex-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;line-height:1.6;color:#183e69}.extraction-ui .ex-source{margin-top:5px;font-size:11px;color:#7b899a}.extraction-ui .ex-muted{font-size:12px;color:#78879a}.extraction-ui .badge{font-size:11px;padding:5px 8px;font-weight:500;white-space:normal}.extraction-ui .ex-history{display:block;margin-top:6px;font-size:11px;color:#8a96a5;overflow-wrap:anywhere}.extraction-ui .ex-intro{max-width:740px;line-height:1.7}.extraction-ui .ex-footer{padding:14px 22px}.extraction-ui .ex-legend{font-size:12px;color:#748398;margin:10px 0 20px}.extraction-ui .ex-batch-results{max-height:260px;overflow:auto}.extraction-ui .btn-primary{background:#1558a5}.extraction-ui .ex-actions{display:flex;gap:10px;align-items:center}@media(max-width:900px){.extraction-ui .ex-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.extraction-ui .ex-run-grid{grid-template-columns:1fr 1fr}.extraction-ui .ex-run-grid button{grid-column:1/-1}.extraction-ui .ex-options{gap:12px}}@media(max-width:560px){.extraction-ui .ex-stat{padding:14px}.extraction-ui .ex-value{font-size:26px}.extraction-ui .card-body{padding:16px}.extraction-ui .ex-run-grid{grid-template-columns:1fr}.extraction-ui .ex-search{flex-wrap:wrap}}
+</style><div class="extraction-ui">
+
 <div
     id="entity-extraction-live-alert"
     class="alert alert-info d-none"
@@ -22,175 +26,33 @@
             <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
             <h2 class="page-title">Ekstraksi Entitas</h2>
             <div class="text-secondary mt-1">
-                Cakupan hasil ekstraksi penyakit, lokasi, dan fakta
-                numerik di seluruh artikel. Ekstraksi otomatis berjalan
-                begitu artikel baru selesai di-crawl -- halaman ini
-                untuk memproses ulang artikel yang belum/tidak lengkap.
+                Pantau sisa antrean, jalankan ekstraksi, dan periksa bukti yang masih kurang sebelum validasi.
             </div>
         </div>
     </div>
 </div>
 
-<div class="row row-deck row-cards mb-3">
-    <div class="col-sm-6 col-xl-2">
-        <div class="card"><div class="card-body medintel-stat-card">
-            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M5 8V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"></path><path d="M9 9l1 0"></path><path d="M9 13l6 0"></path><path d="M9 17l6 0"></path></svg></div>
-            <div class="medintel-stat-body">
-                <div class="text-secondary">Total Artikel</div>
-                <div class="h1 mb-0" data-extraction-summary="total_articles">{{ summary.total_articles }}</div>
-            </div>
-        </div></div>
-    </div>
-    <div class="col-sm-6 col-xl-2">
-        <div class="card"><div class="card-body medintel-stat-card">
-            <div class="medintel-stat-icon bg-warning-lt text-warning"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v5l3 3"></path><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path></svg></div>
-            <div class="medintel-stat-body">
-                <div class="text-secondary">Perlu Pelengkapan (selain Ditolak)</div>
-                <div class="h1 mb-0 {% if summary.pending_count %}text-warning{% endif %}" data-extraction-summary="pending_count">{{ summary.pending_count }}</div>
-            </div>
-        </div></div>
-    </div>
-    <div class="col-sm-6 col-xl-2">
-        <div class="card"><div class="card-body medintel-stat-card">
-            <div class="medintel-stat-icon bg-teal-lt text-teal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"></path></svg></div>
-            <div class="medintel-stat-body">
-                <div class="text-secondary">Ada Penyakit</div>
-                <div class="h1 mb-0 text-teal" data-extraction-summary="with_disease">{{ summary.with_disease }}</div>
-            </div>
-        </div></div>
-    </div>
-    <div class="col-sm-6 col-xl-2">
-        <div class="card"><div class="card-body medintel-stat-card">
-            <div class="medintel-stat-icon bg-blue-lt text-blue"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"></path><path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z"></path></svg></div>
-            <div class="medintel-stat-body">
-                <div class="text-secondary">Ada Lokasi Utama</div>
-                <div class="h1 mb-0 text-blue" data-extraction-summary="with_location">{{ summary.with_location }}</div>
-            </div>
-        </div></div>
-    </div>
-    <div class="col-sm-6 col-xl-2">
-        <div class="card"><div class="card-body medintel-stat-card">
-            <div class="medintel-stat-icon bg-azure-lt text-azure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v7a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M9 8m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v11a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path><path d="M15 4m0 1a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v15a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1z"></path></svg></div>
-            <div class="medintel-stat-body">
-                <div class="text-secondary">Ada Fakta Numerik</div>
-                <div class="h1 mb-0 text-azure" data-extraction-summary="with_fact">{{ summary.with_fact }}</div>
-            </div>
-        </div></div>
-    </div>
-    <div class="col-sm-6 col-xl-2"><div class="card"><div class="card-body">
-        <div class="text-secondary">Bukti Terstruktur Lengkap</div>
-        <div class="h1 mb-0 text-success" data-extraction-summary="complete_count">{{ summary.complete_count }}</div>
-    </div></div></div>
-</div>
-<div class="text-secondary small mb-3">Cakupan dihitung di seluruh artikel, mengabaikan entitas yang ditolak. Perlu pelengkapan mencakup artikel tervalidasi yang buktinya belum lengkap, selain artikel ditolak.</div>
-<div id="extraction-batch-detail" class="card mb-3 d-none"><div class="card-body">
-    <h3 class="card-title">Hasil Batch Ekstraksi</h3>
-    <p id="extraction-batch-counts"></p>
-    <p id="extraction-batch-delta" class="text-secondary"></p>
-    <ul id="extraction-batch-results" class="mb-0"></ul>
-</div></div>
-
-{% if request.user|has_role:"Admin,Analyst" %}
+<div class="ex-stats"><a class="ex-stat primary" href="?scope=incomplete"><div>Perlu pelengkapan</div><div class="ex-value" data-extraction-queue="incomplete">{{ extraction_queue.incomplete }}</div><div class="ex-note">Bukti inti masih perlu dilengkapi</div></a><a class="ex-stat " href="?scope=unattempted"><div>Belum pernah dicoba</div><div class="ex-value" data-extraction-queue="unattempted">{{ extraction_queue.unattempted }}</div><div class="ex-note">Antrean ekstraksi pertama</div></a><a class="ex-stat " href="?scope=complete"><div>Bukti lengkap</div><div class="ex-value" data-extraction-queue="complete">{{ extraction_queue.complete }}</div><div class="ex-note">Memenuhi kelengkapan data inti</div></a><a class="ex-stat " href="?scope=rejected"><div>Dikecualikan</div><div class="ex-value" data-extraction-queue="rejected">{{ extraction_queue.rejected }}</div><div class="ex-note">Artikel ditolak tidak masuk batch</div></a></div><nav class="ex-tabs" aria-label="Kelengkapan bukti"><a class="ex-tab {% if extraction_scope == "incomplete" %}active{% endif %}" href="?scope=incomplete">Perlu pelengkapan</a><a class="ex-tab {% if extraction_scope == "complete" %}active{% endif %}" href="?scope=complete">Lengkap</a><a class="ex-tab {% if extraction_scope == "rejected" %}active{% endif %}" href="?scope=rejected">Dikecualikan</a><a class="ex-tab {% if extraction_scope == "all" %}active{% endif %}" href="?scope=all">Semua</a></nav><div class="ex-legend">Sudah diekstraksi menunjukkan proses pernah selesai; kelengkapan bukti ditampilkan terpisah. Riwayat lama belum memiliki catatan percobaan yang lengkap.</div>{% if request.user|has_role:"Admin,Analyst" %}
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title">Jalankan Ekstraksi</h3></div>
     <div class="card-body">
-        <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" class="row g-2 align-items-end" id="entity-extraction-form">
-            {% csrf_token %}
-            <div class="col-md-3">
-                <label class="form-label small">Maks. artikel diproses</label>
-                <input type="number" name="limit" value="50" min="1" max="2000" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <div class="form-check mt-4">
-                    <input class="form-check-input" type="checkbox" name="force" value="1" id="force-check">
-                    <label class="form-check-label" for="force-check">
-                        Proses ulang juga artikel lengkap (artikel ditolak tetap dikecualikan)
-                    </label>
-                </div>
-            </div>
-            <div class="col-md-4"><div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" name="with_ai" value="1" id="extraction-ai" checked>
-                <label class="form-check-label" for="extraction-ai">Lengkapi dengan AI jika aturan belum cukup (maks. 50 artikel)</label>
-            </div></div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-primary w-100" id="entity-extraction-submit">Proses Sekarang</button>
-            </div>
-        </form>
+        <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" id="entity-extraction-form">
+{% csrf_token %}<div class="ex-run-grid"><div><label class="form-label">Artikel yang akan diproses</label><select name="scope" class="form-select"><option value="unattempted" selected>Batch pertama: belum pernah dicoba</option><option value="incomplete" >Proses ulang: bukti belum lengkap</option><option value="unknown" >Periksa riwayat belum tercatat</option><option value="failed" >Coba ulang yang gagal</option></select></div><div><label class="form-label">Jumlah per batch</label><input type="number" name="limit" value="50" min="1" max="2000" class="form-control"></div><button type="submit" class="btn btn-primary px-4" id="entity-extraction-submit">Mulai ekstraksi</button></div>
+<div class="ex-options"><label class="form-check"><input class="form-check-input" type="checkbox" name="with_ai" value="1" id="extraction-ai" checked><span class="form-check-label">Bantu pelengkapan dengan AI <span class="ex-muted">· maks. 50 artikel</span></span></label><span class="ex-muted">Artikel lengkap dikecualikan dari pelengkapan.</span></div>
+<div id="extraction-candidate-hint" class="text-secondary small mt-3" aria-live="polite"></div></form>
         <div class="text-secondary small mt-2">
-            Artikel dicoba bergiliran, mendahulukan yang belum pernah atau paling lama dicoba. AI menggunakan isi artikel dan dapat menambah biaya API. Status validasi tetap dijaga.
+            Artikel dicoba bergiliran, mendahulukan yang belum pernah atau paling lama dicoba. Status validasi tetap dijaga.
         </div>
     </div>
 </div>
 {% endif %}
 
-<div class="row row-cards mb-3">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header"><h3 class="card-title">Status Pipeline Artikel</h3></div>
-            <div class="card-body" id="entity-extraction-status-breakdown">
-                {% for row in status_breakdown %}
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>{{ row.label }}</span>
-                        <span class="fw-semibold">{{ row.count }}</span>
-                    </div>
-                {% empty %}
-                    <div class="text-secondary small">Tidak ada data.</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header"><h3 class="card-title">Metode Ekstraksi Penyakit</h3></div>
-            <div class="card-body" id="entity-extraction-method-breakdown">
-                {% for row in method_breakdown %}
-                    <div class="d-flex justify-content-between mb-2">
-                        <span>{{ row.label }}</span>
-                        <span class="fw-semibold">{{ row.count }}</span>
-                    </div>
-                {% empty %}
-                    <div class="text-secondary small">Tidak ada data.</div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="card">
-    <div class="card-header"><h3 class="card-title">Artikel Terakhir Diproses</h3></div>
-    <div class="table-responsive">
-        <table class="table table-vcenter table-sm card-table">
-            <thead>
-                <tr>
-                    <th>Judul</th>
-                    <th>Sumber</th>
-                    <th>Status</th>
-                    <th>Diperbarui</th>
-                </tr>
-            </thead>
-            <tbody id="entity-extraction-recent-body">
-                {% for article in recent_processed %}
-                    <tr>
-                        <td><a href="{% url 'dashboard:article-extraction-detail' article.id %}">{{ article.title }}</a></td>
-                        <td class="text-secondary small">{{ article.source.name }}</td>
-                        <td>
-                            {% if article.processing_status == "processed" %}
-                                <span class="badge bg-success-lt">Selesai Diproses</span>
-                            {% elif article.processing_status == "failed" %}
-                                <span class="badge bg-danger-lt">Gagal</span>
-                            {% else %}
-                                <span class="badge bg-secondary-lt">{{ article.get_processing_status_display }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-nowrap text-secondary small">{{ article.updated_at|date:"d M Y H:i" }}</td>
-                    </tr>
-                {% empty %}
-                    <tr><td colspan="4" class="text-center text-secondary py-5">Belum ada artikel yang diproses.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+<div id="extraction-batch-detail" class="card mb-3 d-none"><div class="card-body"><h3 class="card-title">Hasil batch terakhir</h3><progress id="extraction-progress" class="w-100" max="100" value="0"></progress><p id="extraction-batch-counts"></p><p id="extraction-batch-delta" class="text-secondary small"></p><details><summary>Lihat rincian 20 artikel terakhir dalam batch</summary><ul id="extraction-batch-results" class="mt-2 mb-0 ex-batch-results"></ul></details></div></div>
+<div class="card"><div class="card-header"><h3 class="card-title">Antrean dan hasil ekstraksi</h3></div>
+<div class="card-body"><form method="get" class="d-flex gap-2"><input type="hidden" name="scope" value="{{ extraction_scope }}"><select class="form-select" name="history" style="max-width:230px"><option value="all">Semua riwayat proses</option><option value="unattempted" {% if extraction_history == "unattempted" %}selected{% endif %}>Belum diekstraksi</option><option value="attempted" {% if extraction_history == "attempted" %}selected{% endif %}>Sudah diekstraksi</option><option value="failed" {% if extraction_history == "failed" %}selected{% endif %}>Gagal</option><option value="running" {% if extraction_history == "running" %}selected{% endif %}>Sedang diproses</option><option value="unknown" {% if extraction_history == "unknown" %}selected{% endif %}>Riwayat belum tercatat</option></select><input name="q" class="form-control" placeholder="Cari judul artikel" value="{{ extraction_search }}"><button class="btn btn-outline-primary">Cari</button><a class="btn btn-outline-secondary" href="?scope=all">Semua</a></form></div>
+<div class="table-responsive ex-table-wrap"><table class="table table-vcenter card-table"><thead><tr><th style="width:45%">Artikel / sumber</th><th style="width:20%">Proses ekstraksi</th><th style="width:20%">Bukti terstruktur</th><th style="width:15%">Status artikel</th></tr></thead><tbody>
+{% for row in extraction_page %}<tr><td><a class="ex-title" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">{{ row.article.title }}</a><div class="ex-source">{{ row.article.source.name }}</div></td><td><span class="ex-muted">{{ row.state_label }}</span><span class="ex-history">{{ row.attempt_at }}</span></td><td>{% if row.complete %}<span class="badge bg-success-lt">Lengkap</span>{% else %}<span class="badge bg-warning-lt">Belum lengkap</span><div class="text-secondary small">Kurang: {{ row.missing_label }}</div>{% endif %}</td><td><span class="badge bg-secondary-lt">{{ row.article.get_processing_status_display }}</span><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">Tinjau</a></div></td></tr>{% empty %}<tr><td colspan="4" class="text-center py-4">Tidak ada artikel pada kelompok ini.</td></tr>{% endfor %}
+</tbody></table></div><div class="card-footer ex-footer d-flex justify-content-between"><span>{{ extraction_page.paginator.count }} artikel · halaman {{ extraction_page.number }} / {{ extraction_page.paginator.num_pages }}</span><div>{% if extraction_page.has_previous %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.previous_page_number }}">Sebelumnya</a>{% endif %}{% if extraction_page.has_next %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.next_page_number }}">Berikutnya</a>{% endif %}</div></div></div>
 </div>
 {% endblock %}
 
@@ -203,6 +65,21 @@
     const alertBox = document.getElementById("entity-extraction-live-alert");
     const submitButton = document.getElementById("entity-extraction-submit");
     let pollTimer = null;
+    let candidateCounts = {unattempted: {{ extraction_queue.candidate_counts.unattempted }}, incomplete: {{ extraction_queue.candidate_counts.incomplete }}, failed: {{ extraction_queue.candidate_counts.failed }}, unknown: {{ extraction_queue.candidate_counts.unknown }}};
+    const form = document.getElementById("entity-extraction-form");
+    const refreshCandidates = () => {
+        if (!form) return;
+        const scope = form.elements.scope.value;
+        const count = candidateCounts[scope] || 0;
+        const cap = form.elements.with_ai.checked ? 50 : 2000;
+        form.elements.limit.max = cap;
+        const limit = Math.max(1, Math.min(Number(form.elements.limit.value) || 1, cap));
+        form.elements.limit.value = limit;
+        document.getElementById("extraction-candidate-hint").textContent = `${count} kandidat tersedia · maksimal ${Math.min(count, limit)} artikel dalam batch ini. Artikel selesai hanya dipilih pada proses ulang.`;
+        if (!batchId) submitButton.disabled = count === 0;
+    };
+    if (form) {form.addEventListener("change", refreshCandidates);form.addEventListener("input", refreshCandidates);refreshCandidates();}
+
 
     const showAlert = (message, level = "info") => {
         if (!alertBox) return;
@@ -292,6 +169,7 @@
     };
 
     const renderBatch = (batch) => {
+        document.getElementById("extraction-progress").value = batch.total ? batch.processed / batch.total * 100 : 0;
         document.getElementById("extraction-batch-detail").classList.remove("d-none");
         document.getElementById("extraction-batch-counts").textContent =
             `Bertambah/perbaikan data: ${batch.changed || 0}; menjadi lengkap: ${batch.became_complete || 0}; ` +
@@ -300,7 +178,7 @@
         if (batch.before && batch.after) {
             const labels = {with_disease: "Penyakit", with_location: "Lokasi utama", with_fact: "Fakta numerik", complete_count: "Lengkap", pending_count: "Perlu pelengkapan"};
             document.getElementById("extraction-batch-delta").textContent = Object.entries(labels)
-                .map(([key, label]) => `${label}: ${batch.before[key]} → ${batch.after[key]}`).join(" · ");
+                .map(([key, label]) => `${label}: ${batch.before[key]} → ${batch.after[key]}`).join(" · ") + " (cakupan seluruh sistem; dapat berubah karena proses lain, bukan hasil batch ini saja).";
         }
         const target = document.getElementById("extraction-batch-results");
         target.replaceChildren();
@@ -325,7 +203,11 @@
             updateSummary(data.summary);
             updateBreakdown(data.status_breakdown);
             updateMethodBreakdown(data.method_breakdown);
-            updateRecent(data.recent_processed);
+            candidateCounts = (data.extraction_queue || {}).candidate_counts || candidateCounts;
+            refreshCandidates();
+            Object.entries(data.extraction_queue || {}).forEach(([key, value]) => {
+                document.querySelectorAll(`[data-extraction-queue="${key}"]`).forEach(el => el.textContent = value);
+            });
 
             if (!batchId) return;
             if (!data.batch) {
@@ -355,6 +237,11 @@
                 );
                 if (submitButton) submitButton.disabled = false;
                 window.clearInterval(pollTimer);
+                const reload = document.createElement("a");
+                reload.href = window.location.pathname + window.location.search;
+                reload.className = "btn btn-sm btn-outline-primary ms-2";
+                reload.textContent = "Perbarui daftar artikel";
+                alertBox.append(reload);
                 return;
             }
 

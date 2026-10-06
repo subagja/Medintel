@@ -116,6 +116,7 @@ class Command(BaseCommand):
         recommend_only = options["recommend_only"]
         force = options["force"]
         job = self._start_job(options.get("job_id"))
+        self.batch_mode = (job.summary or {}).get("mode", "new") if job else ("done" if force else "new")
 
         if limit is not None and limit < 1:
             raise CommandError("--limit minimal bernilai 1.")
@@ -150,10 +151,18 @@ class Command(BaseCommand):
             "rejected": 0,
             "pending": 0,
             "errors": 0,
+            "skipped": 0,
         }
 
+        from apps.assessments.services.process_flags import claim_validation, mark_validation
         for candidate in candidates:
+            claimed = False
             try:
+                if not dry_run:
+                    claimed = claim_validation(candidate.article.pk, self.batch_mode)
+                    if not claimed:
+                        stats["skipped"] += 1
+                        continue
                 self._process_one(
                     candidate=candidate,
                     dry_run=dry_run,
@@ -161,7 +170,9 @@ class Command(BaseCommand):
                     recommend_only=recommend_only,
                     stats=stats,
                 )
+                if claimed: mark_validation(candidate.article.pk, "done")
             except Exception as exc:  # noqa: BLE001
+                if claimed: mark_validation(candidate.article.pk, "failed")
                 stats["errors"] += 1
                 self.stderr.write(
                     self.style.ERROR(
@@ -185,7 +196,7 @@ class Command(BaseCommand):
 
         if job is not None:
             job.status = BulkArticleValidationJob.Status.COMPLETED
-            job.summary = stats
+            job.summary = {**stats, "mode": self.batch_mode}
             job.completed_at = timezone.now()
             job.save(
                 update_fields=[
@@ -230,68 +241,11 @@ class Command(BaseCommand):
         skip_ai: bool,
         recommend_only: bool,
     ) -> list[Candidate]:
-        missing_articles = (
-            Article.objects.filter(
-                processing_status=Article.ProcessingStatus.PROCESSED,
-                validation_assessment__isnull=True,
-            )
-            .select_related("source")
-            .order_by("crawled_at")
-        )
-
-        pending_assessments = (
-            ArticleValidationAssessment.objects.filter(
-                validation_status=(
-                    ArticleValidationAssessment.ValidationStatus.PENDING
-                ),
-                article__processing_status=Article.ProcessingStatus.PROCESSED,
-            )
-            .select_related("article", "article__source")
-            .order_by("evaluated_at")
-        )
-
-        if not force:
-            if recommend_only or skip_ai:
-                pending_assessments = pending_assessments.filter(
-                    auto_assessed_at__isnull=True,
-                )
-            else:
-                pending_assessments = pending_assessments.filter(
-                    Q(auto_assessed_at__isnull=True)
-                    | Q(
-                        auto_assessment_method=(
-                            ArticleValidationAssessment
-                            .AutoAssessmentMethod
-                            .RULE_BASED
-                        )
-                    )
-                )
-
-        missing_slice = (
-            missing_articles
-            if limit is None
-            else missing_articles[:limit]
-        )
-        candidates = [
-            Candidate(article=article, assessment=None)
-            for article in missing_slice
-        ]
-
-        remaining = None if limit is None else limit - len(candidates)
-        if remaining == 0:
-            return candidates
-
-        pending_slice = (
-            pending_assessments
-            if remaining is None
-            else pending_assessments[:remaining]
-        )
-        candidates.extend(
-            Candidate(article=item.article, assessment=item)
-            for item in pending_slice
-        )
-
-        return candidates
+        from apps.assessments.services.process_flags import validation_candidates
+        mode = getattr(self, "batch_mode", "done" if force else "new")
+        rows = validation_candidates(mode)
+        if limit is not None: rows = rows[:limit]
+        return [Candidate(article=article, assessment=assessment) for article, assessment in rows]
 
     def _process_one(
         self,

@@ -149,11 +149,11 @@ class EntityExtractionLiveStatusTests(TestCase):
         from apps.assessments.services.extraction_dashboard import select_batch_ids, review_for_extraction
         first = self._create_article("first-attempt")
         second = self._create_article("next-attempt")
-        self.assertEqual(select_batch_ids(1), [first.pk])
+        self.assertEqual(select_batch_ids(1, scope="unknown"), [first.pk])
         with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False):
             result = review_for_extraction(first.pk)
         self.assertFalse(result["complete"])
-        self.assertEqual(select_batch_ids(1), [second.pk])
+        self.assertEqual(select_batch_ids(1, scope="unknown"), [second.pk])
 
     def test_review_preserves_validated_status_and_assessment(self):
         from apps.assessments.models import ArticleValidationAssessment
@@ -232,3 +232,46 @@ class EntityExtractionLiveStatusTests(TestCase):
         article.refresh_from_db()
         self.assertEqual(article.processing_status, Article.ProcessingStatus.PROCESSED)
         self.assertTrue(result["became_complete"])
+
+
+class ProcessFlagQueueTests(TestCase):
+    setUp = EntityExtractionLiveStatusTests.setUp
+    _create_article = EntityExtractionLiveStatusTests._create_article
+    def test_completed_incomplete_extraction_not_in_first_batch(self):
+        from apps.assessments.services.extraction_dashboard import select_batch_ids
+        article = self._create_article("flag-extracted")
+        article.raw_metadata = {"extraction_review_result": {"complete": False}, "extraction_review_state": "completed"}
+        article.save(update_fields=["raw_metadata"])
+        self.assertNotIn(article.pk, select_batch_ids(50))
+        self.assertIn(article.pk, select_batch_ids(50, scope="incomplete"))
+
+    def test_completed_pending_validation_excluded_until_explicit_retry(self):
+        from apps.assessments.models import ArticleValidationAssessment
+        from apps.assessments.services.process_flags import validation_candidates
+        from django.utils import timezone
+        article = self._create_article("flag-validated-pending")
+        ArticleValidationAssessment.objects.create(article=article, auto_assessed_at=timezone.now())
+        self.assertNotIn(article.pk, [a.pk for a, _ in validation_candidates("new")])
+        self.assertIn(article.pk, [a.pk for a, _ in validation_candidates("done")])
+
+    def test_claim_prevents_duplicate_and_cross_stage_work(self):
+        from apps.assessments.services.process_flags import claim_validation, mark_validation
+        from django.utils import timezone
+        article = self._create_article("flag-claim")
+        self.assertTrue(claim_validation(article.pk, "new"))
+        self.assertFalse(claim_validation(article.pk, "new"))
+        mark_validation(article.pk, "failed")
+        self.assertTrue(claim_validation(article.pk, "failed"))
+        mark_validation(article.pk, "failed")
+        article.refresh_from_db()
+        article.raw_metadata.update(extraction_review_state="running", extraction_review_attempt_at=timezone.now().isoformat())
+        article.save(update_fields=["raw_metadata"])
+        self.assertFalse(claim_validation(article.pk, "failed"))
+
+    def test_manual_pending_decision_is_not_reassessed(self):
+        from apps.assessments.models import ArticleValidationAssessment
+        from apps.assessments.services.process_flags import validation_candidates
+        article = self._create_article("flag-manual")
+        ArticleValidationAssessment.objects.create(article=article, evaluated_by=self.user)
+        for mode in ("new", "done", "failed"):
+            self.assertNotIn(article.pk, [a.pk for a, _ in validation_candidates(mode)])

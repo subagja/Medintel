@@ -151,7 +151,7 @@ def _run_bulk_article_validation_job(job_id) -> None:
             "bulk_validate_articles",
             limit=job.batch_size,
             job_id=str(job.id),
-            force=True,
+            force=(job.summary or {}).get("mode") == "done",
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Bulk validation gagal untuk job=%s", job_id)
@@ -2924,6 +2924,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         _fail_stale_bulk_article_validation_jobs()
         bulk_validation_job = BulkArticleValidationJob.objects.first()
 
+    from apps.assessments.services.process_flags import validation_counts, validation_state, LABELS
+    validation_process_counts = validation_counts()
+    for article in page_articles:
+        article.validation_process_label = LABELS[validation_state(article)]
     context = {
         "page_title": "Validasi Artikel",
         "active_menu": "article_validation",
@@ -2961,6 +2965,7 @@ def article_validation(request: HttpRequest) -> HttpResponse:
         "has_active_list_filters": has_active_list_filters,
         "bulk_validation_job": bulk_validation_job,
         "bulk_validation_batch_size": BULK_VALIDATION_BATCH_SIZE,
+        "validation_process_counts": validation_process_counts,
         **build_article_filter_options(),
         "summary": {
             "total": pending_count,
@@ -2988,10 +2993,16 @@ def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
     from django.db import IntegrityError
 
     _fail_stale_bulk_article_validation_jobs()
-
+    from apps.assessments.services.process_flags import validation_candidates
+    mode = request.POST.get("process_mode", "new")
+    if mode not in ("new", "done", "failed"): mode = "new"
+    if not validation_candidates(mode):
+        messages.info(request, "Tidak ada kandidat pada pilihan ini. Artikel yang sudah dinilai dikecualikan dari batch pertama.")
+        return redirect("dashboard:article-validation")
     try:
         with transaction.atomic():
             job = BulkArticleValidationJob.objects.create(
+                summary={"mode": mode},
                 batch_size=BULK_VALIDATION_BATCH_SIZE,
                 requested_by=request.user,
             )
@@ -5404,12 +5415,28 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     )
     method_labels = dict(ExtractionMethod.choices)
 
-    recent_processed = Article.objects.filter(
-        processing_status__in=[
-            Article.ProcessingStatus.PROCESSED,
-            Article.ProcessingStatus.FAILED,
-        ],
-    ).select_related("source").order_by("-updated_at")[:15]
+    from apps.assessments.services.extraction_dashboard import queue_rows, queue_summary
+    from django.core.paginator import Paginator
+    rows = queue_rows()
+    extraction_queue = queue_summary(rows)
+    selected = request.GET.get("scope", "all")
+    search = request.GET.get("q", "").strip()
+    history = request.GET.get("history", "all")
+    allowed = {"all", "unattempted", "running", "attempted", "failed", "unknown", "rejected", "incomplete", "complete"}
+    if selected not in allowed: selected = "all"
+    filtered = rows
+    if selected == "incomplete":
+        filtered = [row for row in rows if not row["complete"] and row["state"] != "rejected"]
+    elif selected == "complete":
+        filtered = [row for row in rows if row["complete"] and row["state"] != "rejected"]
+    elif selected != "all":
+        filtered = [row for row in rows if row["state"] == selected]
+    if history in ("unattempted", "attempted", "running", "failed", "unknown"):
+        filtered = [row for row in filtered if row["state"] == history]
+    if search:
+        filtered = [row for row in filtered if search.casefold() in row["article"].title.casefold()]
+    extraction_page = Paginator(filtered, 25).get_page(request.GET.get("page"))
+    recent_processed = []
 
     context = {
         "page_title": "Ekstraksi Entitas",
@@ -5430,6 +5457,11 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
             for method, count in method_counts.items()
         ],
         "recent_processed": recent_processed,
+        "extraction_queue": extraction_queue,
+        "extraction_page": extraction_page,
+        "extraction_scope": selected,
+        "extraction_search": search,
+        "extraction_history": history,
     }
 
     return render(
@@ -5468,7 +5500,10 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
     except ValueError:
         limit = 200
     limit = max(1, min(limit, 50 if with_ai else 2000))
-    article_ids = select_batch_ids(limit, force=force)
+    scope = request.POST.get("scope", "unattempted")
+    if scope not in ("unattempted", "incomplete", "failed", "unknown"):
+        scope = "unattempted"
+    article_ids = select_batch_ids(limit, force=force, scope=scope)
 
     if not article_ids:
         messages.warning(
@@ -5509,6 +5544,8 @@ def entity_extraction_run(request: HttpRequest) -> HttpResponse:
                     batch_status["still_incomplete"] += int(not result["complete"] and not result["skipped"])
                     batch_status["results"].append({"title": title, **result})
                 except Exception:
+                    from apps.assessments.services.extraction_dashboard import record_extraction_failure
+                    record_extraction_failure(article_id)
                     batch_status["failed"] += 1
                     batch_status["results"].append({"title": title, "failed": True})
                     logger.exception("Ekstraksi manual gagal untuk artikel=%s", article_id)
@@ -5575,6 +5612,8 @@ def entity_extraction_status(request: HttpRequest) -> JsonResponse:
         {
             "batch": batch,
             "summary": _entity_extraction_summary(),
+            "extraction_queue": __import__("apps.assessments.services.extraction_dashboard", fromlist=["queue_summary"]).queue_summary(
+                __import__("apps.assessments.services.extraction_dashboard", fromlist=["queue_rows"]).queue_rows()),
             "status_breakdown": [
                 {
                     "label": status_labels.get(status, status),

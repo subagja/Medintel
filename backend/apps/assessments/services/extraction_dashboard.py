@@ -9,6 +9,7 @@ from apps.articles.models import Article
 from apps.entities.models import ArticleDisease, ArticleFact, ArticleLocation, ValidationStatus
 from .article_data_review import reextract_article_data
 from .ai_evidence import apply_ai_evidence
+from .process_flags import stage_busy
 from .information_balance import recommend_information_balance
 
 
@@ -52,14 +53,18 @@ def incomplete_queryset():
     ).exclude(extraction_has_linked_fact=True, extraction_primary_count=1)
 
 
-def select_batch_ids(limit, force=False):
-    qs = evidence_queryset().exclude(processing_status=Article.ProcessingStatus.REJECTED)
-    if not force:
-        qs = incomplete_queryset()
-    return list(qs.annotate(
-        extraction_attempt=Cast("raw_metadata__extraction_review_attempt_at", CharField()),
-    ).order_by(F("extraction_attempt").asc(nulls_first=True), "created_at", "pk")
-        .values_list("pk", flat=True)[:limit])
+def select_batch_ids(limit, force=False, scope="unattempted"):
+    rows = queue_rows()
+    candidates = [row for row in rows if row["state"] not in ("rejected", "running")
+                  and not stage_busy(row["article"], "validation_process")]
+    if scope in ("unattempted", "failed", "unknown"):
+        candidates = [row for row in candidates if row["state"] == scope]
+    elif not force:
+        candidates = [row for row in candidates if not row["complete"]]
+    candidates.sort(key=lambda row: (
+        (row["article"].raw_metadata or {}).get("extraction_review_attempt_at", "") or "",
+        row["article"].created_at, str(row["article"].pk)))
+    return [row["article"].pk for row in candidates[:limit]]
 
 
 def evidence_snapshot(article_id):
@@ -98,9 +103,15 @@ def review_for_extraction(article_id, with_ai=False, force=False):
             return {"skipped": True, "changed": False, "became_complete": False,
                     "complete": before["complete"], "missing": before["missing"], "ai_failed": False}
         metadata = dict(article.raw_metadata or {})
+        if stage_busy(article, "extraction_review") or stage_busy(article, "validation_process"):
+            return {"skipped": True, "changed": False, "became_complete": False,
+                    "complete": before["complete"], "missing": before["missing"], "ai_failed": False}
         metadata["extraction_review_attempt_at"] = timezone.now().isoformat()
+        metadata["extraction_review_state"] = "running"
         article.raw_metadata = metadata
         article.save(update_fields=["raw_metadata", "updated_at"])
+    with transaction.atomic():
+        article = Article.objects.select_for_update().select_related("source").get(pk=article_id)
         complete = reextract_article_data(article, force=force)
 
     ai_failed = False
@@ -126,6 +137,8 @@ def review_for_extraction(article_id, with_ai=False, force=False):
         current = Article.objects.select_for_update().get(pk=article_id)
         metadata = dict(current.raw_metadata or {})
         metadata["extraction_review_result"] = result
+        metadata["extraction_review_state"] = "completed"
+        metadata["extraction_review_finished_at"] = timezone.now().isoformat()
         current.raw_metadata = metadata
         fields = ["raw_metadata", "updated_at"]
         if current.processing_status not in (Article.ProcessingStatus.VALIDATED, Article.ProcessingStatus.REJECTED):
@@ -133,3 +146,83 @@ def review_for_extraction(article_id, with_ai=False, force=False):
             fields.append("processing_status")
         current.save(update_fields=fields)
     return result
+
+
+def extraction_state(article):
+    """Riwayat eksplisit lebih kuat daripada status pipeline artikel."""
+    metadata = article.raw_metadata or {}
+    if article.processing_status == Article.ProcessingStatus.REJECTED:
+        return "rejected", "Ditolak / dikecualikan"
+    state = metadata.get("extraction_review_state")
+    if state == "running":
+        from datetime import datetime, timedelta
+        try:
+            attempted = datetime.fromisoformat(metadata.get("extraction_review_attempt_at", ""))
+            if timezone.now() - attempted > timedelta(hours=2):
+                return "unknown", "Percobaan lama perlu diperiksa"
+        except (ValueError, TypeError):
+            return "unknown", "Riwayat percobaan tidak lengkap"
+        return "running", "Sedang diekstraksi"
+    if state == "failed":
+        return "failed", "Gagal ekstraksi"
+    if (metadata.get("extraction_review_result") is not None
+            or (metadata.get("processing_pipeline") or {}).get("processed_at")):
+        return "attempted", "Sudah diekstraksi"
+    if metadata.get("extraction_review_attempt_at"):
+        return "unknown", "Percobaan belum selesai / riwayat tidak lengkap"
+    if (article.extraction_has_disease or article.extraction_has_location
+            or article.extraction_has_numeric_fact
+            or article.processing_status in (Article.ProcessingStatus.PROCESSED,
+                                              Article.ProcessingStatus.VALIDATED)):
+        return "unknown", "Riwayat belum tercatat"
+    return "unattempted", "Belum pernah dicoba"
+
+
+def queue_rows():
+    rows = []
+    for article in evidence_queryset().select_related("source").order_by("-created_at"):
+        state, label = extraction_state(article)
+        complete = article.extraction_has_linked_fact and article.extraction_primary_count == 1
+        missing = []
+        if not article.extraction_has_disease: missing.append("penyakit")
+        if not article.extraction_has_location: missing.append("lokasi utama")
+        if article.extraction_primary_count > 1: missing.append("lokasi ambigu")
+        if not article.extraction_has_numeric_fact: missing.append("angka")
+        if not complete and not missing: missing.append("keterkaitan bukti")
+        metadata = article.raw_metadata or {}
+        rows.append({"article": article, "state": state, "state_label": label,
+                     "complete": complete, "missing_label": ", ".join(missing),
+                     "attempt_at": metadata.get("extraction_review_attempt_at")
+                         or (metadata.get("processing_pipeline") or {}).get("processed_at") or "—"})
+    return rows
+
+
+def queue_summary(rows):
+    counts = {key: 0 for key in ("unattempted", "running", "attempted", "failed", "unknown", "rejected")}
+    incomplete = complete = 0
+    for row in rows:
+        counts[row["state"]] += 1
+        if row["state"] != "rejected":
+            complete += int(row["complete"])
+            incomplete += int(not row["complete"])
+    counts.update(incomplete=incomplete, complete=complete, total=len(rows))
+    counts["candidate_counts"] = {scope: len(select_batch_ids_from_rows(rows, scope)) for scope in ("unattempted", "incomplete", "failed", "unknown")}
+    return counts
+
+
+def record_extraction_failure(article_id):
+    with transaction.atomic():
+        article = Article.objects.select_for_update().get(pk=article_id)
+        metadata = dict(article.raw_metadata or {})
+        metadata["extraction_review_state"] = "failed"
+        metadata["extraction_review_finished_at"] = timezone.now().isoformat()
+        article.raw_metadata = metadata
+        article.save(update_fields=["raw_metadata", "updated_at"])
+
+
+def select_batch_ids_from_rows(rows, scope):
+    candidates = [row for row in rows if row["state"] not in ("running", "rejected")
+                  and not stage_busy(row["article"], "validation_process")]
+    if scope == "incomplete": candidates = [row for row in candidates if not row["complete"]]
+    else: candidates = [row for row in candidates if row["state"] == scope]
+    return [row["article"].pk for row in candidates]
