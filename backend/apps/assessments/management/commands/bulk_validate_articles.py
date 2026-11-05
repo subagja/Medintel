@@ -344,6 +344,17 @@ class Command(BaseCommand):
             stats["needs_review"] += 1
         else:
             ai_result = self._call_ai_assessment(article, recommendation)
+            information_type = ai_result.get("information_type", "uncertain")
+            # Konteks risiko/pencegahan tidak ditolak hanya karena tiada angka.
+            # Hasil lama/mocks tanpa information_type tetap kompatibel.
+            if (information_type in ("risk_indicator", "prevention_response")
+                    and ai_result["auto_recommendation"] == "recommend_reject"):
+                ai_result["auto_recommendation"] = "needs_review"
+                ai_result["assessment_notes"] = (
+                    str(ai_result.get("assessment_notes", ""))
+                    + " Konteks kesehatan masyarakat: evaluasi analis diperlukan; "
+                      "ketiadaan angka kasus bukan alasan penolakan."
+                )
             if (
                 not evidence_complete
                 and ai_result.get("evidence")
@@ -373,6 +384,7 @@ class Command(BaseCommand):
             relevance_notes = ai_result["relevance_notes"]
             assessment_notes = (
                 "[AI-assisted] " + ai_result["assessment_notes"]
+                + " [Jenis informasi: " + information_type + "]"
                 + assessment_notes_extra
             )
 
@@ -547,6 +559,11 @@ class Command(BaseCommand):
             evidence_quote: str | None
 
         class AIAssessmentResult(BaseModel):
+            # MEDINTEL-PATCH-02A-CONTEXT-CLASSIFICATION
+            information_type: Literal[
+                "case_event", "risk_indicator", "prevention_response",
+                "other", "uncertain",
+            ]
             auto_recommendation: Literal[
                 "recommend_validate",
                 "needs_review",
@@ -583,11 +600,25 @@ Hasil rule engine:
 - alasan sumber: {recommendation.source_reason}
 - alasan informasi: {recommendation.information_reason}
 
+Klasifikasikan jenis informasi terlebih dahulu:
+- case_event: kejadian penyakit/kasus yang dilaporkan.
+- risk_indicator: faktor kerentanan, misalnya penurunan cakupan imunisasi.
+- prevention_response: vaksinasi, pengendalian, atau respons kesehatan.
+- other: tidak terkait penyakit menular dalam lingkup pemantauan.
+- uncertain: jenis informasi belum cukup jelas.
+Artikel vaksinasi yang tidak menyebut jumlah kasus BUKAN otomatis tidak
+relevan. Untuk risk_indicator atau prevention_response yang jelas relevan,
+gunakan needs_review bila data kejadian tidak tersedia. Jangan pernah
+menganggap jumlah kasus kosong sebagai 0 atau mengarang angka.
+Gunakan recommend_reject hanya jika memang tidak relevan berdasarkan
+isi artikel, bukan semata-mata karena angka sakit tidak tersedia.
+Jangan samakan kegiatan vaksinasi dengan bukti terjadinya wabah.
 Nilai apakah artikel relevan sebagai informasi awal surveilans penyakit
 menular. Karena artikel merupakan informasi open source, nilai tertinggi yang
 boleh diberikan adalah C3. Jangan gunakan reliabilitas A/B atau kredibilitas
 1/2. Balas HANYA JSON tanpa markdown:
 {{
+  "information_type": "case_event", "risk_indicator", "prevention_response", "other", atau "uncertain",
   "auto_recommendation": "recommend_validate", "needs_review", atau "recommend_reject",
   "source_reliability": "C", "D", "E", atau "F",
   "information_credibility": angka 3 sampai 6,
