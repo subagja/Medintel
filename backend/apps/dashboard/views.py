@@ -2920,12 +2920,14 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     )
 
     bulk_validation_job = None
-    if has_role(request.user, *Roles.APPROVERS):
+    validation_process_counts = {"new": 0, "updated": 0, "done": 0, "failed": 0}
+    if request.user.is_superuser:
         _fail_stale_bulk_article_validation_jobs()
         bulk_validation_job = BulkArticleValidationJob.objects.first()
+        from apps.assessments.services.process_flags import validation_counts
+        validation_process_counts = validation_counts()
 
-    from apps.assessments.services.process_flags import validation_counts, validation_state, LABELS
-    validation_process_counts = validation_counts()
+    from apps.assessments.services.process_flags import validation_state, LABELS
     for article in page_articles:
         article.validation_process_label = LABELS[validation_state(article)]
     context = {
@@ -2990,6 +2992,10 @@ def article_validation(request: HttpRequest) -> HttpResponse:
 @require_POST
 def bulk_article_validation_start(request: HttpRequest) -> HttpResponse:
     """Antrekan satu batch validasi dan segera kembalikan respons halaman."""
+    if not request.user.is_superuser:
+        raise PermissionDenied(
+            "Hanya Master Admin yang boleh menjalankan validasi otomatis massal."
+        )
     from django.db import IntegrityError
 
     _fail_stale_bulk_article_validation_jobs()
@@ -3027,6 +3033,10 @@ def bulk_article_validation_status(
     request: HttpRequest,
     job_id,
 ) -> JsonResponse:
+    if not request.user.is_superuser:
+        raise PermissionDenied(
+            "Hanya Master Admin yang boleh melihat status validasi otomatis massal."
+        )
     _fail_stale_bulk_article_validation_jobs()
     job = get_object_or_404(BulkArticleValidationJob, pk=job_id)
     return JsonResponse(

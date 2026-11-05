@@ -28,7 +28,7 @@ Validasi Artikel | MEDINTEL OSINT
             </div>
         </div>
 
-        {% if request.user|has_role:"approvers" %}
+        {% if request.user.is_superuser %}
             <div class="col-12 col-md-auto ms-md-auto validation-batch-controls">
                 <form
                     method="post"

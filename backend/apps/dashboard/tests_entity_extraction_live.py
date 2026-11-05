@@ -149,6 +149,18 @@ class EntityExtractionLiveStatusTests(TestCase):
         from apps.assessments.services.extraction_dashboard import select_batch_ids, review_for_extraction
         first = self._create_article("first-attempt")
         second = self._create_article("next-attempt")
+
+        # Urutan batch ditentukan created_at (tertua dahulu), bukan
+        # urutan UUID acak atau resolusi timestamp saat membuat fixture.
+        from datetime import timedelta
+        from django.utils import timezone
+        reference_time = timezone.now()
+        Article.objects.filter(pk=first.pk).update(
+            created_at=reference_time - timedelta(minutes=2)
+        )
+        Article.objects.filter(pk=second.pk).update(
+            created_at=reference_time - timedelta(minutes=1)
+        )
         self.assertEqual(select_batch_ids(1, scope="unknown"), [first.pk])
         with patch("apps.assessments.services.extraction_dashboard.reextract_article_data", return_value=False):
             result = review_for_extraction(first.pk)
