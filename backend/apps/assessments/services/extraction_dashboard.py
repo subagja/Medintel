@@ -11,6 +11,7 @@ from .article_data_review import reextract_article_data
 from .ai_evidence import apply_ai_evidence
 from .process_flags import stage_busy
 from .information_balance import recommend_information_balance
+from .contextual_readiness import contextual_review_info  # MEDINTEL-02B1-CONTEXT-REVIEW-READY
 
 
 def evidence_queryset():
@@ -182,7 +183,7 @@ def extraction_state(article):
 
 def queue_rows():
     rows = []
-    for article in evidence_queryset().select_related("source").order_by("-created_at"):
+    for article in evidence_queryset().select_related("source", "validation_assessment").order_by("-created_at"): 
         state, label = extraction_state(article)
         complete = article.extraction_has_linked_fact and article.extraction_primary_count == 1
         missing = []
@@ -192,7 +193,9 @@ def queue_rows():
         if not article.extraction_has_numeric_fact: missing.append("angka")
         if not complete and not missing: missing.append("keterkaitan bukti")
         metadata = article.raw_metadata or {}
+        context_info = contextual_review_info(article)
         rows.append({"article": article, "state": state, "state_label": label,
+                     **context_info,
                      "complete": complete, "missing_label": ", ".join(missing),
                      "attempt_at": metadata.get("extraction_review_attempt_at")
                          or (metadata.get("processing_pipeline") or {}).get("processed_at") or "—"})
@@ -208,6 +211,9 @@ def queue_summary(rows):
             complete += int(row["complete"])
             incomplete += int(not row["complete"])
     counts.update(incomplete=incomplete, complete=complete, total=len(rows))
+    # Status konteks dihitung TERPISAH; tidak mengubah jumlah bukti kasus lengkap.
+    counts["contextual_articles"] = sum(1 for r in rows if r.get("contextual") and r["state"] != "rejected")
+    counts["context_review_ready"] = sum(1 for r in rows if r.get("context_review_ready") and r["state"] != "rejected")
     counts["candidate_counts"] = {scope: len(select_batch_ids_from_rows(rows, scope)) for scope in ("unattempted", "incomplete", "failed", "unknown")}
     return counts
 
