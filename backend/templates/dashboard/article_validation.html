@@ -11,6 +11,35 @@ Validasi Artikel | MEDINTEL OSINT
 .validation-batch-controls form{width:100%}
 .validation-batch-controls #validation-candidate-hint{line-height:1.5;min-height:36px}
 @media(max-width:767px){.validation-batch-controls{width:100%}}
+
+/* medintel-01b-responsive-panels: layout-only, no changes to Django tags */
+@media (min-width: 992px) {
+  #validation-workspace .medintel-queue-panel,
+  #validation-workspace .medintel-detail-panel { min-height: 0; }
+  #validation-workspace .medintel-queue-panel > .card {
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  }
+  #validation-workspace #article-filter-form { flex: 0 0 auto; }
+  #validation-workspace #article-list {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  }
+  #validation-workspace .medintel-detail-panel > form {
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  #validation-workspace .medintel-detail-panel > form > .card {
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  }
+  #validation-workspace .medintel-detail-panel > form > .card > .card-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  }
+  #validation-workspace .medintel-panel-footer { flex: 0 0 auto; }
+}
+@media (max-width: 991.98px) {
+  #validation-workspace #article-list,
+  #validation-workspace .medintel-detail-panel > form > .card > .card-body {
+    overflow-y: visible; max-height: none;
+  }
+}
 </style>
 
 <div class="page-header d-print-none mb-3">
@@ -1873,7 +1902,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // menempel pada batas bawah viewport.
         const viewportBottomGap = 40;
         const availableHeight = Math.max(
-            940,
+            560,
             Math.floor(window.innerHeight - top - viewportBottomGap)
         );
         validationWorkspace.style.setProperty(
