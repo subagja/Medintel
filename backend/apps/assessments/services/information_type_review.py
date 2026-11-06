@@ -1,0 +1,45 @@
+"""Manual classification of OSINT article type, independent of validation."""
+from django.db import transaction
+from django.utils import timezone
+from apps.articles.models import Article
+
+ALLOWED_CATEGORIES = frozenset({"case_event", "risk_indicator", "prevention_response", "uncertain"})
+METADATA_KEY = "information_type_review"
+
+
+def confirmed_information_type(article):
+    metadata = article.raw_metadata or {}
+    review = metadata.get(METADATA_KEY)
+    if not isinstance(review, dict):
+        return None
+    value = review.get("category")
+    return value if value in ALLOWED_CATEGORIES else None
+
+
+def confirm_information_type(article_id, category, reason, user):
+    if category not in ALLOWED_CATEGORIES:
+        raise ValueError("Kategori tidak dikenali")
+    reason = (reason or "").strip()
+    if len(reason) < 10 or len(reason) > 1000:
+        raise ValueError("Alasan pemeriksaan wajib 10–1000 karakter")
+    with transaction.atomic():
+        article = Article.objects.select_for_update().get(pk=article_id)
+        if article.processing_status == Article.ProcessingStatus.REJECTED:
+            raise ValueError("Artikel yang ditolak tidak dapat diklasifikasi pada antrean ini")
+        metadata = dict(article.raw_metadata or {})
+        history = list(metadata.get("information_type_review_history") or [])
+        prior = metadata.get(METADATA_KEY)
+        if isinstance(prior, dict):
+            history.append(prior)
+        metadata["information_type_review_history"] = history[-50:]
+        metadata[METADATA_KEY] = {
+            "category": category,
+            "reason": reason,
+            "reviewed_at": timezone.now().isoformat(),
+            "reviewed_by_id": user.pk,
+            "reviewed_by": user.get_username(),
+            "source": "manual_analyst",
+        }
+        article.raw_metadata = metadata
+        article.save(update_fields=["raw_metadata", "updated_at"])
+    return metadata[METADATA_KEY]

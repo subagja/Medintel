@@ -15,6 +15,10 @@ _TYPE_PATTERN = re.compile(r"\[Jenis informasi:\s*([a-z_]+)\]", re.IGNORECASE)
 
 def information_type_from_article(article):
     """Baca kategori AI yang terdokumentasi; tidak mengklasifikasi secara heuristik."""
+    from .information_type_review import confirmed_information_type
+    manual = confirmed_information_type(article)
+    if manual is not None:
+        return manual
     try:
         assessment = article.validation_assessment
     except (AttributeError, ObjectDoesNotExist):
@@ -63,8 +67,11 @@ def contextual_review_info(article):
         label = "Konteks relevan — siap ditinjau analis (bukan bukti kasus)"
     else:
         label = "Konteks relevan — penyakit/lokasi perlu dilengkapi"
+    review = (article.raw_metadata or {}).get("information_type_review") or {}
+    verified = isinstance(review, dict) and review.get("category") in KNOWN_TYPES
     return {"information_type": category, "context_review_ready": ready,
             "contextual": contextual, "context_review_label": label,
+            "classification_verified": verified, "classification_reviewer": review.get("reviewed_by", "") if verified else "",
             "context_candidate_type": candidate,
             "context_candidate": bool(candidate),
             "context_candidate_ready": bool(candidate and has_disease and has_single_location)}

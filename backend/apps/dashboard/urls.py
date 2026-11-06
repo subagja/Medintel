@@ -17,6 +17,8 @@ from apps.collection import views as collection_views
 app_name = "dashboard"
 
 urlpatterns = [
+    path('ekstraksi-entitas/<uuid:article_id>/ai-saran/', views.entity_extraction_ai_suggest, name='entity-extraction-ai-suggest'),
+    path('ekstraksi-entitas/<uuid:article_id>/ai-setujui/', views.entity_extraction_ai_approve, name='entity-extraction-ai-approve'),
     path(
         "mutu-evaluasi/",
         quality_views.quality_evaluation_workspace,
@@ -301,6 +303,12 @@ urlpatterns = [
         views.article_extraction_detail,
         name="article-extraction-detail",
     ),
+    path(
+        "ekstraksi-entitas/<uuid:article_id>/klasifikasi/",
+        views.entity_extraction_classify,
+        name="entity-extraction-classify",
+    ),
+
     path(
         "assessment-ancaman/skor-nasional/",
         views.national_risk_dashboard,

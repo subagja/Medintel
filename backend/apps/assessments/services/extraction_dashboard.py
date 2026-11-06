@@ -11,6 +11,7 @@ from .article_data_review import reextract_article_data
 from .ai_evidence import apply_ai_evidence
 from .process_flags import stage_busy
 from .information_balance import recommend_information_balance
+from .extraction_disposition import extraction_disposition  # MEDINTEL-02B7A-EXTRACTION-DISPOSITION
 from .contextual_readiness import contextual_review_info  # MEDINTEL-02B1-CONTEXT-REVIEW-READY
 
 
@@ -194,8 +195,15 @@ def queue_rows():
         if not complete and not missing: missing.append("keterkaitan bukti")
         metadata = article.raw_metadata or {}
         context_info = contextual_review_info(article)
+        disposition = extraction_disposition(article, complete=complete, state=state,
+                                             context_candidate=context_info.get("context_candidate", False))
+        from .ai_information_type import suggestion_for
+        ai_type_suggestion = suggestion_for(article)
         rows.append({"article": article, "state": state, "state_label": label,
                      **context_info,
+                     "disposition": disposition["code"], "disposition_label": disposition["label"],
+                     "needs_human_review": disposition["needs_human_review"],
+                     "ai_type_suggestion": ai_type_suggestion,
                      "complete": complete, "missing_label": ", ".join(missing),
                      "attempt_at": metadata.get("extraction_review_attempt_at")
                          or (metadata.get("processing_pipeline") or {}).get("processed_at") or "—"})
@@ -217,6 +225,9 @@ def queue_summary(rows):
     # MEDINTEL-02B3-CONTEXT-CANDIDATES: indikasi judul, bukan bukti kasus.
     counts["context_candidates"] = sum(1 for r in rows if r.get("context_candidate") and r["state"] != "rejected")
     counts["context_candidates_ready"] = sum(1 for r in rows if r.get("context_candidate_ready") and r["state"] != "rejected")
+    counts["extraction_dispositions"] = {key: sum(1 for r in rows if r.get("disposition") == key)
+        for key in ("case_evidence_ready", "context_ready", "context_missing", "needs_evidence",
+                    "no_new_evidence", "classification_review", "technical_issue", "running", "excluded")}
     counts["candidate_counts"] = {scope: len(select_batch_ids_from_rows(rows, scope)) for scope in ("unattempted", "incomplete", "failed", "unknown")}
     return counts
 

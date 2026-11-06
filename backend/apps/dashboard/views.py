@@ -1650,6 +1650,26 @@ def article_validation(request: HttpRequest) -> HttpResponse:
     if workspace_mode not in {"queue", "history"}:
         workspace_mode = "queue"
 
+    # MEDINTEL-02B6C-DEEP-LINK: klik Tinjau dari Ekstraksi harus
+    # membuka artikel yang sama, termasuk artikel yang sudah dinilai.
+    if request.method == "GET" and request.GET.get("from_extraction") == "1" and request.GET.get("article"):
+        from uuid import UUID
+        try:
+            requested_validation_id = UUID(request.GET["article"])
+        except (TypeError, ValueError, AttributeError):
+            requested_validation_id = None
+        if requested_validation_id is not None:
+            decision = ArticleValidationAssessment.objects.filter(
+                article_id=requested_validation_id
+            ).values_list("validation_status", flat=True).first()
+            if decision in {
+                ArticleValidationAssessment.ValidationStatus.VALIDATED,
+                ArticleValidationAssessment.ValidationStatus.REJECTED,
+            }:
+                workspace_mode = "history"
+            else:
+                workspace_mode = "queue"
+
     eligibility_filter = (
         request.POST.get("eligibility")
         or request.GET.get("eligibility")
@@ -6474,3 +6494,60 @@ def report_document_export_pdf(
         f'attachment; filename="laporan_{report.report_date}.pdf"'
     )
     return response
+
+
+# MEDINTEL-02B5-MANUAL-CLASSIFICATION
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def entity_extraction_classify(request: HttpRequest, article_id) -> HttpResponse:
+    from apps.assessments.services.information_type_review import confirm_information_type
+    category = request.POST.get("category", "")
+    reason = request.POST.get("reason", "")
+    try:
+        confirm_information_type(article_id, category, reason, request.user)
+        messages.success(request, "Kategori artikel tersimpan; status validasi tidak berubah.")
+    except (ValueError, Article.DoesNotExist) as exc:
+        messages.error(request, str(exc))
+    scope = request.POST.get("scope", "all")
+    if scope not in {"all", "context_candidate", "context_candidate_ready", "incomplete", "complete"}:
+        scope = "all"
+    return redirect(reverse("dashboard:entity-extraction") + "?scope=" + scope)
+
+
+# MEDINTEL-02B6-AI-SUGGESTION
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def entity_extraction_ai_suggest(request: HttpRequest, article_id) -> HttpResponse:
+    from apps.assessments.services.ai_information_type import request_suggestion, approve_suggestion
+    if request.POST.get("approve") == "1" and not request.user.is_superuser:
+        raise PermissionDenied("Persetujuan langsung hanya untuk Master Admin")
+    try:
+        request_suggestion(article_id)
+        if request.POST.get("approve") == "1":
+            approve_suggestion(article_id, request.user)
+            messages.success(request, "Rekomendasi AI langsung dikonfirmasi oleh Master Admin.")
+        else:
+            messages.success(request, "Rekomendasi AI tersimpan. Analis dapat meninjau dan mengonfirmasi sendiri.")
+    except (ValueError, RuntimeError, Article.DoesNotExist) as exc:
+        messages.error(request, "Klasifikasi AI gagal: " + str(exc)[:230])
+    scope = request.POST.get("scope", "all")
+    if scope not in {"all", "context_candidate", "context_candidate_ready", "incomplete", "complete"}:
+        scope = "all"
+    return redirect(reverse("dashboard:entity-extraction") + "?scope=" + scope)
+
+
+@require_role(Roles.ADMIN, Roles.ANALYST)
+@require_POST
+def entity_extraction_ai_approve(request: HttpRequest, article_id) -> HttpResponse:
+    if not request.user.is_superuser:
+        raise PermissionDenied("Persetujuan langsung hanya untuk Master Admin")
+    from apps.assessments.services.ai_information_type import approve_suggestion
+    try:
+        approve_suggestion(article_id, request.user)
+        messages.success(request, "Rekomendasi AI berhasil disetujui.")
+    except (ValueError, Article.DoesNotExist) as exc:
+        messages.error(request, str(exc))
+    scope = request.POST.get("scope", "all")
+    if scope not in {"all", "context_candidate", "context_candidate_ready", "incomplete", "complete"}:
+        scope = "all"
+    return redirect(reverse("dashboard:entity-extraction") + "?scope=" + scope)

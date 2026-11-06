@@ -18,6 +18,45 @@
 .extraction-ui .ex-run-help{font-size:12px;color:#637992;margin-top:8px}
 .extraction-ui .ex-result-note{font-size:11px;color:#718096;margin-top:5px}
 @media(max-width:650px){.extraction-ui .ex-context-summary{grid-template-columns:1fr}}
+
+/* MEDINTEL-02B6-AI-CLASSIFICATION */
+.extraction-ui .ex-ai-proposal{margin:9px 0;padding:9px;border:1px solid #d5e7fa;border-radius:7px;background:#f3f8ff;font-size:11px;line-height:1.5}
+.extraction-ui .ex-ai-action{margin:6px 0}
+.extraction-ui .ex-ai-action button{white-space:normal;text-align:left}
+
+/* MEDINTEL-02B6A-REVIEW-WORKSPACE */
+.extraction-ui .ex-review-launch{margin-top:9px;display:block}
+.extraction-ui .ex-review-workspace{border:1px solid #9bbff0;box-shadow:0 8px 30px rgba(19,61,115,.07)}
+.extraction-ui .ex-review-workspace .card-header{background:#f6f9ff}
+.extraction-ui .ex-review-workspace .ex-workspace-note{font-size:12px;color:#60758b;line-height:1.6}
+.extraction-ui .ex-review-workspace .ex-review-form{border-top:0;padding-top:14px;font-size:13px}
+.extraction-ui .ex-review-workspace .ex-review-form summary{font-size:14px}
+.extraction-ui .ex-review-workspace .ex-review-form label{font-size:12px}
+.extraction-ui .ex-review-workspace .ex-review-form form{display:grid;grid-template-columns:minmax(170px,1fr) 2fr;gap:12px;align-items:end}
+.extraction-ui .ex-review-workspace .ex-review-form form label{grid-column:1/-1;margin-bottom:-9px}
+.extraction-ui .ex-review-workspace .ex-review-form form select,
+.extraction-ui .ex-review-workspace .ex-review-form form textarea{grid-column:1/-1}
+.extraction-ui .ex-review-workspace .ex-review-form form button{justify-self:end;grid-column:1/-1}
+.extraction-ui .ex-review-workspace .ex-ai-proposal{font-size:13px;padding:16px;border-radius:10px}
+.extraction-ui .ex-review-workspace .ex-ai-action{display:inline-block;margin:9px 8px 9px 0}
+.extraction-ui .ex-review-workspace .ex-ai-action button{text-align:center}
+@media(max-width:650px){.extraction-ui .ex-review-workspace .ex-review-form form{grid-template-columns:1fr}}
+
+/* MEDINTEL-02B5-CLASSIFY-UI */
+.extraction-ui .ex-review-form{margin-top:8px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:12px}
+.extraction-ui .ex-review-form summary{cursor:pointer;color:#1558a5;font-weight:600}
+.extraction-ui .ex-review-form form{margin-top:8px;display:grid;gap:6px}
+.extraction-ui .ex-review-form label{font-size:11px;color:#52657a}
+.extraction-ui .ex-confirmation{margin-top:8px;color:#0c7654;font-size:11px;font-weight:600}
+/* MEDINTEL-02B6A-ROLE-SPLIT */
+.extraction-ui .ex-review-inline{margin-top:10px;padding-top:8px;border-top:1px solid #e3eaf3}
+.extraction-ui .ex-review-inline .ex-ai-proposal{font-size:11px;padding:10px}
+.extraction-ui .ex-review-inline .ex-review-form form{display:grid;grid-template-columns:1fr;gap:8px}
+.extraction-ui .ex-review-inline .ex-review-form select,.extraction-ui .ex-review-inline .ex-review-form textarea{max-width:100%;min-width:0}
+.extraction-ui .ex-review-inline .ex-ai-action{margin:5px 5px 5px 0}
+/* MEDINTEL-02B6C-AUTO-RECOMMENDATION */
+.extraction-ui .ex-use-ai{margin-top:6px;white-space:normal;text-align:left}
+.extraction-ui .ex-auto-pending{color:#576b83;background:#f7f9fd;border:1px dashed #c8d8eb;border-radius:7px;padding:9px;margin:6px 0;font-size:11px;line-height:1.5}
 </style><div class="extraction-ui">
 
 <div
@@ -79,6 +118,19 @@
 {% endif %}
 
 <div id="extraction-batch-detail" class="card mb-3 d-none"><div class="card-body"><h3 class="card-title">Hasil batch terakhir</h3><progress id="extraction-progress" class="w-100" max="100" value="0"></progress><p id="extraction-batch-counts"></p><p id="extraction-batch-delta" class="text-secondary small"></p><details><summary>Lihat rincian 20 artikel terakhir dalam batch</summary><ul id="extraction-batch-results" class="mt-2 mb-0 ex-batch-results"></ul></details></div></div>
+{% if request.user.is_superuser %}
+<!-- MEDINTEL-02B6A: Penilaian kategori terpusat, bukan formulir per baris -->
+<div class="card mb-3 ex-review-workspace" id="ex-classification-workspace" hidden aria-live="polite">
+  <div class="card-header d-flex justify-content-between align-items-start gap-3">
+    <div><h3 class="card-title mb-1">Detail Penilaian Kategori</h3><div class="ex-workspace-note" id="ex-classification-article-title">Pilih artikel dari daftar.</div></div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="ex-classification-close">Tutup</button>
+  </div>
+  <div class="card-body">
+    <p class="ex-workspace-note">Rekomendasi AI adalah saran awal. Gunakan rekomendasi untuk membantu pengisian; keputusan akhir tetap disimpan oleh pemeriksa, kecuali aksi persetujuan langsung khusus Master Admin.</p>
+    <div id="ex-classification-content"></div>
+  </div>
+</div>
+{% endif %}
 <div class="card"><div class="card-header"><h3 class="card-title">Antrean dan hasil ekstraksi</h3></div>
 <div class="card-body"><form method="get" class="d-flex gap-2"><input type="hidden" name="scope" value="{{ extraction_scope }}"><select class="form-select" name="history" style="max-width:230px"><option value="all">Semua riwayat proses</option><option value="unattempted" {% if extraction_history == "unattempted" %}selected{% endif %}>Belum diekstraksi</option><option value="attempted" {% if extraction_history == "attempted" %}selected{% endif %}>Sudah diekstraksi</option><option value="failed" {% if extraction_history == "failed" %}selected{% endif %}>Gagal</option><option value="running" {% if extraction_history == "running" %}selected{% endif %}>Sedang diproses</option><option value="unknown" {% if extraction_history == "unknown" %}selected{% endif %}>Riwayat belum tercatat</option></select><input name="q" class="form-control" placeholder="Cari judul artikel" value="{{ extraction_search }}"><button class="btn btn-outline-primary">Cari</button><a class="btn btn-outline-secondary" href="?scope=all">Semua</a></form></div>
 <div class="table-responsive ex-table-wrap"><table class="table table-vcenter card-table"><thead><tr><th style="width:45%">Artikel / sumber</th><th style="width:20%">Proses ekstraksi</th><th style="width:20%">Kelengkapan bukti kejadian / konteks</th><th style="width:15%">Status artikel</th></tr></thead><tbody>
@@ -91,13 +143,111 @@
 <td><span class="ex-muted">{{ row.state_label }}</span><span class="ex-history">{{ row.attempt_at }}</span>{% if row.state == 'unknown' %}<div class="ex-result-note">Riwayat belum dapat memastikan kapan ekstraksi dijalankan</div>{% endif %}</td>
 <td>{% if row.complete %}<span class="badge bg-success-lt">Bukti kasus lengkap</span>{% else %}<span class="badge bg-warning-lt">Bukti kasus belum lengkap</span><div class="text-secondary small">Kurang: {{ row.missing_label }}</div>{% endif %}
 {% if row.context_candidate_ready %}<div class="ex-result-note"><strong>Kandidat konteks siap ditinjau</strong> · bukan bukti kasus</div>{% elif row.context_candidate %}<div class="ex-result-note">Kandidat konteks; penyakit/lokasi perlu diperiksa</div>{% elif row.context_review_ready %}<div class="ex-result-note">Konteks tercatat, siap ditinjau</div>{% endif %}</td>
-<td><span class="badge bg-secondary-lt">{{ row.article.get_processing_status_display }}</span><div class="ex-result-note">Status artikel, bukan status ekstraksi</div><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">Tinjau</a></div></td>
+<td><span class="badge bg-secondary-lt">{{ row.article.get_processing_status_display }}</span><div class="ex-result-note">Status artikel, bukan status ekstraksi</div><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-validation' %}?article={{ row.article.id }}&amp;from_extraction=1" title="Buka artikel ini di Validasi Artikel">Tinjau di Validasi</a></div>
+{% if request.user.is_superuser %}<button type="button" class="btn btn-sm btn-outline-primary ex-review-launch" data-review-id="{{ row.article.id }}" data-review-title="{{ row.article.title }}">Penilaian Kategori</button>{% endif %}
+{% if request.user.is_superuser %}<div class="ex-review-source" id="ex-review-{{ row.article.id }}" hidden>{% else %}<div class="ex-review-inline">{% endif %}
+{% if not row.ai_type_suggestion and row.state != 'rejected' and not row.classification_verified %}
+<div class="ex-auto-pending">Rekomendasi AI belum tersedia. Worker klasifikasi akan menyiapkan saran; muat ulang halaman setelah prosesnya selesai.</div>
+{% endif %}
+{% if row.ai_type_suggestion %}
+<div class="ex-ai-proposal"><strong>Rekomendasi AI (belum disetujui):</strong> {% if row.ai_type_suggestion.category == 'case_event' %}Kejadian penyakit{% elif row.ai_type_suggestion.category == 'risk_indicator' %}Faktor risiko{% elif row.ai_type_suggestion.category == 'prevention_response' %}Pencegahan / respons{% else %}Belum dapat dipastikan{% endif %}
+<div class="ex-muted">{{ row.ai_type_suggestion.reason }}</div><div class="ex-muted">Model: {{ row.ai_type_suggestion.model }} · {{ row.ai_type_suggestion.created_at }}</div></div>
+{% if request.user|has_role:"Admin,Analyst" and row.state != 'rejected' %}
+<button type="button" class="btn btn-sm btn-outline-primary ex-use-ai" data-category="{{ row.ai_type_suggestion.category }}" data-reason="{{ row.ai_type_suggestion.reason }}">Gunakan Rekomendasi</button>
+{% endif %}
+{% endif %}
+{% if request.user|has_role:"Admin,Analyst" and row.state != 'rejected' %}
+<form method="post" action="{% url 'dashboard:entity-extraction-ai-suggest' row.article.id %}" class="ex-ai-action">{% csrf_token %}<input type="hidden" name="scope" value="{{ extraction_scope }}"/><input type="hidden" name="approve" value="0"/><button type="submit" class="btn btn-sm btn-outline-primary">{% if row.ai_type_suggestion %}Perbarui saran AI{% else %}Minta saran AI{% endif %}</button></form>
+{% if request.user.is_superuser %}
+<form method="post" action="{% url 'dashboard:entity-extraction-ai-suggest' row.article.id %}" class="ex-ai-action">{% csrf_token %}<input type="hidden" name="scope" value="{{ extraction_scope }}"/><input type="hidden" name="approve" value="1"/><button type="submit" class="btn btn-sm btn-primary">AI + Setujui (Master Admin)</button></form>
+{% if row.ai_type_suggestion %}<form method="post" action="{% url 'dashboard:entity-extraction-ai-approve' row.article.id %}" class="ex-ai-action">{% csrf_token %}<input type="hidden" name="scope" value="{{ extraction_scope }}"/><button type="submit" class="btn btn-sm btn-outline-success">Setujui saran AI tersimpan</button></form>{% endif %}
+{% endif %}
+{% endif %}
+{% if row.classification_verified %}<div class="ex-confirmation">Terkonfirmasi: {% if row.information_type == 'case_event' %}Kejadian penyakit{% elif row.information_type == 'risk_indicator' %}Faktor risiko{% elif row.information_type == 'prevention_response' %}Pencegahan / respons{% else %}Belum dapat dipastikan{% endif %}<div class="ex-muted">{{ row.classification_reviewer }}</div></div>{% endif %}
+{% if request.user|has_role:"Admin,Analyst" and row.state != 'rejected' %}
+<details class="ex-review-form"><summary>Konfirmasi kategori</summary>
+<form method="post" action="{% url 'dashboard:entity-extraction-classify' row.article.id %}">
+{% csrf_token %}
+<input type="hidden" name="scope" value="{{ extraction_scope }}">
+<label for="category-{{ row.article.id }}">Jenis informasi</label>
+<select id="category-{{ row.article.id }}" name="category" class="form-select form-select-sm" required>
+<option value="">Pilih kategori</option>
+<option value="case_event" {% if row.classification_verified and row.information_type == 'case_event' %}selected{% endif %}>Kejadian penyakit</option>
+<option value="risk_indicator" {% if row.classification_verified and row.information_type == 'risk_indicator' %}selected{% endif %}>Faktor risiko</option>
+<option value="prevention_response" {% if row.classification_verified and row.information_type == 'prevention_response' %}selected{% endif %}>Pencegahan / respons</option>
+<option value="uncertain" {% if row.classification_verified and row.information_type == 'uncertain' %}selected{% endif %}>Belum dapat dipastikan</option>
+</select>
+<label for="reason-{{ row.article.id }}">Alasan pemeriksaan</label>
+<textarea id="reason-{{ row.article.id }}" name="reason" class="form-control form-control-sm" rows="2" minlength="10" maxlength="1000" required placeholder="Dasar klasifikasi (minimal 10 karakter)"></textarea>
+<button class="btn btn-sm btn-primary mt-2" type="submit">Simpan klasifikasi</button>
+</form></details>
+{% endif %}
+</div></td>
 </tr>{% empty %}<tr><td colspan="4" class="text-center py-4">Tidak ada artikel pada kelompok ini.</td></tr>{% endfor %}
 </tbody></table></div><div class="card-footer ex-footer d-flex justify-content-between"><span>{{ extraction_page.paginator.count }} artikel · halaman {{ extraction_page.number }} / {{ extraction_page.paginator.num_pages }}</span><div>{% if extraction_page.has_previous %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.previous_page_number }}">Sebelumnya</a>{% endif %}{% if extraction_page.has_next %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.next_page_number }}">Berikutnya</a>{% endif %}</div></div></div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script>
+// MEDINTEL-02B6C: apply precomputed suggestion to form, never auto-submit.
+document.addEventListener('click', (event) => {
+    const button = event.target.closest('.ex-use-ai');
+    if (!button) return;
+    const container = button.closest('.ex-review-source, .ex-review-inline');
+    if (!container) return;
+    const details = container.querySelector('details.ex-review-form');
+    const form = details ? details.querySelector('form') : null;
+    if (!form) return;
+    const category = form.querySelector('[name="category"]');
+    const reason = form.querySelector('[name="reason"]');
+    if (!category || !reason) return;
+    if (![...category.options].some(opt => opt.value === button.dataset.category)) return;
+    details.open = true;
+    category.value = button.dataset.category;
+    reason.value = button.dataset.reason || '';
+    form.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+});
+</script>
+<script>
+// MEDINTEL-02B6A: move existing role-aware forms into the full-width review panel.
+(() => {
+    const workspace = document.getElementById('ex-classification-workspace');
+    const content = document.getElementById('ex-classification-content');
+    const title = document.getElementById('ex-classification-article-title');
+    const close = document.getElementById('ex-classification-close');
+    if (!workspace || !content || !title || !close) return;
+    let active = null;
+    function reset() {
+        if (active && active.home) { active.node.hidden = true; active.home.appendChild(active.node); }
+        active = null;
+        workspace.hidden = true;
+        title.textContent = 'Pilih artikel dari daftar.';
+    }
+    document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-review-id]');
+        if (!trigger) return;
+        const id = trigger.getAttribute('data-review-id');
+        const node = document.getElementById(`ex-review-${id}`);
+        if (!node) return;
+        if (active && active.node === node) {
+            workspace.scrollIntoView({behavior:'smooth',block:'start'});
+            return;
+        }
+        reset();
+        const home = node.parentNode;
+        content.appendChild(node);
+        node.hidden = false;
+        active = {node,home};
+        title.textContent = trigger.getAttribute('data-review-title') || 'Artikel terpilih';
+        workspace.hidden = false;
+        const details = node.querySelector('details.ex-review-form');
+        if (details) details.open = true;
+        workspace.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+    close.addEventListener('click', reset);
+})();
+</script>
 <script>
 (() => {
     const params = new URLSearchParams(window.location.search);
