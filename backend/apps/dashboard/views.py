@@ -5434,13 +5434,17 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     selected = request.GET.get("scope", "all")
     search = request.GET.get("q", "").strip()
     history = request.GET.get("history", "all")
-    allowed = {"all", "unattempted", "running", "attempted", "failed", "unknown", "rejected", "incomplete", "complete", "context_ready", "context_pending"}  # MEDINTEL-02B2-CONTEXT-FILTERS
+    allowed = {"all", "unattempted", "running", "attempted", "failed", "unknown", "rejected", "incomplete", "complete", "context_ready", "context_pending", "context_candidate", "context_candidate_ready"}  # MEDINTEL-02B4-CANDIDATE-FILTERS  # MEDINTEL-02B2-CONTEXT-FILTERS
     if selected not in allowed: selected = "all"
     filtered = rows
     if selected == "context_ready":
         filtered = [row for row in rows if row["context_review_ready"] and row["state"] != "rejected"]
     elif selected == "context_pending":
         filtered = [row for row in rows if row["contextual"] and not row["context_review_ready"] and row["state"] != "rejected"]
+    elif selected == "context_candidate":
+        filtered = [row for row in rows if row.get("context_candidate") and row["state"] != "rejected"]
+    elif selected == "context_candidate_ready":
+        filtered = [row for row in rows if row.get("context_candidate_ready") and row["state"] != "rejected"]
     elif selected == "incomplete":
         filtered = [row for row in rows if not row["complete"] and row["state"] != "rejected"]
     elif selected == "complete":

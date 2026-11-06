@@ -6,6 +6,18 @@
 {% block content %}
 <style>
 .extraction-ui{--ex-blue:#124b91;--ex-line:#e2e8f0;color:#24364b}.extraction-ui .page-title{font-size:26px;font-weight:700}.extraction-ui .card{box-shadow:none;border:1px solid var(--ex-line);border-radius:12px;overflow:hidden}.extraction-ui .card-header{padding:18px 22px;background:#fff}.extraction-ui .card-body{padding:22px}.extraction-ui .card-title{font-size:16px;font-weight:600}.extraction-ui .ex-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.extraction-ui .ex-stat{background:#fff;border:1px solid var(--ex-line);border-radius:12px;padding:20px;text-decoration:none;color:inherit}.extraction-ui .ex-stat.primary{background:#103d73;color:white;border-color:#103d73}.extraction-ui .ex-stat .ex-value{font-size:32px;font-weight:700;line-height:1.2;margin:9px 0}.extraction-ui .ex-stat .ex-note{font-size:12px;opacity:.75}.extraction-ui .ex-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.extraction-ui .ex-tab{padding:8px 13px;background:white;border:1px solid var(--ex-line);border-radius:8px;color:#52657a;text-decoration:none;font-size:13px}.extraction-ui .ex-tab.active{background:#eaf2ff;border-color:#90b7ec;color:#124b91;font-weight:600}.extraction-ui .ex-run-grid{display:grid;grid-template-columns:2fr 1fr auto;gap:16px;align-items:end}.extraction-ui .ex-options{display:flex;gap:24px;flex-wrap:wrap;padding-top:18px;margin-top:18px;border-top:1px solid var(--ex-line)}.extraction-ui .ex-options label{font-size:13px}.extraction-ui .ex-search{display:flex;gap:10px;align-items:center}.extraction-ui .ex-table-wrap{max-height:620px;overflow:auto}.extraction-ui table{table-layout:fixed;min-width:850px}.extraction-ui thead th{position:sticky;top:0;background:#f5f8fc;z-index:1;padding:13px 18px;font-size:11px;letter-spacing:.04em}.extraction-ui tbody td{padding:16px 18px;vertical-align:top;font-size:13px;border-bottom:1px solid #edf1f6}.extraction-ui tbody tr:hover{background:#f8faff}.extraction-ui .ex-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:500;line-height:1.6;color:#183e69}.extraction-ui .ex-source{margin-top:5px;font-size:11px;color:#7b899a}.extraction-ui .ex-muted{font-size:12px;color:#78879a}.extraction-ui .badge{font-size:11px;padding:5px 8px;font-weight:500;white-space:normal}.extraction-ui .ex-history{display:block;margin-top:6px;font-size:11px;color:#8a96a5;overflow-wrap:anywhere}.extraction-ui .ex-intro{max-width:740px;line-height:1.7}.extraction-ui .ex-footer{padding:14px 22px}.extraction-ui .ex-legend{font-size:12px;color:#748398;margin:10px 0 20px}.extraction-ui .ex-batch-results{max-height:260px;overflow:auto}.extraction-ui .btn-primary{background:#1558a5}.extraction-ui .ex-actions{display:flex;gap:10px;align-items:center}@media(max-width:900px){.extraction-ui .ex-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.extraction-ui .ex-run-grid{grid-template-columns:1fr 1fr}.extraction-ui .ex-run-grid button{grid-column:1/-1}.extraction-ui .ex-options{gap:12px}}@media(max-width:560px){.extraction-ui .ex-stat{padding:14px}.extraction-ui .ex-value{font-size:26px}.extraction-ui .card-body{padding:16px}.extraction-ui .ex-run-grid{grid-template-columns:1fr}.extraction-ui .ex-search{flex-wrap:wrap}}
+
+/* MEDINTEL-02B4: penjelasan status dan antrean */
+.extraction-ui .ex-context-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:-5px 0 18px}
+.extraction-ui .ex-context-box{padding:15px 18px;border-radius:10px;border:1px solid #d8e5f4;background:#f7faff}
+.extraction-ui .ex-context-box strong{display:block;font-size:24px;color:#154d8b;margin:4px 0}
+.extraction-ui .ex-context-box small{display:block;color:#667b92;line-height:1.5}
+.extraction-ui .ex-guide{border:1px solid #dce6f2;background:#f8fbff;padding:13px 16px;border-radius:10px;margin-bottom:18px;font-size:12px;line-height:1.7}
+.extraction-ui .ex-type-badge{display:inline-block;margin-top:7px;padding:3px 7px;background:#eaf2ff;color:#194f8a;border-radius:5px;font-size:11px}
+.extraction-ui .ex-type-badge.ex-confirmed{background:#e6f6ee;color:#176340}
+.extraction-ui .ex-run-help{font-size:12px;color:#637992;margin-top:8px}
+.extraction-ui .ex-result-note{font-size:11px;color:#718096;margin-top:5px}
+@media(max-width:650px){.extraction-ui .ex-context-summary{grid-template-columns:1fr}}
 </style><div class="extraction-ui">
 
 <div
@@ -26,22 +38,41 @@
             <div class="page-pretitle">Pengumpulan dan Pengolahan</div>
             <h2 class="page-title">Ekstraksi Entitas</h2>
             <div class="text-secondary mt-1">
-                Pantau sisa antrean, jalankan ekstraksi, dan periksa bukti yang masih kurang sebelum validasi.
+                Pisahkan status proses, kelengkapan bukti kejadian, dan kandidat konteks sebelum melakukan pelengkapan.
             </div>
         </div>
     </div>
 </div>
 
-<div class="ex-stats"><a class="ex-stat primary" href="?scope=incomplete"><div>Perlu pelengkapan</div><div class="ex-value" data-extraction-queue="incomplete">{{ extraction_queue.incomplete }}</div><div class="ex-note">Bukti inti masih perlu dilengkapi</div></a><a class="ex-stat " href="?scope=unattempted"><div>Belum pernah dicoba</div><div class="ex-value" data-extraction-queue="unattempted">{{ extraction_queue.unattempted }}</div><div class="ex-note">Antrean ekstraksi pertama</div></a><a class="ex-stat " href="?scope=complete"><div>Bukti lengkap</div><div class="ex-value" data-extraction-queue="complete">{{ extraction_queue.complete }}</div><div class="ex-note">Memenuhi kelengkapan data inti</div></a><a class="ex-stat " href="?scope=rejected"><div>Dikecualikan</div><div class="ex-value" data-extraction-queue="rejected">{{ extraction_queue.rejected }}</div><div class="ex-note">Artikel ditolak tidak masuk batch</div></a></div><nav class="ex-tabs" aria-label="Kelengkapan bukti"><a class="ex-tab {% if extraction_scope == "incomplete" %}active{% endif %}" href="?scope=incomplete">Perlu pelengkapan</a><a class="ex-tab {% if extraction_scope == "complete" %}active{% endif %}" href="?scope=complete">Lengkap</a><a class="ex-tab {% if extraction_scope == "rejected" %}active{% endif %}" href="?scope=rejected">Dikecualikan</a><a class="ex-tab {% if extraction_scope == "all" %}active{% endif %}" href="?scope=all">Semua</a></nav><div class="ex-legend">Sudah diekstraksi menunjukkan proses pernah selesai; kelengkapan bukti ditampilkan terpisah. Riwayat lama belum memiliki catatan percobaan yang lengkap.</div>{% if request.user|has_role:"Admin,Analyst" %}
+<div class="ex-stats">
+  <a class="ex-stat primary" href="?scope=incomplete"><div>Bukti kasus belum lengkap</div><div class="ex-value" data-extraction-queue="incomplete">{{ extraction_queue.incomplete }}</div><div class="ex-note">Bukan otomatis gagal ekstraksi; artikel konteks bisa tidak memiliki angka kasus</div></a>
+  <a class="ex-stat" href="?scope=unknown"><div>Riwayat belum jelas</div><div class="ex-value" data-extraction-queue="unknown">{{ extraction_queue.unknown }}</div><div class="ex-note">Riwayat belum tercatat atau perlu ditelusuri</div></a>
+  <a class="ex-stat" href="?scope=complete"><div>Bukti kasus lengkap</div><div class="ex-value" data-extraction-queue="complete">{{ extraction_queue.complete }}</div><div class="ex-note">Bukti numerik terkait penyakit dan lokasi utama</div></a>
+  <a class="ex-stat" href="?scope=rejected"><div>Dikecualikan</div><div class="ex-value" data-extraction-queue="rejected">{{ extraction_queue.rejected }}</div><div class="ex-note">Artikel berstatus ditolak</div></a>
+</div>
+<div class="ex-context-summary" aria-label="Kandidat informasi kontekstual">
+  <div class="ex-context-box"><div>Kandidat konteks (petunjuk judul)</div><strong data-extraction-queue="context_candidates">{{ extraction_queue.context_candidates|default:0 }}</strong><small>Vaksinasi atau faktor risiko; belum menjadi keputusan klasifikasi</small><a href="?scope=context_candidate" class="small">Lihat kandidat konteks</a></div>
+  <div class="ex-context-box"><div>Kandidat siap ditinjau</div><strong data-extraction-queue="context_candidates_ready">{{ extraction_queue.context_candidates_ready|default:0 }}</strong><small>Sudah memiliki indikasi penyakit dan satu lokasi utama; tetap perlu verifikasi analis</small><a href="?scope=context_candidate_ready" class="small">Lihat yang siap ditinjau</a></div>
+</div>
+<nav class="ex-tabs" aria-label="Filter artikel ekstraksi">
+  <a class="ex-tab {% if extraction_scope == 'all' %}active{% endif %}" href="?scope=all">Semua artikel</a>
+  <a class="ex-tab {% if extraction_scope == 'incomplete' %}active{% endif %}" href="?scope=incomplete">Bukti kasus belum lengkap</a>
+  <a class="ex-tab {% if extraction_scope == 'complete' %}active{% endif %}" href="?scope=complete">Bukti kasus lengkap</a>
+  <a class="ex-tab {% if extraction_scope == 'context_candidate' %}active{% endif %}" href="?scope=context_candidate">Kandidat konteks</a>
+  <a class="ex-tab {% if extraction_scope == 'context_candidate_ready' %}active{% endif %}" href="?scope=context_candidate_ready">Siap ditinjau</a>
+  <a class="ex-tab {% if extraction_scope == 'rejected' %}active{% endif %}" href="?scope=rejected">Dikecualikan</a>
+</nav>
+<div class="ex-guide"><strong>Cara membaca status:</strong> <b>Proses ekstraksi</b> menjelaskan apakah sistem pernah bekerja; <b>bukti kejadian</b> menjelaskan apakah penyakit, lokasi utama, dan fakta numerik sudah terhubung; <b>kandidat konteks</b> hanya petunjuk awal dari judul. Artikel vaksinasi tidak wajib memuat jumlah pasien. <b>Angka yang tidak disebutkan bukan nol.</b> Kategori konteks belum mengubah status validasi.</div>
+{% if request.user|has_role:"Admin,Analyst" %}
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title">Jalankan Ekstraksi</h3></div>
     <div class="card-body">
         <form method="post" action="{% url 'dashboard:entity-extraction-run' %}" id="entity-extraction-form">
-{% csrf_token %}<div class="ex-run-grid"><div><label class="form-label">Artikel yang akan diproses</label><select name="scope" class="form-select"><option value="unattempted" selected>Batch pertama: belum pernah dicoba</option><option value="incomplete" >Proses ulang: bukti belum lengkap</option><option value="unknown" >Periksa riwayat belum tercatat</option><option value="failed" >Coba ulang yang gagal</option></select></div><div><label class="form-label">Jumlah per batch</label><input type="number" name="limit" value="50" min="1" max="2000" class="form-control"></div><button type="submit" class="btn btn-primary px-4" id="entity-extraction-submit">Mulai ekstraksi</button></div>
+{% csrf_token %}<div class="ex-run-grid"><div><label class="form-label">Artikel yang akan diproses</label><select name="scope" class="form-select" required><option value="" selected disabled>Pilih antrean yang akan diproses</option><option value="unattempted">Belum pernah dicoba ({{ extraction_queue.candidate_counts.unattempted }})</option><option value="unknown">Riwayat belum jelas ({{ extraction_queue.candidate_counts.unknown }})</option><option value="incomplete">Perlu pelengkapan ulang ({{ extraction_queue.candidate_counts.incomplete }})</option><option value="failed">Gagal ekstraksi ({{ extraction_queue.candidate_counts.failed }})</option></select></div><div><label class="form-label">Jumlah per batch</label><input type="number" name="limit" value="50" min="1" max="2000" class="form-control"></div><button type="submit" class="btn btn-primary px-4" id="entity-extraction-submit">Mulai ekstraksi</button></div>
 <div class="ex-options"><label class="form-check"><input class="form-check-input" type="checkbox" name="with_ai" value="1" id="extraction-ai" checked><span class="form-check-label">Bantu pelengkapan dengan AI <span class="ex-muted">· maks. 50 artikel</span></span></label><span class="ex-muted">Artikel lengkap dikecualikan dari pelengkapan.</span></div>
 <div id="extraction-candidate-hint" class="text-secondary small mt-3" aria-live="polite"></div></form>
         <div class="text-secondary small mt-2">
-            Artikel dicoba bergiliran, mendahulukan yang belum pernah atau paling lama dicoba. Status validasi tetap dijaga.
+            Pilih antrean secara sadar sebelum memulai batch. Jumlah kandidat di setiap opsi bukan jumlah artikel yang pasti bisa dilengkapi. Keputusan validasi tidak diubah.
         </div>
     </div>
 </div>
@@ -50,8 +81,18 @@
 <div id="extraction-batch-detail" class="card mb-3 d-none"><div class="card-body"><h3 class="card-title">Hasil batch terakhir</h3><progress id="extraction-progress" class="w-100" max="100" value="0"></progress><p id="extraction-batch-counts"></p><p id="extraction-batch-delta" class="text-secondary small"></p><details><summary>Lihat rincian 20 artikel terakhir dalam batch</summary><ul id="extraction-batch-results" class="mt-2 mb-0 ex-batch-results"></ul></details></div></div>
 <div class="card"><div class="card-header"><h3 class="card-title">Antrean dan hasil ekstraksi</h3></div>
 <div class="card-body"><form method="get" class="d-flex gap-2"><input type="hidden" name="scope" value="{{ extraction_scope }}"><select class="form-select" name="history" style="max-width:230px"><option value="all">Semua riwayat proses</option><option value="unattempted" {% if extraction_history == "unattempted" %}selected{% endif %}>Belum diekstraksi</option><option value="attempted" {% if extraction_history == "attempted" %}selected{% endif %}>Sudah diekstraksi</option><option value="failed" {% if extraction_history == "failed" %}selected{% endif %}>Gagal</option><option value="running" {% if extraction_history == "running" %}selected{% endif %}>Sedang diproses</option><option value="unknown" {% if extraction_history == "unknown" %}selected{% endif %}>Riwayat belum tercatat</option></select><input name="q" class="form-control" placeholder="Cari judul artikel" value="{{ extraction_search }}"><button class="btn btn-outline-primary">Cari</button><a class="btn btn-outline-secondary" href="?scope=all">Semua</a></form></div>
-<div class="table-responsive ex-table-wrap"><table class="table table-vcenter card-table"><thead><tr><th style="width:45%">Artikel / sumber</th><th style="width:20%">Proses ekstraksi</th><th style="width:20%">Bukti terstruktur</th><th style="width:15%">Status artikel</th></tr></thead><tbody>
-{% for row in extraction_page %}<tr><td><a class="ex-title" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">{{ row.article.title }}</a><div class="ex-source">{{ row.article.source.name }}</div></td><td><span class="ex-muted">{{ row.state_label }}</span><span class="ex-history">{{ row.attempt_at }}</span></td><td>{% if row.complete %}<span class="badge bg-success-lt">Lengkap</span>{% else %}<span class="badge bg-warning-lt">Belum lengkap</span><div class="text-secondary small">Kurang: {{ row.missing_label }}</div>{% endif %}</td><td><span class="badge bg-secondary-lt">{{ row.article.get_processing_status_display }}</span><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">Tinjau</a></div></td></tr>{% empty %}<tr><td colspan="4" class="text-center py-4">Tidak ada artikel pada kelompok ini.</td></tr>{% endfor %}
+<div class="table-responsive ex-table-wrap"><table class="table table-vcenter card-table"><thead><tr><th style="width:45%">Artikel / sumber</th><th style="width:20%">Proses ekstraksi</th><th style="width:20%">Kelengkapan bukti kejadian / konteks</th><th style="width:15%">Status artikel</th></tr></thead><tbody>
+{% for row in extraction_page %}
+<tr>
+<td><a class="ex-title" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">{{ row.article.title }}</a><div class="ex-source">{{ row.article.source.name }}</div>
+{% if row.context_candidate %}<span class="ex-type-badge">Kandidat {% if row.context_candidate_type == 'risk_indicator' %}faktor risiko{% else %}pencegahan / vaksinasi{% endif %} · belum dikonfirmasi</span>
+{% elif row.contextual %}<span class="ex-type-badge ex-confirmed">Konteks tercatat: {{ row.information_type }}</span>{% endif %}
+</td>
+<td><span class="ex-muted">{{ row.state_label }}</span><span class="ex-history">{{ row.attempt_at }}</span>{% if row.state == 'unknown' %}<div class="ex-result-note">Riwayat belum dapat memastikan kapan ekstraksi dijalankan</div>{% endif %}</td>
+<td>{% if row.complete %}<span class="badge bg-success-lt">Bukti kasus lengkap</span>{% else %}<span class="badge bg-warning-lt">Bukti kasus belum lengkap</span><div class="text-secondary small">Kurang: {{ row.missing_label }}</div>{% endif %}
+{% if row.context_candidate_ready %}<div class="ex-result-note"><strong>Kandidat konteks siap ditinjau</strong> · bukan bukti kasus</div>{% elif row.context_candidate %}<div class="ex-result-note">Kandidat konteks; penyakit/lokasi perlu diperiksa</div>{% elif row.context_review_ready %}<div class="ex-result-note">Konteks tercatat, siap ditinjau</div>{% endif %}</td>
+<td><span class="badge bg-secondary-lt">{{ row.article.get_processing_status_display }}</span><div class="ex-result-note">Status artikel, bukan status ekstraksi</div><div class="mt-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'dashboard:article-extraction-detail' row.article.id %}">Tinjau</a></div></td>
+</tr>{% empty %}<tr><td colspan="4" class="text-center py-4">Tidak ada artikel pada kelompok ini.</td></tr>{% endfor %}
 </tbody></table></div><div class="card-footer ex-footer d-flex justify-content-between"><span>{{ extraction_page.paginator.count }} artikel · halaman {{ extraction_page.number }} / {{ extraction_page.paginator.num_pages }}</span><div>{% if extraction_page.has_previous %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.previous_page_number }}">Sebelumnya</a>{% endif %}{% if extraction_page.has_next %}<a class="btn btn-sm" href="?scope={{ extraction_scope }}&history={{ extraction_history|urlencode }}&q={{ extraction_search|urlencode }}&page={{ extraction_page.next_page_number }}">Berikutnya</a>{% endif %}</div></div></div>
 </div>
 {% endblock %}
@@ -75,8 +116,8 @@
         form.elements.limit.max = cap;
         const limit = Math.max(1, Math.min(Number(form.elements.limit.value) || 1, cap));
         form.elements.limit.value = limit;
-        document.getElementById("extraction-candidate-hint").textContent = `${count} kandidat tersedia · maksimal ${Math.min(count, limit)} artikel dalam batch ini. Artikel selesai hanya dipilih pada proses ulang.`;
-        if (!batchId) submitButton.disabled = count === 0;
+        document.getElementById("extraction-candidate-hint").textContent = scope ? `${count} kandidat tersedia · maksimal ${Math.min(count, limit)} artikel dalam batch ini. Artikel selesai hanya dipilih pada proses ulang.` : "Pilih jenis antrean terlebih dahulu. Tidak ada batch yang berjalan otomatis.";
+        if (!batchId && submitButton) submitButton.disabled = !scope || count === 0;
     };
     if (form) {form.addEventListener("change", refreshCandidates);form.addEventListener("input", refreshCandidates);refreshCandidates();}
 
