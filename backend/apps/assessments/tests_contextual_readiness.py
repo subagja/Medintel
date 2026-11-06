@@ -59,3 +59,33 @@ class ContextualReadinessTests(TestCase):
         row = next(r for r in queue_rows() if r["article"].pk == article.pk)
         self.assertFalse(row["context_review_ready"])
         self.assertIn("lokasi", row["context_review_label"].lower())
+
+    def test_legacy_vaccination_candidate_not_confirmed(self):
+        article = self.make_article("legacy-vaccination", "uncertain")
+        article.title = "Vaksinasi campak di Kabupaten Bandung"
+        article.save(update_fields=["title"])
+        ArticleDisease.objects.create(article=article, disease=self.disease)
+        ArticleLocation.objects.create(article=article, location=self.location, is_primary=True)
+        row = next(r for r in queue_rows() if r["article"].pk == article.pk)
+        self.assertEqual(row["information_type"], "uncertain")
+        self.assertTrue(row["context_candidate"])
+        self.assertTrue(row["context_candidate_ready"])
+        self.assertFalse(row["context_review_ready"])
+        self.assertFalse(row["complete"])
+        self.assertEqual(queue_summary([row])["context_candidates"], 1)
+
+    def test_case_news_with_vaccination_mention_is_not_context_candidate(self):
+        article = self.make_article("mixed-news", "uncertain")
+        article.title = "12 kasus campak ditemukan saat vaksinasi"
+        article.save(update_fields=["title"])
+        row = next(r for r in queue_rows() if r["article"].pk == article.pk)
+        self.assertFalse(row["context_candidate"])
+        self.assertEqual(row["information_type"], "uncertain")
+
+    def test_confirmed_classification_overrides_title_hint(self):
+        article = self.make_article("confirmed-case", "case_event")
+        article.title = "Vaksinasi campak di Kabupaten Bandung"
+        article.save(update_fields=["title"])
+        row = next(r for r in queue_rows() if r["article"].pk == article.pk)
+        self.assertEqual(row["information_type"], "case_event")
+        self.assertFalse(row["context_candidate"])

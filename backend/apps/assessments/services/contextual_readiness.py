@@ -25,6 +25,25 @@ def information_type_from_article(article):
     return value if value in KNOWN_TYPES else "uncertain"
 
 
+# MEDINTEL-02B3-CONTEXT-CANDIDATES
+# Petunjuk judul untuk triage, bukan keputusan validasi final.
+_PREVENTION = re.compile(r"\b(?:vaksinasi|imunisasi|cakupan vaksin|kampanye imunisasi|program vaksin)\b", re.I)
+_RISK = re.compile(r"\b(?:penurunan cakupan imunisasi|cakupan imunisasi rendah|cakupan vaksinasi rendah|risiko penularan|faktor risiko|peningkatan populasi nyamuk)\b", re.I)
+_CASE_EVENT = re.compile(r"\b(?:kasus|pasien|penderita|kematian|meninggal|wabah|kejadian luar biasa|klb)\b", re.I)
+
+
+def context_candidate_from_title(article):
+    """Kandidat konteks dari judul; bukan kategori hasil AI."""
+    title = (getattr(article, "title", None) or "").strip()
+    if not title or _CASE_EVENT.search(title):
+        return None
+    if _RISK.search(title):
+        return "risk_indicator"
+    if _PREVENTION.search(title):
+        return "prevention_response"
+    return None
+
+
 def contextual_review_info(article):
     """Status untuk tahap tinjau konteks, BUKAN status validasi final.
 
@@ -33,6 +52,7 @@ def contextual_review_info(article):
     tetap membutuhkan keputusan analis sebelum menjadi data pendukung.
     """
     category = information_type_from_article(article)
+    candidate = context_candidate_from_title(article) if category == "uncertain" else None
     contextual = category in CONTEXT_TYPES
     has_disease = bool(article.extraction_has_disease)
     has_single_location = bool(article.extraction_has_location and article.extraction_primary_count == 1)
@@ -44,4 +64,7 @@ def contextual_review_info(article):
     else:
         label = "Konteks relevan — penyakit/lokasi perlu dilengkapi"
     return {"information_type": category, "context_review_ready": ready,
-            "contextual": contextual, "context_review_label": label}
+            "contextual": contextual, "context_review_label": label,
+            "context_candidate_type": candidate,
+            "context_candidate": bool(candidate),
+            "context_candidate_ready": bool(candidate and has_disease and has_single_location)}

@@ -214,6 +214,9 @@ def queue_summary(rows):
     # Status konteks dihitung TERPISAH; tidak mengubah jumlah bukti kasus lengkap.
     counts["contextual_articles"] = sum(1 for r in rows if r.get("contextual") and r["state"] != "rejected")
     counts["context_review_ready"] = sum(1 for r in rows if r.get("context_review_ready") and r["state"] != "rejected")
+    # MEDINTEL-02B3-CONTEXT-CANDIDATES: indikasi judul, bukan bukti kasus.
+    counts["context_candidates"] = sum(1 for r in rows if r.get("context_candidate") and r["state"] != "rejected")
+    counts["context_candidates_ready"] = sum(1 for r in rows if r.get("context_candidate_ready") and r["state"] != "rejected")
     counts["candidate_counts"] = {scope: len(select_batch_ids_from_rows(rows, scope)) for scope in ("unattempted", "incomplete", "failed", "unknown")}
     return counts
 
