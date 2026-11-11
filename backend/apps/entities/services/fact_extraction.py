@@ -524,13 +524,53 @@ def calculate_fact_confidence(
     return min(score, 1.0)
 
 
+
+def preferred_body_text(title: str, content: str) -> str:
+    """Ambil teks sumber tanpa salinan headline yang berada di awal isi.
+
+    Tidak menghapus satuan/angka lain, tidak membuat keputusan validasi.
+    Pencocokan salinan judul dibatasi pada 350 karakter pertama untuk
+    menghindari menghapus kutipan judul di badan artikel yang jauh.
+    """
+    body = (content or "").strip()
+    headline = (title or "").strip()
+    if not body or not headline:
+        return body
+    match = re.search(re.escape(headline), body[:350], flags=re.IGNORECASE)
+    if not match:
+        return body
+    # Hanya buang salinan headline jika memang berdiri sebagai heading
+    # di awal teks, setelah breadcrumb ('>'), atau setelah baris baru.
+    # Contoh "Sebanyak 88 kasus DBD ..." memiliki potongan judul "Kasus
+    # DBD ..." di dalam kalimat yang sama; potongan tersebut *bukan*
+    # headline duplikat dan tidak boleh dihapus bersama kata "kasus".
+    prefix = body[:match.start()]
+    is_heading = not prefix.strip() or bool(re.search(r"(?:>|[\r\n])\s*$", prefix))
+    if not is_heading:
+        return body
+    stripped = (body[:match.start()] + " " + body[match.end():]).strip()
+    return stripped or body
+
+
 def build_fact_candidate(
     article: Article,
 ) -> ExtractedFactCandidate | None:
-    text = (
-        f"{article.title}. "
-        f"{article.content_text}"
-    )
+    # Gunakan kalimat isi artikel sebagai sumber angka terlebih dahulu.
+    # Jika isi artikel tidak memuat angka kejadian, judul dapat menjadi
+    # fallback. Hindari headline yang disalin ulang di awal isi artikel,
+    # karena dapat memberi kutipan yang hanya berupa judul.
+    body = preferred_body_text(article.title, article.content_text)
+    text = body or (article.title or "")
+    if body and not any(
+        find_first_numeric_mention(text=body, patterns=patterns)
+        for patterns in (
+            CASE_PATTERNS,
+            DEATH_PATTERNS,
+            RECOVERY_PATTERNS,
+            HOSPITALIZED_PATTERNS,
+        )
+    ):
+        text = article.title or body
 
     case_mention = find_first_numeric_mention(
         text=text,
@@ -582,24 +622,39 @@ def build_fact_candidate(
     ):
         return None
 
-    anchors = [
-        mention.start
-        for mention in [
-            case_mention,
-            death_mention,
-            recovery_mention,
-            hospitalized_mention,
-            trend_mention,
-        ]
-        if mention is not None
-    ]
+    # Klaim numerik lebih penting sebagai kutipan fakta daripada tren
+    # yang muncul pada kalimat pembuka. Jika tidak ada angka, pakai tren.
+    evidence_anchor = next(
+        (
+            mention.start
+            for mention in (
+                case_mention,
+                death_mention,
+                recovery_mention,
+                hospitalized_mention,
+                trend_mention,
+            )
+            if mention is not None
+        ),
+        0,
+    )
 
-    anchor_start = min(anchors) if anchors else 0
+    anchor_start = evidence_anchor
 
     evidence_text = extract_evidence_sentence(
         text=text,
         anchor_start=anchor_start,
     )
+
+    # Bila satu kalimat memuat angka kasus berbeda, angka-angka itu
+    # mungkin mewakili periode/wilayah bertingkat (mis. Aceh 263, Banda
+    # Aceh 24; atau Jembrana 88 versus 116 tahun sebelumnya).
+    # Tidak aman menautkan angka pertama ke lokasi utama artikel.
+    if case_mention and (
+        len(distinct_case_counts_in_sentence(evidence_text)) > 1
+        or quote_location_disagrees_with_primary(evidence_text, location)
+    ):
+        location = None
 
     confidence = calculate_fact_confidence(
         disease=disease,
@@ -644,6 +699,76 @@ def build_fact_candidate(
     )
 
 
+def distinct_case_counts_in_sentence(text: str) -> tuple[int, ...]:
+    """Angka kasus yang berbeda dalam satu kalimat bukti.
+
+    Ini indikator ketidakpastian spasial/temporal, bukan penjumlahan.
+    Sebutkan nilai unik saja agar pengulangan 88 di satu kalimat tidak
+    dianggap sebagai dua lokasi yang berbeda.
+    """
+    values: set[int] = set()
+    for match in re.finditer(
+        rf"\b(?P<count>{EXACT_COUNT})\s+kasus\b",
+        text or "",
+        flags=re.IGNORECASE,
+    ):
+        count = normalize_number(match.group("count"))
+        if count is not None:
+            values.add(count)
+    return tuple(sorted(values))
+
+
+def quote_location_disagrees_with_primary(
+    evidence_text: str, location: Location | None,
+) -> bool:
+    """Conservative guard for explicitly named Indonesian admin areas.
+
+    If a numeric sentence explicitly says 'Provinsi Aceh' but the article
+    resolver selected 'Kota Banda Aceh', the numeric fact should not be
+    assigned to that city until a human reviews it. Not a geocoder.
+    """
+    if location is None:
+        return False
+    mentioned = set(
+        re.findall(
+            r"\b(?:Provinsi|Kabupaten|Kota)\s+[A-Z][A-Za-z-]+"
+            r"(?:\s+[A-Z][A-Za-z-]+){0,3}",
+            evidence_text or "",
+        )
+    )
+    if not mentioned:
+        return False
+    normalized = (location.name or "").casefold().strip()
+    return any(item.casefold().strip() != normalized for item in mentioned)
+
+
+def duplicate_fact_without_location_conflict(
+    *, article: Article, candidate: ExtractedFactCandidate,
+) -> bool:
+    """Cegah fakta kedua dari kutipan sama ketika salah satu lokasi kosong.
+
+    Tidak menghapus fakta lama dan tidak menggabungkan dua lokasi berbeda.
+    Kasus terpisah yang memiliki angka sama tetap mungkin dan harus ditinjau.
+    """
+    if candidate.case_count is None:
+        return False
+    previous = ArticleFact.objects.filter(
+        article=article,
+        disease=candidate.disease,
+        case_count=candidate.case_count,
+        event_date=candidate.event_date,
+        death_count=candidate.death_count,
+        recovery_count=candidate.recovery_count,
+        hospitalized_count=candidate.hospitalized_count,
+    )
+    for old in previous.only("location_id"):
+        if old.location_id == (candidate.location.pk if candidate.location else None):
+            return True
+        if old.location_id is None or candidate.location is None:
+            return True
+    return False
+
+
 @transaction.atomic
 def extract_article_facts(
     article: Article,
@@ -672,7 +797,9 @@ def extract_article_facts(
         trend=candidate.trend,
     ).first()
 
-    if existing_fact:
+    if existing_fact or duplicate_fact_without_location_conflict(
+        article=article, candidate=candidate
+    ):
         result.facts_skipped += 1
         return result
 
