@@ -53,7 +53,7 @@ class Command(BaseCommand):
         output.parent.mkdir(parents=True, exist_ok=True)
         counts = Counter()
         fields = ["article_id", "fact_id", "title", "url", "case_count", "death_count",
-                  "disease", "location", "event_date", "status", "period_hint",
+                  "disease", "location", "event_date", "reporting_period_start", "reporting_period_end", "reporting_period_precision", "case_count_basis", "status", "period_hint",
                   "suggested_primary_disease_NOT_APPROVED", "issues", "possible_sibling_ids",
                   "fact_quote", "suggested_quote_REVIEW_REQUIRED", "review_decision_MANUAL", "review_notes_MANUAL"]
         with output.open("w", encoding="utf-8-sig", newline="") as f:
@@ -67,8 +67,10 @@ class Command(BaseCommand):
                     fact.article.original_url, fact.case_count, fact.death_count,
                     fact.disease.name if fact.disease else "",
                     fact.location.name if fact.location else "",
-                    fact.event_date, fact.validation_status,
-                    finding.period_hint, finding.primary_disease_suggestion,
+                    fact.event_date,
+                    fact.reporting_period_start, fact.reporting_period_end,
+                    fact.reporting_period_precision, fact.case_count_basis,
+                    fact.validation_status, finding.period_hint, finding.primary_disease_suggestion,
                     " | ".join(finding.issues), " | ".join(finding.sibling_fact_ids),
                     (fact.fact_text or "")[:350],
                     suggested_numeric_quote(fact.article.content_text or "", fact.case_count), "", "",

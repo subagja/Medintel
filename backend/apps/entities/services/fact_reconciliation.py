@@ -101,7 +101,12 @@ def assess_fact(fact: ArticleFact, *, siblings: Iterable[ArticleFact] | None = N
         issues.append("CASE_COUNT_NOT_IN_QUOTE")
     if not numeric_literal_present(fact.fact_text, fact.death_count):
         issues.append("DEATH_COUNT_NOT_IN_QUOTE")
-    if fact.event_date is None:
+    # Laporan kumulatif dengan periode tervalidasi tidak wajib punya
+    # tanggal kejadian tunggal (dan tidak boleh dipalsukan).
+    if fact.event_date is None and not (
+        fact.reporting_period_start is not None
+        and fact.reporting_period_end is not None
+    ):
         issues.append("EVENT_DATE_UNSET")
     if fact.validation_status == ValidationStatus.UNREVIEWED:
         issues.append("FACT_UNREVIEWED")
@@ -115,6 +120,12 @@ def assess_fact(fact: ArticleFact, *, siblings: Iterable[ArticleFact] | None = N
             or fact.disease_id != sibling.disease_id):
             continue
         if fact.event_date and sibling.event_date and fact.event_date != sibling.event_date:
+            continue
+        # Rentang yang benar-benar berbeda tidak dianggap duplikat.
+        if (fact.reporting_period_start and fact.reporting_period_end
+            and sibling.reporting_period_start and sibling.reporting_period_end
+            and (fact.reporting_period_start, fact.reporting_period_end)
+            != (sibling.reporting_period_start, sibling.reporting_period_end)):
             continue
         # Only flag overlapping location scope; two explicit different
         # locations can have the same count and are not duplicates by default.

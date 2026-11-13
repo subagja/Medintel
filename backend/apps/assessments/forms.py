@@ -421,6 +421,17 @@ class PrimaryArticleDiseaseForm(forms.Form):
                 "primary_disease",
                 current_primary_ids[0],
             )
+            # Alasan lama ditampilkan kembali setelah redirect/refresh.
+            # Jangan mengisi form bound (POST) dari data DB secara paksa.
+            saved = ArticleDisease.objects.filter(
+                article=article,
+                is_primary=True,
+                disease_id=current_primary_ids[0],
+            ).first()
+            if saved and saved.validation_notes and not self.is_bound:
+                self.initial.setdefault(
+                    "disease_correction_notes", saved.validation_notes,
+                )
         elif len(candidate_ids) == 1:
             self.initial.setdefault(
                 "primary_disease",
@@ -562,6 +573,15 @@ class PrimaryArticleLocationForm(forms.Form):
                 "primary_location",
                 current_primary_ids[0],
             )
+            saved = ArticleLocation.objects.filter(
+                article=article,
+                is_primary=True,
+                location_id=current_primary_ids[0],
+            ).first()
+            if saved and saved.validation_notes and not self.is_bound:
+                self.initial.setdefault(
+                    "correction_notes", saved.validation_notes,
+                )
         elif len(candidate_ids) == 1:
             self.initial.setdefault(
                 "primary_location",

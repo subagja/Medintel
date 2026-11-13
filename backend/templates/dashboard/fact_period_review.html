@@ -1,0 +1,95 @@
+{% extends embed_base %}
+{% block title %}Tinjau Fakta &amp; Periode | MEDINTEL{% endblock %}
+{% block content %}
+<div class="container-xl">
+  {% if not embedded %}
+  <div class="page-header mb-3">
+    <h2 class="page-title">Tinjau Fakta &amp; Periode</h2>
+  </div>
+  {% endif %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <h3 class="card-title">{{ article.title }}</h3>
+      <div class="text-secondary small">{{ fact.disease|default:"Penyakit belum ditetapkan" }} · {{ fact.location|default:"Lokasi belum ditetapkan" }}</div>
+      <p class="mt-2 mb-1"><strong>Kasus tersimpan:</strong> {{ fact.case_count|default_if_none:"—" }} · <strong>Tanggal kejadian tunggal:</strong> {{ fact.event_date|date:"d M Y"|default:"—" }}</p>
+      <p class="small text-secondary mb-0">Kolom periode adalah cakupan pelaporan, bukan tanggal onset. Satu artikel bisa memuat angka pada cakupan wilayah yang berbeda. Cocokkan dengan sumber sebelum menyimpan.</p>
+      <div class="mt-2"><a href="{{ article.original_url }}" target="_blank" rel="noopener noreferrer">Buka artikel sumber</a></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      {% if save_failed %}
+        <div class="alert alert-danger" role="alert" id="fact-save-feedback">
+          <strong>Belum tersimpan.</strong> Periksa kesalahan berikut. Isian di bawah tetap dipertahankan.
+          <ul class="mb-0 mt-2">
+            {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+            {% for field in form.visible_fields %}
+              {% for error in field.errors %}<li><strong>{{ field.label }}:</strong> {{ error }}</li>{% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+      {% elif unchanged_notice %}
+        <div class="alert alert-info" role="status" id="fact-save-feedback">
+          Tidak ada perubahan data atau alasan review yang perlu disimpan.
+        </div>
+      {% elif saved_notice %}
+        <div class="alert alert-success" role="status" id="fact-save-feedback">
+          <strong>Koreksi berhasil disimpan.</strong> Nilai yang tersimpan ada pada ringkasan berikut dan pada form di bawah.
+        </div>
+      {% endif %}
+      {% if saved_fact.validation_status == "corrected" %}
+        <div class="alert alert-light border" id="fact-saved-summary">
+          <strong>Hasil review tersimpan</strong>
+          <div class="small mt-2">Periode: {{ saved_fact.reporting_period_start|date:"d M Y"|default:"—" }} – {{ saved_fact.reporting_period_end|date:"d M Y"|default:"—" }}
+            · {{ saved_fact.get_reporting_period_precision_display }}
+            · {{ saved_fact.get_case_count_basis_display }}
+            · Kematian: {{ saved_fact.death_count|default_if_none:"—" }}
+          </div>
+          <div class="small mt-1"><strong>Alasan terakhir:</strong> {{ saved_fact.validation_notes|default:"—" }}</div>
+          <div class="small text-secondary mt-1">Diperiksa: {{ saved_fact.validated_at|date:"d M Y H:i"|default:"—" }}</div>
+        </div>
+      {% endif %}
+      <form method="post" {% if embedded %}action="?embed=1"{% endif %} id="fact-period-correction-form">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ version }}">
+        <p class="text-secondary small mb-3">Periksa cakupan waktu, angka kematian, dan kutipan sesuai artikel sumber. Untuk laporan kumulatif, isi rentang periode tanpa mengisi tanggal kejadian tunggal.</p>
+        <div class="row g-3">
+          {% for field in form.visible_fields %}
+            <div class="col-md-6 {% if field.name == 'fact_text' or field.name == 'correction_reason' %}col-md-12{% endif %}">
+              <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
+              {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">Simpan Koreksi Fakta</button>
+          {% if not embedded %}
+          <a class="btn btn-outline-secondary" href="{% url 'dashboard:article-validation' %}?workspace=history&amp;history_status=all&amp;article={{ article.id }}">Kembali ke Validasi Artikel</a>
+          {% endif %}
+        </div>
+      </form>
+      <p class="text-secondary small mt-3 mb-0">Perubahan disimpan dengan status corrected, waktu dan identitas reviewer, alasan, serta before/after pada ExtractionReviewLog. Tidak mengubah fakta lain atau menjalankan AI.</p>
+    </div>
+  </div>
+</div>
+{% if embedded %}
+<script>
+(function () {
+    const form = document.getElementById("fact-period-correction-form");
+    if (form && window.parent && window.parent !== window) {
+        const notify = function () {
+            window.parent.postMessage({type: "medintel:fact-review-dirty"}, window.location.origin);
+        };
+        form.addEventListener("input", notify);
+        form.addEventListener("change", notify);
+        {% if saved_notice %}
+        window.parent.postMessage({type: "medintel:fact-review-saved"}, window.location.origin);
+        {% endif %}
+    }
+})();
+</script>
+{% endif %}
+
+{% endblock %}

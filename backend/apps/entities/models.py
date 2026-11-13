@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.articles.models import Article
@@ -384,6 +385,18 @@ class ArticleLocation(models.Model):
         return f"{self.article.title} — {self.location.name}"
 
 class ArticleFact(models.Model):
+    class ReportingPrecision(models.TextChoices):
+        UNSPECIFIED = "unspecified", "Belum ditentukan"
+        DAY_RANGE = "day_range", "Rentang tanggal"
+        MONTH = "month", "Rentang bulan"
+        WEEK = "week", "Rentang minggu"
+        YEAR = "year", "Rentang tahun"
+
+    class CaseCountBasis(models.TextChoices):
+        UNKNOWN = "unknown", "Belum diketahui"
+        CUMULATIVE = "cumulative", "Kumulatif selama periode"
+        NEW = "new", "Kasus baru selama periode"
+
     class Trend(models.TextChoices):
         INCREASING = "increasing", "Meningkat"
         DECREASING = "decreasing", "Menurun"
@@ -424,6 +437,21 @@ class ArticleFact(models.Model):
         null=True,
         blank=True,
         db_index=True,
+    )
+
+    # Rentang INKLUSIF periode pelaporan, bukan tanggal onset dan
+    # bukan tanggal publikasi. Tidak diisi otomatis dari teks AI.
+    reporting_period_start = models.DateField(null=True, blank=True)
+    reporting_period_end = models.DateField(null=True, blank=True)
+    reporting_period_precision = models.CharField(
+        max_length=20,
+        choices=ReportingPrecision.choices,
+        default=ReportingPrecision.UNSPECIFIED,
+    )
+    case_count_basis = models.CharField(
+        max_length=20,
+        choices=CaseCountBasis.choices,
+        default=CaseCountBasis.UNKNOWN,
     )
 
     case_count = models.PositiveIntegerField(
@@ -513,6 +541,36 @@ class ArticleFact(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+
+    def clean(self):
+        super().clean()
+        has_start = self.reporting_period_start is not None
+        has_end = self.reporting_period_end is not None
+        if has_start != has_end:
+            raise ValidationError({
+                "reporting_period_end": (
+                    "Awal dan akhir periode harus sama-sama diisi."
+                )
+            })
+        if has_start and self.reporting_period_start > self.reporting_period_end:
+            raise ValidationError({
+                "reporting_period_end": "Akhir periode tidak boleh mendahului awal."
+            })
+        if has_start and self.event_date is not None:
+            raise ValidationError({
+                "reporting_period_start": (
+                    "Tanggal kejadian tunggal tidak boleh dicampur "
+                    "dengan rentang periode pelaporan."
+                )
+            })
+        if has_start and self.reporting_period_precision == self.ReportingPrecision.UNSPECIFIED:
+            raise ValidationError({
+                "reporting_period_precision": "Pilih ketelitian periode pelaporan."
+            })
+        if not has_start and self.reporting_period_precision != self.ReportingPrecision.UNSPECIFIED:
+            raise ValidationError({
+                "reporting_period_precision": "Isi rentang periode terlebih dahulu."
+            })
 
     class Meta:
         ordering = ["-event_date", "-created_at"]

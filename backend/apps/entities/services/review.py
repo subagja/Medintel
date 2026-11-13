@@ -23,6 +23,10 @@ FACT_CORRECTION_FIELDS = {
     "disease",
     "location",
     "event_date",
+    "reporting_period_start",
+    "reporting_period_end",
+    "reporting_period_precision",
+    "case_count_basis",
     "case_count",
     "death_count",
     "recovery_count",
@@ -131,6 +135,10 @@ def article_fact_snapshot(
             else None
         ),
         "event_date": serialize_value(fact.event_date),
+        "reporting_period_start": serialize_value(fact.reporting_period_start),
+        "reporting_period_end": serialize_value(fact.reporting_period_end),
+        "reporting_period_precision": fact.reporting_period_precision,
+        "case_count_basis": fact.case_count_basis,
         "case_count": fact.case_count,
         "death_count": fact.death_count,
         "recovery_count": fact.recovery_count,
@@ -824,9 +832,13 @@ def correct_article_fact(
     corrections: dict[str, Any],
     notes: str,
 ) -> ArticleFact:
-    if not corrections:
+    if not corrections and (fact.validation_notes or "").strip() == notes.strip():
         raise ValidationError(
-            "Data koreksi fakta tidak boleh kosong."
+            "Tidak ada perubahan fakta maupun alasan koreksi."
+        )
+    if not notes.strip():
+        raise ValidationError(
+            "Dasar koreksi fakta wajib diisi."
         )
 
     unknown_fields = set(corrections) - FACT_CORRECTION_FIELDS

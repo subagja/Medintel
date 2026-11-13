@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views
+from . import views_fact_period
 from apps.assessments import views as assessment_views
 from apps.assessments import early_warning_views
 from apps.assessments import threat_map_views
@@ -19,6 +20,8 @@ app_name = "dashboard"
 # MEDINTEL-02B8A-INTEGRATED-ROUTES
 from apps.assessments import views_integrated_processing as medintel_integrated_views
 urlpatterns = [
+    path("validasi-artikel/fakta/<uuid:article_id>/<uuid:fact_id>/",
+         views_fact_period.fact_period_review, name="fact-period-review"),
     path('ekstraksi-entitas/terpadu/mulai/', medintel_integrated_views.start, name='integrated-processing-start'),
     path('ekstraksi-entitas/terpadu/status/', medintel_integrated_views.status, name='integrated-processing-status'),
 

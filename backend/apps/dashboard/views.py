@@ -4505,6 +4505,9 @@ def _spread_map_global_payload(
             validation_status__in=accepted_statuses,
         )
         .filter(Q(case_count__isnull=False) | Q(death_count__isnull=False))
+        # Data rentang kumulatif bukan data harian yang boleh dipasang
+        # pada tanggal publikasi dalam peta global.
+        .filter(reporting_period_start__isnull=True, reporting_period_end__isnull=True)
         .select_related("disease", "location")
         .order_by("event_date", "created_at")
     )

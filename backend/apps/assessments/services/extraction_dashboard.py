@@ -59,7 +59,24 @@ def evidence_queryset():
     reviewed_statuses = (ValidationStatus.VALIDATED, ValidationStatus.CORRECTED)
     accepted_case = ArticleFact.objects.filter(
         article_id=OuterRef("pk"), validation_status__in=reviewed_statuses,
-        case_count__gt=0, event_date__isnull=False,
+        case_count__gt=0,
+    ).filter(
+        Q(event_date__isnull=False) |
+        Q(
+            event_date__isnull=True,
+            reporting_period_start__isnull=False,
+            reporting_period_end__isnull=False,
+            reporting_period_precision__in=[
+                ArticleFact.ReportingPrecision.DAY_RANGE,
+                ArticleFact.ReportingPrecision.MONTH,
+                ArticleFact.ReportingPrecision.WEEK,
+                ArticleFact.ReportingPrecision.YEAR,
+            ],
+            case_count_basis__in=[
+                ArticleFact.CaseCountBasis.CUMULATIVE,
+                ArticleFact.CaseCountBasis.NEW,
+            ],
+        )
     ).annotate(
         reviewed_disease=Exists(ArticleDisease.objects.filter(
             article_id=OuterRef("article_id"), disease_id=OuterRef("disease_id"),

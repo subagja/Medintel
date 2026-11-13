@@ -39,7 +39,11 @@ SECRET_KEY = os.getenv(
     "dev-only-secret-key"
 )
 
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+# Prioritaskan nama variabel yang dipakai .env MEDINTEL.
+# Default aman: DEBUG=False bila tidak dikonfigurasi.
+DEBUG = os.getenv("DJANGO_DEBUG", os.getenv("DEBUG", "False")).strip().lower() in {
+    "1", "true", "yes", "on",
+}
 
 ALLOWED_HOSTS = [
     host.strip()

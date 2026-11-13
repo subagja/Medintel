@@ -1,0 +1,24 @@
+# Rahasia lokal MEDINTEL (jangan commit)
+.env
+.env.*
+!.env.example
+local_API.txt
+*API_key*.txt
+*.pem
+*.key
+
+# Python / Django runtime
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+staticfiles/
+media/
+*.sqlite3
+*.log
+.pytest_cache/
+.coverage
+
+# Temporary reports and patch payloads
+MEDINTEL_REKONSILIASI_*.csv
+patch_*_payload/

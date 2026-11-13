@@ -217,6 +217,15 @@ def evaluate_article_signal_candidate(article: Article) -> ArticleSignalCandidat
         .order_by("-confidence_score", "-event_date", "-created_at")
         .first()
     )
+    if (
+        fact is not None
+        and fact.reporting_period_start is not None
+        and fact.event_date is None
+    ):
+        blockers.append(
+            "Fakta merupakan angka rentang pelaporan, bukan kejadian harian. "
+            "Pembentukan indikasi kuantitatif perlu pemeriksaan periode tersendiri."
+        )
     return ArticleSignalCandidate(
         article=article,
         assessment=assessment,

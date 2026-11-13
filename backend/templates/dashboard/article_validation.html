@@ -821,6 +821,7 @@ Validasi Artikel | MEDINTEL OSINT
                                                 <th>Rawat Inap</th>
                                                 <th>Tren</th>
                                                 <th>Confidence</th>
+                                                <th>Review</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -859,15 +860,39 @@ Validasi Artikel | MEDINTEL OSINT
                                                             —
                                                         {% endif %}
                                                     </td>
+                                                    <td>
+                                                        <a class="btn btn-sm btn-outline-primary"
+                                                           href="{% url 'dashboard:fact-period-review' selected_article.id fact.id %}"
+                                                           data-medintel-inline-fact-review
+                                                           data-bs-toggle="modal"
+                                                           data-bs-target="#medintel-fact-review-modal"
+                                                           aria-label="Tinjau fakta {{ forloop.counter }} tanpa meninggalkan artikel">
+                                                            Tinjau fakta
+                                                        </a>
+                                                    </td>
                                                 </tr>
 
                                                 {% if fact.fact_text %}
                                                     <tr>
-                                                        <td colspan="7" class="pt-0">
+                                                        <td colspan="8" class="pt-0">
                                                             <div class="small text-secondary">
                                                                 <strong>Bukti:</strong>
                                                                 {{ fact.fact_text }}
                                                             </div>
+                                                            {% if fact.reporting_period_start %}
+                                                                <div class="small mt-1">
+                                                                    <strong>Periode pelaporan:</strong>
+                                                                    {{ fact.reporting_period_start|date:"d M Y" }} – {{ fact.reporting_period_end|date:"d M Y" }}
+                                                                    ({{ fact.get_reporting_period_precision_display }};
+                                                                    {{ fact.get_case_count_basis_display }})
+                                                                </div>
+                                                            {% endif %}
+                                                            {% if fact.validation_status == 'corrected' and fact.validation_notes %}
+                                                                <div class="small mt-1">
+                                                                    <strong>Alasan review terakhir:</strong>
+                                                                    {{ fact.validation_notes|truncatechars:220 }}
+                                                                </div>
+                                                            {% endif %}
                                                         </td>
                                                     </tr>
                                                 {% endif %}
@@ -1139,6 +1164,7 @@ Validasi Artikel | MEDINTEL OSINT
                                         </label>
 
                                         {{ primary_disease_form.disease_correction_notes }}
+                                        <div class="form-hint mt-1">Jika sudah pernah disimpan, alasan terakhir dimuat kembali. Perubahan alasan dicatat dalam riwayat koreksi.</div>
 
                                         {% for error in primary_disease_form.disease_correction_notes.errors %}
                                             <div class="invalid-feedback d-block">
@@ -1299,6 +1325,7 @@ Validasi Artikel | MEDINTEL OSINT
                                         </label>
 
                                         {{ primary_location_form.correction_notes }}
+                                        <div class="form-hint mt-1">Alasan penetapan terakhir ditampilkan kembali setelah halaman dibuka ulang.</div>
 
                                         {% for error in primary_location_form.correction_notes.errors %}
                                             <div class="invalid-feedback d-block">
@@ -1777,6 +1804,35 @@ Validasi Artikel | MEDINTEL OSINT
                 </div>
             </div>
 
+            {# MEDINTEL 02B8O: modal luar form utama, tidak ada nested form #}
+            {% if selected_facts %}
+            <div class="modal modal-blur fade" id="medintel-fact-review-modal"
+                 tabindex="-1" aria-labelledby="medintel-fact-review-title"
+                 aria-hidden="true">
+                <div class="modal-dialog modal-xl modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <div>
+                                <h3 class="modal-title" id="medintel-fact-review-title">Tinjau Fakta &amp; Periode</h3>
+                                <div class="small text-secondary">Periksa sumber, koreksi, lalu tutup untuk kembali ke artikel yang sama.</div>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                        </div>
+                        <div class="modal-body p-0">
+                            <iframe id="medintel-fact-review-frame" title="Form tinjau fakta dan periode"
+                                    referrerpolicy="same-origin"
+                                    style="display:block; width:100%; height: min(72vh, 650px); border:0;"
+                                    src="about:blank"></iframe>
+                        </div>
+                        <div class="modal-footer d-flex justify-content-between">
+                            <div class="small text-secondary" id="medintel-fact-review-status" aria-live="polite">Koreksi disimpan dengan riwayat audit.</div>
+                            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Tutup dan kembali ke artikel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             {% if selected_article.processing_status == "rejected" and request.user|has_role:"Admin,Analyst" %}
                 <form
                     id="delete-selected-article-form"
@@ -1809,6 +1865,53 @@ Validasi Artikel | MEDINTEL OSINT
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     const validationWorkspace = document.getElementById("validation-workspace");
+    // MEDINTEL 02B8O: edit fakta pada artikel yang sama, tanpa mengubah alur backend.
+    const factModal = document.getElementById("medintel-fact-review-modal");
+    const factFrame = document.getElementById("medintel-fact-review-frame");
+    const factStatus = document.getElementById("medintel-fact-review-status");
+    // Seperti modal lokasi: pindah ke body agar tidak terpotong split-pane.
+    if (factModal && factModal.parentElement !== document.body) {
+        document.body.appendChild(factModal);
+    }
+    let factReviewSaved = false;
+    let factDraftChanged = false;
+    if (factModal && factFrame) {
+        document.querySelectorAll("[data-medintel-inline-fact-review]").forEach(function (link) {
+            link.addEventListener("click", function () {
+                // Bootstrap mengelola modal melalui data-bs-toggle; tanpa Bootstrap
+                // href tetap membuka halaman koreksi lama sebagai fallback.
+                factReviewSaved = false;
+                factDraftChanged = false;
+                if (factStatus) factStatus.textContent = "Koreksi disimpan dengan riwayat audit.";
+                const url = new URL(link.href, window.location.href);
+                url.searchParams.set("embed", "1");
+                factFrame.src = url.toString();
+            });
+        });
+        window.addEventListener("message", function (event) {
+            if (event.origin !== window.location.origin || event.source !== factFrame.contentWindow) return;
+            if (!event.data || typeof event.data !== "object") return;
+            if (event.data.type === "medintel:fact-review-saved") {
+                factReviewSaved = true;
+                factDraftChanged = false;
+                if (factStatus) factStatus.textContent = "Koreksi tersimpan. Tutup untuk memperbarui ringkasan.";
+            } else if (event.data.type === "medintel:fact-review-dirty") {
+                factDraftChanged = true;
+            }
+        });
+        factModal.addEventListener("hide.bs.modal", function (event) {
+            if (factDraftChanged && !factReviewSaved && !window.confirm(
+                "Ada isian yang belum disimpan. Tutup dan abaikan perubahan?"
+            )) {
+                event.preventDefault();
+            }
+        });
+        factModal.addEventListener("hidden.bs.modal", function () {
+            factFrame.src = "about:blank";
+            if (factReviewSaved) window.location.reload();
+        });
+    }
+
     const validationForm = document.getElementById("article-validation-form");
     const queueCard = validationWorkspace?.querySelector(
         ".medintel-queue-panel > .card"
