@@ -162,6 +162,9 @@ def _single_primary_relation(queryset, label: str):
 
 def evaluate_article_signal_candidate(article: Article) -> ArticleSignalCandidate:
     blockers = []
+    from apps.assessments.services.information_type_review import confirmed_information_type
+    if confirmed_information_type(article) != "case_event":
+        blockers.append("Kategori kejadian penyakit belum dikonfirmasi; informasi konteks tidak boleh membentuk indikasi kasus.")
 
     try:
         assessment = article.validation_assessment

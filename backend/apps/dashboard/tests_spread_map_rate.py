@@ -1,11 +1,12 @@
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.articles.models import Article
-from apps.entities.models import ArticleFact, Disease, ValidationStatus
+from apps.assessments.models import ArticleValidationAssessment
+from apps.entities.models import ArticleFact, ArticleDisease, ArticleLocation, Disease, ValidationStatus
 from apps.locations.models import Location
 from apps.sources.models import Source
 
@@ -18,6 +19,10 @@ from .spread_map_metrics import (
 User = get_user_model()
 
 
+@override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+})
 class SpreadMapRateTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_superuser(
@@ -68,7 +73,14 @@ class SpreadMapRateTests(TestCase):
             content_text=f"Dilaporkan {case_count} kasus di Tangerang.",
             content_hash=(suffix * 64)[:64],
             processing_status=Article.ProcessingStatus.PROCESSED,
+            raw_metadata={"information_type_review": {"category": "case_event", "source": "manual_analyst"}},
         )
+        ArticleValidationAssessment.objects.create(
+            article=article, validation_status=ArticleValidationAssessment.ValidationStatus.VALIDATED)
+        ArticleDisease.objects.create(article=article, disease=self.disease, is_primary=True,
+                                      validation_status=ValidationStatus.VALIDATED)
+        ArticleLocation.objects.create(article=article, location=self.regency, is_primary=True,
+                                       validation_status=ValidationStatus.VALIDATED)
         return ArticleFact.objects.create(
             article=article,
             disease=self.disease,
@@ -135,7 +147,14 @@ class SpreadMapRateTests(TestCase):
             content_text="Dilaporkan 100 kasus di Kabupaten Tangerang.",
             content_hash="d" * 64,
             processing_status=Article.ProcessingStatus.PROCESSED,
+            raw_metadata={"information_type_review": {"category": "case_event", "source": "manual_analyst"}},
         )
+        ArticleValidationAssessment.objects.create(
+            article=article, validation_status=ArticleValidationAssessment.ValidationStatus.VALIDATED)
+        ArticleDisease.objects.create(article=article, disease=self.disease, is_primary=True,
+                                      validation_status=ValidationStatus.VALIDATED)
+        ArticleLocation.objects.create(article=article, location=self.regency, is_primary=True,
+                                       validation_status=ValidationStatus.VALIDATED)
         ArticleFact.objects.create(
             article=article,
             disease=self.disease,
@@ -226,6 +245,19 @@ class SpreadMapRateTests(TestCase):
         )
 
         self.assertEqual(entry["reported_case_count"], 100)
+
+    def test_context_fact_never_enter_case_map(self):
+        self.fact.article.raw_metadata = {"information_type_review": {"category": "prevention_response", "source": "manual_analyst"}}
+        self.fact.article.save(update_fields=["raw_metadata"])
+        response = self.client.get(self.url, {"disease": self.disease.code, "level": "province"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["timeline"], [])
+
+    def test_pending_article_not_counted_as_cases(self):
+        ArticleValidationAssessment.objects.filter(article=self.fact.article).update(validation_status="pending")
+        response = self.client.get(self.url, {"disease": self.disease.code, "level": "province"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["timeline"], [])
 
     def test_page_explains_metric_limitations(self):
         response = self.client.get(reverse("dashboard:spread-map"))

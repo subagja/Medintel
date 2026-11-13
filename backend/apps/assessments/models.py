@@ -1633,3 +1633,61 @@ class IntelligenceReportHistory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.report.code or self.report_id} — {self.get_action_display()}"
+
+# MEDINTEL-02B8A-INTEGRATED-JOB (persistent, restart-recoverable)
+import uuid as _medintel_integrated_uuid
+from django.conf import settings as _medintel_integrated_settings
+from django.db import models as _medintel_integrated_models
+from django.db.models import Q as _medintel_integrated_Q
+
+
+class IntegratedArticleProcessingJob(_medintel_integrated_models.Model):
+    """Superuser-authorized, auditable classification + extraction batch.
+
+    Category approval does not constitute validation of article facts or a
+    decision that a disease outbreak occurred.
+    """
+    class Status(_medintel_integrated_models.TextChoices):
+        QUEUED = 'queued', 'Menunggu worker'
+        RUNNING = 'running', 'Sedang diproses'
+        COMPLETED = 'completed', 'Selesai'
+        COMPLETED_WITH_ERRORS = 'completed_with_errors', 'Selesai dengan error'
+        FAILED = 'failed', 'Terhenti'
+
+    id = _medintel_integrated_models.UUIDField(
+        primary_key=True, default=_medintel_integrated_uuid.uuid4, editable=False)
+    active_key = _medintel_integrated_models.CharField(
+        max_length=40, default='integrated_processing', editable=False)
+    status = _medintel_integrated_models.CharField(
+        max_length=32, choices=Status.choices, default=Status.QUEUED, db_index=True)
+    mode = _medintel_integrated_models.CharField(max_length=12, default='new')
+    batch_size = _medintel_integrated_models.PositiveSmallIntegerField(default=5)
+    total_items = _medintel_integrated_models.PositiveSmallIntegerField(default=0)
+    processed_items = _medintel_integrated_models.PositiveSmallIntegerField(default=0)
+    candidate_ids = _medintel_integrated_models.JSONField(default=list, blank=True)
+    finished_ids = _medintel_integrated_models.JSONField(default=list, blank=True)
+    results = _medintel_integrated_models.JSONField(default=list, blank=True)
+    stats = _medintel_integrated_models.JSONField(default=dict, blank=True)
+    auto_approve = _medintel_integrated_models.BooleanField(default=False)
+    ai_case_evidence = _medintel_integrated_models.BooleanField(default=False)
+    current_article_id = _medintel_integrated_models.CharField(max_length=36, blank=True)
+    error_message = _medintel_integrated_models.TextField(blank=True)
+    requested_by = _medintel_integrated_models.ForeignKey(
+        _medintel_integrated_settings.AUTH_USER_MODEL,
+        on_delete=_medintel_integrated_models.SET_NULL,
+        null=True, blank=True,
+        related_name='integrated_processing_jobs')
+    created_at = _medintel_integrated_models.DateTimeField(auto_now_add=True, db_index=True)
+    started_at = _medintel_integrated_models.DateTimeField(null=True, blank=True)
+    completed_at = _medintel_integrated_models.DateTimeField(null=True, blank=True)
+    updated_at = _medintel_integrated_models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            _medintel_integrated_models.UniqueConstraint(
+                fields=['active_key'],
+                condition=_medintel_integrated_Q(status__in=['queued', 'running']),
+                name='uniq_active_integrated_job',
+            ),
+        ]

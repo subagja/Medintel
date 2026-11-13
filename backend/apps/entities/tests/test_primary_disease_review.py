@@ -2,7 +2,7 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.articles.models import Article
@@ -29,6 +29,10 @@ from apps.sources.models import Source
 User = get_user_model()
 
 
+@override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+})
 class PrimaryArticleDiseaseReviewTests(TestCase):
     def setUp(self):
         self.analyst = User.objects.create_user(
@@ -62,6 +66,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
             processing_status=(
                 Article.ProcessingStatus.VALIDATED
             ),
+            raw_metadata={"information_type_review": {"category": "case_event", "source": "manual_analyst"}},
         )
         self.tuberculosis = Disease.objects.create(
             name="Tuberkulosis Primary Disease Test",
@@ -265,6 +270,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
         response = self.client.post(
             reverse("dashboard:article-validation"),
             {
+                "workspace": "history",
                 "article_id": str(self.article.id),
                 "action": "correct_primary_disease",
                 "primary_disease": str(self.tuberculosis.id),
@@ -279,6 +285,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("tab=disease", response.url)
+        self.assertIn("workspace=history", response.url)
         self.tb_relation.refresh_from_db()
         self.assertTrue(self.tb_relation.is_primary)
 
@@ -287,13 +294,17 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
 
         response = self.client.get(
             reverse("dashboard:article-validation"),
-            {"article": str(self.article.id), "tab": "disease"},
+            {
+                "workspace": "history",
+                "article": str(self.article.id),
+                "tab": "disease",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            '<form method="post" novalidate>',
+            '<form method="post" novalidate id="article-validation-form">',
         )
 
     def test_rejected_article_keeps_correction_buttons_inside_main_form(self):
@@ -306,13 +317,17 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
 
         response = self.client.get(
             reverse("dashboard:article-validation"),
-            {"article": str(self.article.id), "tab": "disease"},
+            {
+                "workspace": "history",
+                "article": str(self.article.id),
+                "tab": "disease",
+            },
         )
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         main_form_start = html.index(
-            '<form method="post" novalidate>'
+            '<form method="post" novalidate id="article-validation-form">'
         )
         main_form_end = html.index("</form>", main_form_start)
         main_form = html[main_form_start:main_form_end]
@@ -337,6 +352,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
         response = self.client.post(
             reverse("dashboard:article-validation"),
             {
+                "workspace": "history",
                 "article_id": str(self.article.id),
                 "action": "correct_primary_location",
                 "primary_location": str(alternate_location.id),
@@ -349,6 +365,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("tab=location", response.url)
+        self.assertIn("workspace=history", response.url)
         self.assertTrue(
             ArticleLocation.objects.filter(
                 article=self.article,
@@ -384,7 +401,9 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
         Article.objects.bulk_create(articles)
 
     def test_validation_workspace_paginates_fifty_articles(self):
-        self._create_articles_for_pagination()
+        # A validated fixture lives in History, not in the active Queue.
+        # Create 55 pending articles to exercise both queue pages.
+        self._create_articles_for_pagination(count=55)
         self.client.force_login(self.analyst)
 
         first_page = self.client.get(
@@ -466,13 +485,29 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
             "Target khusus lintas halaman",
         )
 
+    def test_completed_article_is_in_history_not_pending_queue(self):
+        self.client.force_login(self.analyst)
+        queue = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"workspace": "queue"},
+        )
+        history = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"workspace": "history", "history_status": "validated"},
+        )
+        self.assertEqual(queue.status_code, 200)
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(queue.context["page_obj"].paginator.count, 0)
+        self.assertEqual(history.context["page_obj"].paginator.count, 1)
+        self.assertEqual(history.context["articles"][0].id, self.article.id)
+
     def test_validation_status_filter_applies_before_pagination(self):
         self._create_articles_for_pagination()
         self.client.force_login(self.analyst)
 
         response = self.client.get(
             reverse("dashboard:article-validation"),
-            {"validation_status": "validated"},
+            {"workspace": "history", "history_status": "validated"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -485,7 +520,7 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
             self.article.id,
         )
         self.assertEqual(
-            response.context["validation_status_filter"],
+            response.context["history_status_filter"],
             "validated",
         )
 
@@ -493,18 +528,23 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
         self._create_articles_for_pagination()
         self.client.force_login(self.analyst)
 
+        page_two = self.client.get(
+            reverse("dashboard:article-validation"),
+            {"workspace": "queue", "page": 2},
+        )
+        self.assertEqual(page_two.status_code, 200)
+        selected = page_two.context["articles"][0]
+
         response = self.client.post(
-            (
-                reverse("dashboard:article-validation")
-                + "?page=2"
-            ),
+            reverse("dashboard:article-validation") + "?page=2",
             {
-                "article_id": str(self.article.id),
+                "workspace": "queue",
+                "article_id": str(selected.id),
                 "page": "2",
                 "action": "correct_primary_disease",
                 "primary_disease": str(self.tuberculosis.id),
                 "disease_correction_notes": (
-                    "Judul dan angka kasus merujuk TBC."
+                    "Penetapan penyakit utama berdasarkan pemeriksaan sumber."
                 ),
                 "correction_notes": "",
             },
@@ -512,3 +552,11 @@ class PrimaryArticleDiseaseReviewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("page=2", response.url)
+        self.assertIn("workspace=queue", response.url)
+        self.assertTrue(
+            ArticleDisease.objects.filter(
+                article=selected,
+                disease=self.tuberculosis,
+                is_primary=True,
+            ).exists()
+        )

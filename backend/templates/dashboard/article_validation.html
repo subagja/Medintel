@@ -1668,6 +1668,7 @@ Validasi Artikel | MEDINTEL OSINT
                                 value="save_assessment"
                                 class="btn btn-primary"
                                 data-medintel-action-submit
+                                data-medintel-context-save
                             >
                                 Simpan Penilaian
                             </button>
@@ -1962,13 +1963,56 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    // Tombol tetap di footer harus mengikuti TAB yang aktif.
+    // Sebelumnya action tetap save_assessment pada semua tab, sehingga
+    // pengguna dapat menyangka telah menyimpan Penyakit Utama.
+    const contextualSaveButton = validationForm?.querySelector(
+        "[data-medintel-context-save]"
+    );
+    const footerActions = {
+        validation: {
+            value: "save_validation_status",
+            label: "Simpan Status Validasi"
+        },
+        disease: {
+            value: "correct_primary_disease",
+            label: "Simpan Penyakit Utama"
+        },
+        location: {
+            value: "correct_primary_location",
+            label: "Simpan Lokasi Utama"
+        },
+        information: {
+            value: "save_assessment",
+            label: "Simpan Neraca Informasi"
+        }
+    };
+
+    function syncContextualFooterAction() {
+        if (!contextualSaveButton) return;
+        const tab = activeTabInput?.value || "validation";
+        const config = footerActions[tab];
+        if (!config) {
+            // Tab Riwayat tidak menyimpan penilaian apa pun.
+            contextualSaveButton.disabled = true;
+            contextualSaveButton.classList.add("d-none");
+            return;
+        }
+        contextualSaveButton.value = config.value;
+        contextualSaveButton.textContent = config.label;
+        contextualSaveButton.disabled = false;
+        contextualSaveButton.classList.remove("d-none");
+    }
+
     tabButtons.forEach(function (button) {
         button.addEventListener("shown.bs.tab", function () {
             if (activeTabInput) {
                 activeTabInput.value = button.dataset.medintelTab || "validation";
             }
+            syncContextualFooterAction();
         });
     });
+    syncContextualFooterAction();
 
     if (validationForm) {
         let clickedActionButton = null;
@@ -1988,6 +2032,23 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             const action = submitter.value || "save_assessment";
+            if (action === "correct_primary_disease") {
+                const notesField = validationForm.querySelector(
+                    '[name="disease_correction_notes"]'
+                );
+                if (notesField && !notesField.value.trim()) {
+                    event.preventDefault();
+                    notesField.setCustomValidity(
+                        "Isi dasar penetapan penyakit utama terlebih dahulu."
+                    );
+                    notesField.reportValidity();
+                    notesField.addEventListener("input", function clearError() {
+                        notesField.setCustomValidity("");
+                        notesField.removeEventListener("input", clearError);
+                    });
+                    return;
+                }
+            }
             if (action === "correct_primary_disease" && activeTabInput) {
                 activeTabInput.value = "disease";
             } else if (

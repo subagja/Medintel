@@ -4098,6 +4098,10 @@ def spread_map(request: HttpRequest) -> HttpResponse:
         article_facts__validation_status__in=(
             accepted_extraction_statuses
         ),
+        article_facts__article__validation_assessment__validation_status=(
+            ArticleValidationAssessment.ValidationStatus.VALIDATED
+        ),
+        article_facts__article__raw_metadata__information_type_review__category="case_event",
     ).values_list("id", flat=True)
     foreign_article_ids = ArticleLocation.objects.filter(
         is_primary=True,
@@ -4113,6 +4117,7 @@ def spread_map(request: HttpRequest) -> HttpResponse:
         article_mentions__article__validation_assessment__validation_status=(
             ArticleValidationAssessment.ValidationStatus.VALIDATED
         ),
+        article_mentions__article__raw_metadata__information_type_review__category="case_event",
         article_mentions__article_id__in=foreign_article_ids,
     ).values_list("id", flat=True)
 
@@ -4182,17 +4187,32 @@ def spread_map_data(request: HttpRequest) -> HttpResponse:
         }
     )
 
+    from django.db.models import Exists, OuterRef
+    reviewed_statuses = (ValidationStatus.VALIDATED, ValidationStatus.CORRECTED)
     facts = (
         ArticleFact.objects.filter(
             event_date__isnull=False,
             location__isnull=False,
             location__country_code="ID",
             case_count__gt=0,
-            validation_status__in=(
-                ValidationStatus.VALIDATED,
-                ValidationStatus.CORRECTED,
+            validation_status__in=reviewed_statuses,
+            article__validation_assessment__validation_status=(
+                ArticleValidationAssessment.ValidationStatus.VALIDATED
             ),
+            article__raw_metadata__information_type_review__category="case_event",
         )
+        .exclude(article__processing_status=Article.ProcessingStatus.REJECTED)
+        .annotate(
+            reviewed_disease=Exists(ArticleDisease.objects.filter(
+                article_id=OuterRef("article_id"), disease_id=OuterRef("disease_id"),
+                is_primary=True, validation_status__in=reviewed_statuses,
+            )),
+            reviewed_location=Exists(ArticleLocation.objects.filter(
+                article_id=OuterRef("article_id"), location_id=OuterRef("location_id"),
+                is_primary=True, validation_status__in=reviewed_statuses,
+            )),
+        )
+        .filter(reviewed_disease=True, reviewed_location=True)
         .select_related(
             "article",
             "article__source",
@@ -4440,6 +4460,7 @@ def _spread_map_global_payload(
             article__validation_assessment__validation_status=(
                 ArticleValidationAssessment.ValidationStatus.VALIDATED
             ),
+            article__raw_metadata__information_type_review__category="case_event",
             location__latitude__isnull=False,
             location__longitude__isnull=False,
         )
@@ -5405,14 +5426,18 @@ def _entity_extraction_incomplete_queryset():
 
 
 def _entity_extraction_summary() -> dict:
-    from apps.assessments.services.extraction_dashboard import evidence_queryset
+    from apps.assessments.services.extraction_dashboard import evidence_queryset, queue_rows, queue_summary
     qs = evidence_queryset()
-    complete = qs.filter(extraction_has_linked_fact=True, extraction_primary_count=1)
+    # The same classification-aware counts as the visible dashboard cards.
+    buckets = queue_summary(queue_rows())
     return {
         "total_articles": qs.count(),
-        "pending_count": qs.exclude(processing_status=Article.ProcessingStatus.REJECTED)
-            .exclude(extraction_has_linked_fact=True, extraction_primary_count=1).count(),
-        "complete_count": complete.count(),
+        "pending_count": buckets["incomplete"],
+        "complete_count": buckets["complete"],
+        "context_count": buckets["contextual_articles"],
+        "verification_count": buckets["verification_needed"],
+        "analysis_ready_count": buckets["analysis_ready"],
+        "awaiting_validation_count": buckets["awaiting_validation"],
         "with_disease": qs.filter(extraction_has_disease=True).count(),
         "with_location": qs.filter(extraction_has_location=True).count(),
         "with_fact": qs.filter(extraction_has_numeric_fact=True).count(),
@@ -5447,17 +5472,21 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     )
     method_labels = dict(ExtractionMethod.choices)
 
-    from apps.assessments.services.extraction_dashboard import queue_rows, queue_summary
+    from apps.assessments.services.extraction_dashboard import queue_rows, queue_summary, queue_bucket
     from django.core.paginator import Paginator
     rows = queue_rows()
     extraction_queue = queue_summary(rows)
     selected = request.GET.get("scope", "all")
     search = request.GET.get("q", "").strip()
     history = request.GET.get("history", "all")
-    allowed = {"all", "unattempted", "running", "attempted", "failed", "unknown", "rejected", "incomplete", "complete", "context_ready", "context_pending", "context_candidate", "context_candidate_ready"}  # MEDINTEL-02B4-CANDIDATE-FILTERS  # MEDINTEL-02B2-CONTEXT-FILTERS
+    allowed = {"all", "unattempted", "running", "attempted", "failed", "unknown", "rejected", "incomplete", "complete", "context", "context_ready", "context_pending", "context_candidate", "context_candidate_ready", "verification"}  # MEDINTEL-02B4-CANDIDATE-FILTERS  # MEDINTEL-02B2-CONTEXT-FILTERS
     if selected not in allowed: selected = "all"
     filtered = rows
-    if selected == "context_ready":
+    if selected == "verification":
+        filtered = [row for row in rows if row.get("verification_needed")]
+    elif selected == "context":
+        filtered = [row for row in rows if queue_bucket(row) == "context"]
+    elif selected == "context_ready":
         filtered = [row for row in rows if row["context_review_ready"] and row["state"] != "rejected"]
     elif selected == "context_pending":
         filtered = [row for row in rows if row["contextual"] and not row["context_review_ready"] and row["state"] != "rejected"]
@@ -5466,9 +5495,9 @@ def entity_extraction_dashboard(request: HttpRequest) -> HttpResponse:
     elif selected == "context_candidate_ready":
         filtered = [row for row in rows if row.get("context_candidate_ready") and row["state"] != "rejected"]
     elif selected == "incomplete":
-        filtered = [row for row in rows if not row["complete"] and row["state"] != "rejected"]
+        filtered = [row for row in rows if queue_bucket(row) == "incomplete"]
     elif selected == "complete":
-        filtered = [row for row in rows if row["complete"] and row["state"] != "rejected"]
+        filtered = [row for row in rows if queue_bucket(row) == "complete"]
     elif selected != "all":
         filtered = [row for row in rows if row["state"] == selected]
     if history in ("unattempted", "attempted", "running", "failed", "unknown"):

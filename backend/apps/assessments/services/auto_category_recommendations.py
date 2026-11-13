@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.articles.models import Article
 from .ai_information_type import article_fingerprint, request_suggestion, suggestion_for
-from .information_type_review import confirmed_information_type
+from .information_type_review import confirmed_information_type, classification_allowed
 
 logger = logging.getLogger(__name__)
 STATE_KEY = 'information_type_auto_generation'
@@ -20,7 +20,7 @@ STALE_AFTER = timedelta(minutes=15)
 
 
 def eligible(article, *, retry_failed=False, now=None):
-    if article.processing_status == Article.ProcessingStatus.REJECTED:
+    if not classification_allowed(article):
         return False
     if confirmed_information_type(article) is not None or suggestion_for(article) is not None:
         return False
@@ -92,7 +92,7 @@ def generate_available(limit=5, *, retry_failed=False):
     """Ambil terbaru dulu supaya artikel baru tidak tertahan backlog historis."""
     results = {'generated': 0, 'failed': 0, 'skipped': 0}
     inspected = 0
-    for article in Article.objects.exclude(processing_status=Article.ProcessingStatus.REJECTED).select_related('source').order_by('-created_at').iterator(chunk_size=100):
+    for article in Article.objects.exclude(processing_status=Article.ProcessingStatus.REJECTED).select_related('source', 'validation_assessment').order_by('-created_at').iterator(chunk_size=100):
         if sum(results.values()) >= limit:
             break
         inspected += 1

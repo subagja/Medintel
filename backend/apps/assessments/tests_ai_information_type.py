@@ -55,3 +55,16 @@ class AIInformationTypeRoleTests(TestCase):
         self.client.post(self.approve_url,{"scope":"all"})
         self.article.refresh_from_db()
         self.assertIsNone(confirmed_information_type(self.article))
+
+    def test_rejected_validation_blocks_ai_approval_even_if_processed(self):
+        from apps.assessments.models import ArticleValidationAssessment
+        from apps.assessments.services.ai_information_type import approve_suggestion
+        self._save_proposal()
+        ArticleValidationAssessment.objects.create(
+            article=self.article,
+            validation_status=ArticleValidationAssessment.ValidationStatus.REJECTED,
+        )
+        with self.assertRaisesRegex(ValueError, 'ditolak'):
+            approve_suggestion(self.article.pk, self.master)
+        self.article.refresh_from_db()
+        self.assertIsNone(confirmed_information_type(self.article))

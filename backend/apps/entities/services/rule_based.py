@@ -529,7 +529,10 @@ def extract_article_entities(
             found_in_title=mention.start <= title_length,
         )
 
-        relation, created = ArticleDisease.objects.update_or_create(
+        # Ekstraksi ulang tidak boleh membatalkan keputusan review.
+        # update_or_create(defaults={validation_status: unreviewed}) dulu
+        # menurunkan entitas yang VALIDATED/CORRECTED/REJECTED tanpa audit.
+        relation, created = ArticleDisease.objects.get_or_create(
             article=article,
             disease=disease,
             defaults={
@@ -543,6 +546,24 @@ def extract_article_entities(
         if created:
             result.diseases_created += 1
         else:
+            # Hanya data otomatis yang belum ditinjau boleh diperbarui.
+            # is_primary dan keputusan peninjau tidak disentuh.
+            if (
+                relation.validation_status == ValidationStatus.UNREVIEWED
+                and relation.extraction_method in AUTOMATED_LOCATION_METHODS
+            ):
+                changes = []
+                if relation.mention_text != mention.matched_text:
+                    relation.mention_text = mention.matched_text
+                    changes.append("mention_text")
+                if relation.confidence_score != confidence:
+                    relation.confidence_score = confidence
+                    changes.append("confidence_score")
+                if relation.extraction_method != ExtractionMethod.RULE_BASED:
+                    relation.extraction_method = ExtractionMethod.RULE_BASED
+                    changes.append("extraction_method")
+                if changes:
+                    relation.save(update_fields=[*changes, "updated_at"])
             result.diseases_updated += 1
 
     _persist_primary_location(

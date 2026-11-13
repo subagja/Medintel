@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -21,6 +21,10 @@ from apps.sources.models import Source
 User = get_user_model()
 
 
+@override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+})
 class SpreadMapGlobalTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_superuser(
@@ -74,6 +78,7 @@ class SpreadMapGlobalTests(TestCase):
             content_hash=(suffix * 64)[:64],
             published_at=published_at,
             processing_status=Article.ProcessingStatus.PROCESSED,
+            raw_metadata={"information_type_review": {"category": "case_event", "source": "manual_analyst"}},
         )
         ArticleDisease.objects.create(
             article=article,
@@ -157,6 +162,14 @@ class SpreadMapGlobalTests(TestCase):
             },
         )
 
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["timeline"], [])
+
+    def test_context_foreign_article_is_not_mapped(self):
+        article = self._validated_article(suffix="context", day=3, case_count=40)
+        article.raw_metadata = {"information_type_review": {"category": "risk_indicator", "source": "manual_analyst"}}
+        article.save(update_fields=["raw_metadata"])
+        response = self.client.get(self.url, {"scope": "global", "mode": "cumulative", "disease": self.disease.code})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["timeline"], [])
 

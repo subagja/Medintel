@@ -80,6 +80,18 @@ class EntityExtractionLiveStatusTests(TestCase):
             fact_text="Sepuluh kasus ditemukan di lokasi uji.",
         )
 
+        # Patch 02B8F+: bukti numerik saja belum cukup untuk keluar dari antrean.
+        # Fixture ini sengaja menandai kategori kejadian sebagai sudah disimpan.
+        complete.raw_metadata = {
+            **(complete.raw_metadata or {}),
+            "information_type_review": {
+                "category": "case_event",
+                "source": "master_admin_ai_approval",
+                "reason": "Kategori kejadian penyakit dikonfirmasi pada fixture pengujian",
+            },
+        }
+        complete.save(update_fields=["raw_metadata"])
+
         response = self.client.get(
             reverse("dashboard:entity-extraction-status")
         )
@@ -88,6 +100,7 @@ class EntityExtractionLiveStatusTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["summary"]["total_articles"], 2)
         self.assertEqual(payload["summary"]["pending_count"], 1)
+        self.assertEqual(payload["summary"]["complete_count"], 1)
         self.assertEqual(payload["summary"]["with_disease"], 1)
         self.assertEqual(payload["summary"]["with_location"], 1)
         self.assertEqual(payload["summary"]["with_fact"], 1)

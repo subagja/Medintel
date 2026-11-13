@@ -82,6 +82,7 @@ class ArticleSignalFormationTests(TestCase):
             excerpt="Dilaporkan 5.101 kasus TBC.",
             content_hash="a" * 64,
             processing_status=Article.ProcessingStatus.VALIDATED,
+            raw_metadata={"information_type_review": {"category": "case_event", "source": "manual_analyst"}},
         )
         self.assessment = ArticleValidationAssessment.objects.create(
             article=self.article,

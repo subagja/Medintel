@@ -16,7 +16,12 @@ from apps.collection import views as collection_views
 
 app_name = "dashboard"
 
+# MEDINTEL-02B8A-INTEGRATED-ROUTES
+from apps.assessments import views_integrated_processing as medintel_integrated_views
 urlpatterns = [
+    path('ekstraksi-entitas/terpadu/mulai/', medintel_integrated_views.start, name='integrated-processing-start'),
+    path('ekstraksi-entitas/terpadu/status/', medintel_integrated_views.status, name='integrated-processing-status'),
+
     path('ekstraksi-entitas/<uuid:article_id>/ai-saran/', views.entity_extraction_ai_suggest, name='entity-extraction-ai-suggest'),
     path('ekstraksi-entitas/<uuid:article_id>/ai-setujui/', views.entity_extraction_ai_approve, name='entity-extraction-ai-approve'),
     path(
