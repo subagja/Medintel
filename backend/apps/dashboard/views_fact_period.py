@@ -32,6 +32,8 @@ def fact_period_review(request: HttpRequest, article_id, fact_id) -> HttpRespons
     # ModelForm mengisi instance secara in-memory ketika memvalidasi POST.
     # Simpan snapshot sebelum is_valid() agar delta tidak salah dihitung.
     previous = {name: getattr(fact, name) for name in fields}
+    previous_event_date = fact.event_date
+    previous_location_id = fact.location_id
     if request.method == "POST":
         form = ArticleFactPeriodReviewForm(request.POST, instance=fact)
     else:
@@ -47,6 +49,13 @@ def fact_period_review(request: HttpRequest, article_id, fact_id) -> HttpRespons
             for name in fields
             if previous[name] != form.cleaned_data[name]
         }
+        # Lokasi dan tanggal tunggal hanya berubah atas tindakan reviewer eksplisit.
+        # Keduanya bukan bagian ModelForm.Meta.fields agar POST lama tetap kompatibel.
+        selected_location = form.cleaned_data.get("corrected_location")
+        if selected_location and selected_location.pk != previous_location_id:
+            changes["location"] = selected_location
+        if form.cleaned_data.get("clear_single_event_date") and previous_event_date:
+            changes["event_date"] = None
         notes = form.cleaned_data["correction_reason"].strip()
         with transaction.atomic():
             locked = ArticleFact.objects.select_for_update().get(

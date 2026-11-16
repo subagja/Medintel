@@ -10,8 +10,8 @@
   <div class="card mb-3">
     <div class="card-body">
       <h3 class="card-title">{{ article.title }}</h3>
-      <div class="text-secondary small">{{ fact.disease|default:"Penyakit belum ditetapkan" }} · {{ fact.location|default:"Lokasi belum ditetapkan" }}</div>
-      <p class="mt-2 mb-1"><strong>Kasus tersimpan:</strong> {{ fact.case_count|default_if_none:"—" }} · <strong>Tanggal kejadian tunggal:</strong> {{ fact.event_date|date:"d M Y"|default:"—" }}</p>
+      <div class="text-secondary small">{{ saved_fact.disease|default:"Penyakit belum ditetapkan" }} · {{ saved_fact.location|default:"Lokasi belum ditetapkan" }}</div>
+      <p class="mt-2 mb-1"><strong>Kasus tersimpan:</strong> {{ saved_fact.case_count|default_if_none:"—" }} · <strong>Tanggal kejadian tunggal:</strong> {{ saved_fact.event_date|date:"d M Y"|default:"—" }}</p>
       <p class="small text-secondary mb-0">Kolom periode adalah cakupan pelaporan, bukan tanggal onset. Satu artikel bisa memuat angka pada cakupan wilayah yang berbeda. Cocokkan dengan sumber sebelum menyimpan.</p>
       <div class="mt-2"><a href="{{ article.original_url }}" target="_blank" rel="noopener noreferrer">Buka artikel sumber</a></div>
     </div>
@@ -40,6 +40,7 @@
       {% if saved_fact.validation_status == "corrected" %}
         <div class="alert alert-light border" id="fact-saved-summary">
           <strong>Hasil review tersimpan</strong>
+          <div class="small mt-2"><strong>Lokasi fakta:</strong> {{ saved_fact.location|default:"—" }} · <strong>Tanggal tunggal:</strong> {{ saved_fact.event_date|date:"d M Y"|default:"—" }}</div>
           <div class="small mt-2">Periode: {{ saved_fact.reporting_period_start|date:"d M Y"|default:"—" }} – {{ saved_fact.reporting_period_end|date:"d M Y"|default:"—" }}
             · {{ saved_fact.get_reporting_period_precision_display }}
             · {{ saved_fact.get_case_count_basis_display }}
@@ -52,7 +53,7 @@
       <form method="post" {% if embedded %}action="?embed=1"{% endif %} id="fact-period-correction-form">
         {% csrf_token %}
         <input type="hidden" name="version" value="{{ version }}">
-        <p class="text-secondary small mb-3">Periksa cakupan waktu, angka kematian, dan kutipan sesuai artikel sumber. Untuk laporan kumulatif, isi rentang periode tanpa mengisi tanggal kejadian tunggal.</p>
+        <p class="text-secondary small mb-3">Periksa cakupan wilayah, waktu, angka kematian, dan kutipan sesuai artikel sumber. Untuk laporan kumulatif, isi rentang periode tanpa mengisi tanggal kejadian tunggal.</p>
         <div class="row g-3">
           {% for field in form.visible_fields %}
             <div class="col-md-6 {% if field.name == 'fact_text' or field.name == 'correction_reason' %}col-md-12{% endif %}">
